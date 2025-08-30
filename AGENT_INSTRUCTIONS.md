@@ -7,7 +7,10 @@ READING ORDER (DO NOT EDIT CODE UNTIL COMPLETE)
 ================================================================
 1) ENGINEERING_RULES.md  (authoritative; ASCII only; no hallucinations; GAAP/ASC; pytest required)
 2) PROJECT_CONTEXT.md    (scope, modules, business rules, entities, endpoints, TODOs)
-4) Source map to scan before acting:
+3) docs/ACCOUNTING_GAAP_REFERENCE.md
+4) docs/us-gaap-egc-template.pdf  (structure reference)
+
+5) Source map to scan before acting:
    - src/api/main.py
    - src/api/models.py
    - src/api/routes/*
@@ -18,7 +21,7 @@ READING ORDER (DO NOT EDIT CODE UNTIL COMPLETE)
    - docker-compose.dev.yml
    - docker-compose.prod.yml (or create if missing)
    - nginx/nginx.prod.conf (or create if missing)
-5) If context runs low at any time: STOP, re-read ENGINEERING_RULES, re-scan the codebase, then continue.
+6) If context runs low at any time: STOP, re-read ENGINEERING_RULES, re-scan the codebase, then continue.
 
 ================================================================
 NON-NEGOTIABLE CONSTRAINTS
@@ -71,6 +74,9 @@ B) ENTITIES MODULE: CAP TABLE + INVESTOR REGISTRY (INTERNAL)
 3) Tests:
    - `tests/test_entities_cap_table.py` (ownership math, invariants)
    - `tests/test_entities_investors_rbac.py` (access control, no cross-entity leakage)
+   - Reports must match the shapes in ACCOUNTING_GAAP_REFERENCE.md (Balance Sheet, Income, Comprehensive Income, Equity, Cash Flow).
+   - Implement classification rules and acceptance tests defined there.
+
 
 C) INVESTOR RELATIONS (INTERNAL ONLY)
 1) Route: `/ir` (authenticated)
