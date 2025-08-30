@@ -1,0 +1,489 @@
+/**
+ * NGI Capital Internal Application - API Client
+ * 
+ * Centralized API client for communicating with the FastAPI backend.
+ * Handles authentication, request/response formatting, and error handling.
+ */
+
+import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios'
+import {
+  Partner as AppPartner,
+  Entity as AppEntity,
+  Transaction as AppTransaction,
+  DashboardMetrics as AppDashboardMetrics,
+} from '@/types'
+import { toast } from 'sonner'
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001'
+
+// Types
+interface ApiError {
+  detail: string
+  status: number
+}
+
+interface LoginRequest {
+  email: string
+  password: string
+}
+
+interface LoginResponse {
+  access_token: string
+  token_type: string
+  expires_in: number
+  partner_name?: string
+  ownership_percentage?: number
+  message?: string
+  partner?: {
+    name: string
+    email: string
+    ownership_percentage: number
+  }
+}
+
+interface ApiPartner {
+  id: number
+  name: string
+  email: string
+  ownership_percentage: number
+  capital_account_balance: number
+  is_active: boolean
+  last_login: string | null
+}
+
+interface ApiEntity {
+  id: number
+  legal_name: string
+  entity_type: string
+  ein: string | null
+  formation_date: string | null
+  state: string | null
+  is_active: boolean
+}
+
+interface ApiTransaction {
+  id: number
+  entity_id: number
+  transaction_date: string
+  amount: number
+  transaction_type: string
+  description: string | null
+  reference_number: string | null
+  approval_status: string
+  created_by: string
+  approved_by: string | null
+  created_at: string
+}
+
+interface ChartAccount {
+  id: number
+  entity_id: number
+  account_code: string
+  account_name: string
+  account_type: string
+  parent_account_id: number | null
+  is_active: boolean
+}
+
+interface ApiDashboardMetrics {
+  total_assets: number
+  monthly_revenue: number
+  monthly_expenses: number
+  cash_position: number
+  pending_approvals: number
+  recent_transactions: ApiTransaction[]
+}
+
+class ApiClient {
+  private client: AxiosInstance
+  private token: string | null = null
+
+  constructor() {
+    this.client = axios.create({
+      baseURL: API_BASE_URL,
+      timeout: 30000,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+
+    // Request interceptor to add auth token
+    this.client.interceptors.request.use(
+      (config) => {
+        if (this.token) {
+          config.headers.Authorization = `Bearer ${this.token}`
+        }
+        return config
+      },
+      (error) => {
+        return Promise.reject(error)
+      }
+    )
+
+    // Response interceptor for error handling
+    this.client.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        this.handleApiError(error)
+        return Promise.reject(error)
+      }
+    )
+
+    // Load token from localStorage on initialization
+    if (typeof window !== 'undefined') {
+      this.token = localStorage.getItem('auth_token')
+    }
+  }
+
+  private handleApiError(error: any): void {
+    console.error('API Error Details:', {
+      message: error.message,
+      code: error.code,
+      response: error.response?.data,
+      status: error.response?.status,
+      request: error.request?.responseURL
+    })
+    
+    if (error.response) {
+      const status = error.response.status
+      const message = error.response.data?.detail || 'An error occurred'
+
+      switch (status) {
+        case 401:
+          this.clearAuth()
+          toast.error('Authentication required. Please log in.')
+          if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+            window.location.href = '/login'
+          }
+          break
+        case 403:
+          toast.error('Access denied. Insufficient permissions.')
+          break
+        case 404:
+          toast.error('Resource not found.')
+          break
+        case 422:
+          toast.error('Invalid data provided.')
+          break
+        case 500:
+          toast.error('Server error. Please try again later.')
+          break
+        default:
+          toast.error(message)
+      }
+    } else if (error.request) {
+      console.error('No response received:', error.request)
+      toast.error('Network error. Please check your connection.')
+    } else {
+      console.error('Request setup error:', error.message)
+      toast.error('Request failed. Please try again.')
+    }
+  }
+
+  setAuthToken(token: string): void {
+    this.token = token
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('auth_token', token)
+    }
+  }
+
+  clearAuth(): void {
+    this.token = null
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('user')
+    }
+  }
+
+  // Authentication endpoints
+  async login(credentials: LoginRequest): Promise<LoginResponse> {
+    console.log('Attempting login with URL:', `${API_BASE_URL}/api/auth/login`)
+    console.log('Credentials:', { email: credentials.email, password: '***' })
+    
+    try {
+      const response = await this.client.post('/api/auth/login', credentials)
+      console.log('Login response received:', response.data)
+      
+      const data = response.data
+      this.setAuthToken(data.access_token)
+      // Normalize the response to always have partner object
+      if (!data.partner && data.partner_name) {
+        data.partner = {
+          name: data.partner_name,
+          email: credentials.email,
+          ownership_percentage: data.ownership_percentage || 50
+        }
+      }
+      return data
+    } catch (error) {
+      console.error('Login failed:', error)
+      throw error
+    }
+  }
+
+  // Profile endpoint (maps /auth/me to Partner)
+  async getProfile(): Promise<AppPartner> {
+    const response = await this.client.get('/api/auth/me')
+    const me = response.data
+    const partner: AppPartner = {
+      id: me.id?.toString?.() || '0',
+      name: me.name || 'Partner',
+      email: me.email,
+      ownership_percentage: me.ownership_percentage ?? 0,
+      capital_account_balance: me.capital_account_balance ?? 0,
+      is_active: me.is_active ?? true,
+      created_at: me.created_at || new Date().toISOString(),
+    }
+    return partner
+  }
+
+  async logout(): Promise<void> {
+    try {
+      await this.client.post('/api/auth/logout')
+    } catch (error) {
+      // Ignore logout errors
+    } finally {
+      this.clearAuth()
+    }
+  }
+
+  // Dashboard endpoints
+  async getDashboardMetrics(): Promise<AppDashboardMetrics> {
+    const response = await this.client.get('/api/dashboard/metrics')
+    const r = response.data || {}
+    const result: AppDashboardMetrics = {
+      total_aum: r.total_assets ?? 0,
+      monthly_revenue: r.monthly_revenue ?? 0,
+      monthly_expenses: r.monthly_expenses ?? 0,
+      net_income: (r.monthly_revenue ?? 0) - (r.monthly_expenses ?? 0),
+      pending_approvals_count: r.pending_approvals ?? 0,
+      cash_position: [],
+      entity_performance: [],
+    }
+    return result
+  }
+
+  // Entity management endpoints
+  async getEntities(): Promise<AppEntity[]> {
+    const response = await this.client.get('/api/entities')
+    const items = Array.isArray(response.data) ? response.data : (response.data?.entities ?? [])
+    const mapped: AppEntity[] = items.map((e: any) => ({
+      id: e.id?.toString?.() ?? '0',
+      legal_name: e.legal_name ?? '',
+      entity_type: e.entity_type ?? '',
+      ein: e.ein ?? '',
+      formation_date: e.formation_date ?? new Date().toISOString(),
+      state: e.state ?? '',
+      parent_entity_id: e.parent_entity_id?.toString?.(),
+      is_active: e.is_active ?? true,
+      created_at: e.created_at ?? new Date().toISOString(),
+    }))
+    return mapped
+  }
+
+  async createEntity(entityData: Partial<AppEntity>): Promise<AppEntity> {
+    const response = await this.client.post('/entities', entityData)
+    const e = response.data
+    const mapped: AppEntity = {
+      id: e.id?.toString?.() ?? '0',
+      legal_name: e.legal_name ?? '',
+      entity_type: e.entity_type ?? '',
+      ein: e.ein ?? '',
+      formation_date: e.formation_date ?? new Date().toISOString(),
+      state: e.state ?? '',
+      parent_entity_id: e.parent_entity_id?.toString?.(),
+      is_active: e.is_active ?? true,
+      created_at: e.created_at ?? new Date().toISOString(),
+    }
+    return mapped
+  }
+
+  async updateEntity(id: number | string, entityData: Partial<AppEntity>): Promise<AppEntity> {
+    const response = await this.client.put(`/entities/${id}`, entityData)
+    const e = response.data
+    const mapped: AppEntity = {
+      id: e.id?.toString?.() ?? '0',
+      legal_name: e.legal_name ?? '',
+      entity_type: e.entity_type ?? '',
+      ein: e.ein ?? '',
+      formation_date: e.formation_date ?? new Date().toISOString(),
+      state: e.state ?? '',
+      parent_entity_id: e.parent_entity_id?.toString?.(),
+      is_active: e.is_active ?? true,
+      created_at: e.created_at ?? new Date().toISOString(),
+    }
+    return mapped
+  }
+
+  // Accounting endpoints
+  async getChartOfAccounts(entityId?: number): Promise<ChartAccount[]> {
+    const params = entityId ? { entity_id: entityId } : {}
+    const response = await this.client.get('/accounting/chart-of-accounts', { params })
+    return response.data
+  }
+
+  async createChartAccount(accountData: Partial<ChartAccount>): Promise<ChartAccount> {
+    const response = await this.client.post('/accounting/chart-of-accounts', accountData)
+    return response.data
+  }
+
+  async updateChartAccount(id: number, accountData: Partial<ChartAccount>): Promise<ChartAccount> {
+    const response = await this.client.put(`/accounting/chart-of-accounts/${id}`, accountData)
+    return response.data
+  }
+
+  async getJournalEntries(params?: {
+    entity_id?: number
+    start_date?: string
+    end_date?: string
+    status?: string
+  }): Promise<ApiTransaction[]> {
+    const response = await this.client.get('/accounting/journal-entries', { params })
+    return response.data
+  }
+
+  async createJournalEntry(entryData: any): Promise<ApiTransaction> {
+    const response = await this.client.post('/accounting/journal-entries', entryData)
+    return response.data
+  }
+
+  async getJournalEntryDetails(entryId: number): Promise<any> {
+    const response = await this.client.get(`/accounting/journal-entries/${entryId}/details`)
+    return response.data
+  }
+
+  async approveJournalEntry(entryId: number): Promise<void> {
+    await this.client.post(`/accounting/journal-entries/${entryId}/approve`)
+  }
+
+  async getTrialBalance(entityId: number, asOfDate: string): Promise<any> {
+    const response = await this.client.get('/accounting/trial-balance', {
+      params: { entity_id: entityId, as_of_date: asOfDate }
+    })
+    return response.data
+  }
+
+  // Banking endpoints
+  async getBankAccounts(): Promise<any[]> {
+    const response = await this.client.get('/banking/accounts')
+    return response.data.accounts
+  }
+
+  async syncBankTransactions(): Promise<any> {
+    const response = await this.client.post('/banking/sync')
+    return response.data
+  }
+
+  // Reports endpoints
+  async generateIncomeStatement(startDate: string, endDate: string): Promise<any> {
+    const response = await this.client.get('/reports/income-statement', {
+      params: { start_date: startDate, end_date: endDate }
+    })
+    return response.data
+  }
+
+  async generateBalanceSheet(asOfDate: string): Promise<any> {
+    const response = await this.client.get('/reports/balance-sheet', {
+      params: { as_of_date: asOfDate }
+    })
+    return response.data
+  }
+
+  // Transaction approval endpoints
+  async approveTransaction(transactionId: number | string): Promise<void> {
+    await this.client.post(`/transactions/${transactionId}/approve`)
+  }
+
+  // Placeholder: pending approvals (backend route TBD)
+  async getPendingApprovals(): Promise<AppTransaction[]> {
+    try {
+      const response = await this.client.get('/transactions/pending')
+      const items = response.data?.transactions ?? []
+      return items.map((t: any) => ({
+        id: t.id?.toString?.() ?? '0',
+        entity_id: t.entity_id?.toString?.() ?? '0',
+        transaction_date: t.transaction_date ?? new Date().toISOString(),
+        amount: Number(t.amount ?? 0),
+        transaction_type: t.transaction_type ?? '',
+        description: t.description ?? '',
+        created_by: t.created_by ?? '',
+        approved_by: t.approved_by?.toString?.(),
+        approval_status: t.approval_status ?? 'pending',
+        created_at: t.created_at ?? new Date().toISOString(),
+      }))
+    } catch {
+      return []
+    }
+  }
+
+  // Placeholder: recent transactions (backend route TBD)
+  async getRecentTransactions(limit = 10): Promise<AppTransaction[]> {
+    try {
+      const response = await this.client.get('/transactions/recent', { params: { limit } })
+      const items = response.data?.transactions ?? []
+      return items.map((t: any) => ({
+        id: t.id?.toString?.() ?? '0',
+        entity_id: t.entity_id?.toString?.() ?? '0',
+        transaction_date: t.transaction_date ?? new Date().toISOString(),
+        amount: Number(t.amount ?? 0),
+        transaction_type: t.transaction_type ?? '',
+        description: t.description ?? '',
+        created_by: t.created_by ?? '',
+        approved_by: t.approved_by?.toString?.(),
+        approval_status: t.approval_status ?? 'pending',
+        created_at: t.created_at ?? new Date().toISOString(),
+      }))
+    } catch {
+      return []
+    }
+  }
+
+  // Placeholder: create transaction
+  async createTransaction(data: any): Promise<AppTransaction> {
+    const response = await this.client.post('/transactions', data)
+    const t = response.data
+    const mapped: AppTransaction = {
+      id: t.id?.toString?.() ?? '0',
+      entity_id: t.entity_id?.toString?.() ?? '0',
+      transaction_date: t.transaction_date ?? new Date().toISOString(),
+      amount: Number(t.amount ?? 0),
+      transaction_type: t.transaction_type ?? '',
+      description: t.description ?? '',
+      created_by: t.created_by ?? '',
+      approved_by: t.approved_by?.toString?.(),
+      approval_status: t.approval_status ?? 'pending',
+      created_at: t.created_at ?? new Date().toISOString(),
+    }
+    return mapped
+  }
+
+  // Placeholder: reject transaction
+  async rejectTransaction(id: string | number, reason?: string): Promise<void> {
+    await this.client.post(`/transactions/${id}/reject`, { reason })
+  }
+
+  // Generic request method for custom endpoints
+  async request<T = any>(
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
+    endpoint: string,
+    data?: any,
+    config?: AxiosRequestConfig
+  ): Promise<T> {
+    const response = await this.client.request({
+      method,
+      url: endpoint,
+      data,
+      ...config,
+    })
+    return response.data
+  }
+}
+
+// Create singleton instance
+export const apiClient = new ApiClient()
+
+// Export types
+export type { ApiError, LoginRequest, LoginResponse, ChartAccount }
+
+// Export class for custom instances if needed
+export { ApiClient }

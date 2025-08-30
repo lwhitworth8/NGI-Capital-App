@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Debug Network Issue</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+        .test { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Debug Network Issue</h1>
+    
+    <div class="test">
+        <h3>Test 1: Check Backend Health</h3>
+        <button onclick="testBackendHealth()">Test Backend Health</button>
+        <div id="health-result"></div>
+    </div>
+    
+    <div class="test">
+        <h3>Test 2: Direct API Login (No Proxy)</h3>
+        <button onclick="testDirectLogin()">Test Direct Login</button>
+        <div id="direct-result"></div>
+    </div>
+    
+    <div class="test">
+        <h3>Test 3: Through Next.js Proxy</h3>
+        <button onclick="testProxyLogin()">Test Proxy Login</button>
+        <div id="proxy-result"></div>
+    </div>
+    
+    <div class="test">
+        <h3>Test 4: Check CORS Headers</h3>
+        <button onclick="testCORS()">Test CORS</button>
+        <div id="cors-result"></div>
+    </div>
+    
+    <div class="test">
+        <h3>Test 5: Simulate Exact Frontend Code</h3>
+        <button onclick="testExactFrontend()">Test Exact Frontend</button>
+        <div id="exact-result"></div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8001';
+        const TEST_EMAIL = 'lwhitworth@ngicapitaladvisory.com';
+        const TEST_PASSWORD = 'TempPassword123!';
+        
+        function showResult(elementId, success, message, details = null) {
+            const element = document.getElementById(elementId);
+            element.className = success ? 'success' : 'error';
+            element.innerHTML = `
+                <strong>${success ? '✓' : '✗'} ${message}</strong>
+                ${details ? `<pre>${JSON.stringify(details, null, 2)}</pre>` : ''}
+            `;
+        }
+        
+        async function testBackendHealth() {
+            try {
+                const response = await fetch(`${API_URL}/api/health`);
+                const data = await response.json();
+                showResult('health-result', true, 'Backend is healthy', data);
+            } catch (error) {
+                showResult('health-result', false, `Cannot connect to backend: ${error.message}`);
+            }
+        }
+        
+        async function testDirectLogin() {
+            try {
+                const response = await fetch(`${API_URL}/api/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: TEST_EMAIL,
+                        password: TEST_PASSWORD
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.access_token) {
+                    showResult('direct-result', true, 'Direct login successful', {
+                        token: data.access_token.substring(0, 30) + '...',
+                        partner: data.partner_name
+                    });
+                } else {
+                    showResult('direct-result', false, 'Login failed', data);
+                }
+            } catch (error) {
+                showResult('direct-result', false, `Network error: ${error.message}`, {
+                    error: error.toString(),
+                    type: error.constructor.name
+                });
+            }
+        }
+        
+        async function testProxyLogin() {
+            try {
+                // Try through Next.js proxy
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: TEST_EMAIL,
+                        password: TEST_PASSWORD
+                    })
+                });
+                
+                const text = await response.text();
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch {
+                    data = { raw: text };
+                }
+                
+                if (response.ok) {
+                    showResult('proxy-result', true, 'Proxy login successful', data);
+                } else {
+                    showResult('proxy-result', false, `Proxy failed with status ${response.status}`, data);
+                }
+            } catch (error) {
+                showResult('proxy-result', false, `Proxy error: ${error.message}`, {
+                    error: error.toString()
+                });
+            }
+        }
+        
+        async function testCORS() {
+            try {
+                const response = await fetch(`${API_URL}/api/auth/login`, {
+                    method: 'OPTIONS',
+                    headers: {
+                        'Origin': 'http://localhost:3001',
+                        'Access-Control-Request-Method': 'POST',
+                        'Access-Control-Request-Headers': 'Content-Type'
+                    }
+                });
+                
+                const corsHeaders = {
+                    'Access-Control-Allow-Origin': response.headers.get('Access-Control-Allow-Origin'),
+                    'Access-Control-Allow-Methods': response.headers.get('Access-Control-Allow-Methods'),
+                    'Access-Control-Allow-Headers': response.headers.get('Access-Control-Allow-Headers'),
+                    'Access-Control-Allow-Credentials': response.headers.get('Access-Control-Allow-Credentials')
+                };
+                
+                showResult('cors-result', response.ok, `CORS check (status: ${response.status})`, corsHeaders);
+            } catch (error) {
+                showResult('cors-result', false, `CORS check failed: ${error.message}`);
+            }
+        }
+        
+        async function testExactFrontend() {
+            // Exact copy of frontend code
+            const API_URL = 'http://localhost:8001';
+            const email = TEST_EMAIL;
+            const password = TEST_PASSWORD;
+            
+            try {
+                const loginUrl = `${API_URL}/api/auth/login`;
+                console.log('Attempting login for:', email);
+                console.log('Full login URL:', loginUrl);
+                console.log('Request body:', JSON.stringify({ email, password }));
+                
+                // Direct fetch call
+                const response = await fetch(loginUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    mode: 'cors',
+                    body: JSON.stringify({
+                        email: email,
+                        password: password
+                    })
+                });
+                
+                console.log('Response received:', response);
+                console.log('Response status:', response.status);
+                console.log('Response ok:', response.ok);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('Response data:', data);
+                
+                if (data.access_token) {
+                    showResult('exact-result', true, 'Exact frontend code works!', {
+                        token: data.access_token.substring(0, 30) + '...',
+                        partner: data.partner_name,
+                        ownership: data.ownership_percentage
+                    });
+                } else {
+                    showResult('exact-result', false, 'No access token in response', data);
+                }
+            } catch (error) {
+                console.error('Login error full details:', error);
+                
+                let errorMessage = '';
+                if (error instanceof TypeError && error.message === 'Failed to fetch') {
+                    errorMessage = 'Cannot connect to backend server. Please ensure the backend is running on port 8001.';
+                } else if (error instanceof Error) {
+                    errorMessage = `Login failed: ${error.message}`;
+                } else {
+                    errorMessage = 'An unexpected error occurred during login';
+                }
+                
+                showResult('exact-result', false, errorMessage, {
+                    error: error.toString(),
+                    message: error.message,
+                    type: error.constructor.name
+                });
+            }
+        }
+        
+        // Run all tests on load
+        window.onload = function() {
+            console.log('Debug page loaded. Click buttons to run tests.');
+            console.log('Backend URL:', API_URL);
+            console.log('Test credentials:', TEST_EMAIL);
+        };
+    </script>
+</body>
+</html>

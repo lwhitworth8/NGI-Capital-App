@@ -1,0 +1,94 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+docs/
+LICENSE
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+.next/
+out/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+
+# Testing
+tests/
+test/
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Database files (use volumes instead)
+*.db
+*.sqlite
+*.sqlite3
+ngi_capital.db
+
+# Backups
+backups/
+*.bak
+*.backup
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Large files
+uploads/
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.ico
+*.zip
+*.tar
+*.gz
+
+# Frontend (backend doesn't need it)
+apps/

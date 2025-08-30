@@ -1,0 +1,48 @@
+services:
+  backend:
+    image: python:3.11-slim
+    container_name: ngi-backend
+    working_dir: /app
+    command: >
+      sh -c "pip install --no-cache-dir -r requirements.txt &&
+             uvicorn src.api.main:app --host 0.0.0.0 --port 8001 --reload --reload-exclude='tests/**' --reload-exclude='*.pyc' --reload-exclude='__pycache__/**'"
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - ngi-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    image: node:18-alpine
+    container_name: ngi-frontend
+    working_dir: /app
+    command: >
+      sh -c "npm install &&
+             npm run dev"
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./apps/desktop:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:8001
+      - BACKEND_ORIGIN=http://backend:8001
+      - WATCHPACK_POLLING=true
+    depends_on:
+      - backend
+    networks:
+      - ngi-network
+
+networks:
+  ngi-network:
+    driver: bridge

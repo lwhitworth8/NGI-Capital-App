@@ -1,0 +1,51 @@
+# --- Node / Next.js ---
+node_modules/
+apps/desktop/node_modules/
+.next/
+apps/desktop/.next/
+out/
+build/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# --- Virtual Envs ---
+.venv/
+venv/
+env/
+
+# --- Environment files ---
+.env
+.env.*
+!.env.example
+apps/desktop/.env.local
+
+# --- Logs & uploads ---
+logs/
+uploads/
+
+# --- Databases ---
+*.db
+test_ngi_capital.db
+
+# --- Coverage / reports ---
+coverage/
+*.lcov
+
+# --- OS / Editor junk ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.history/
+
+# --- Misc caches ---
+.cache/
+.parcel-cache/
+
+# --- Docker ---
+*.pid
+*.seed
