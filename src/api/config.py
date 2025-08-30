@@ -6,6 +6,10 @@ import os
 # Database configuration
 def get_database_path():
     """Get the database path based on environment"""
+    # Use pytest test DB when running tests (create-on-use)
+    if os.getenv('PYTEST_CURRENT_TEST'):
+        # Always use absolute path to ensure all connections hit the same file
+        return os.path.abspath('test_ngi_capital.db')
     # Check if running in Docker
     if os.path.exists('/app/data'):
         return '/app/data/ngi_capital.db'

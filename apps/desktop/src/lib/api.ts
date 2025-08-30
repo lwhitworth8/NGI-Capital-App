@@ -487,3 +487,80 @@ export type { ApiError, LoginRequest, LoginResponse, ChartAccount }
 
 // Export class for custom instances if needed
 export { ApiClient }
+
+// ===================== HR / Employees API =====================
+export interface Team {
+  id: number
+  name: string
+  description?: string
+  is_active?: boolean
+}
+
+export interface Project {
+  id: number
+  name: string
+  description?: string
+  status?: string
+}
+
+export interface Employee {
+  id: number
+  name: string
+  email: string
+  title?: string
+  role?: string
+  classification?: string
+  status?: string
+  employment_type?: string
+  start_date?: string
+  end_date?: string
+  team_id?: number | null
+  team_name?: string
+  projects?: { id: number; name: string }[]
+}
+
+export async function hrGetTeams(entityId: number): Promise<Team[]> {
+  return apiClient.request('GET', '/api/teams', undefined, { params: { entity_id: entityId } })
+}
+
+export async function hrCreateTeam(data: { entity_id: number; name: string; description?: string }): Promise<Team> {
+  return apiClient.request('POST', '/api/teams', data)
+}
+
+export async function hrGetProjects(entityId: number): Promise<Project[]> {
+  return apiClient.request('GET', '/api/projects', undefined, { params: { entity_id: entityId } })
+}
+
+export async function hrCreateProject(data: { entity_id: number; name: string; description?: string; status?: string }): Promise<Project> {
+  return apiClient.request('POST', '/api/projects', data)
+}
+
+export async function hrGetEmployees(entityId: number): Promise<Employee[]> {
+  return apiClient.request('GET', '/api/employees', undefined, { params: { entity_id: entityId } })
+}
+
+export async function hrCreateEmployee(data: {
+  entity_id: number
+  name: string
+  email: string
+  title?: string
+  role?: string
+  classification?: string
+  status?: string
+  employment_type?: string
+  start_date?: string
+  end_date?: string
+  team_id?: number | null
+  manager_id?: number | null
+  project_ids?: number[]
+}): Promise<{ id: number }> {
+  return apiClient.request('POST', '/api/employees', data)
+}
+
+export async function hrUpdateEmployee(id: number, data: any): Promise<{ message: string }> {
+  return apiClient.request('PUT', `/api/employees/${id}`, data)
+}
+
+export async function hrDeleteEmployee(id: number): Promise<{ message: string }> {
+  return apiClient.request('DELETE', `/api/employees/${id}`)
+}

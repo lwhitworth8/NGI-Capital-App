@@ -58,16 +58,7 @@ const navigation: NavItem[] = [
     href: '/employees',
     icon: Users
   },
-  { 
-    name: 'Investor Relations', 
-    href: '/investor-relations',
-    icon: TrendingUp,
-    children: [
-      { name: 'Cap Table', href: '/investor-relations/cap-table', icon: PieChart },
-      { name: 'Communications', href: '/investor-relations/communications', icon: Mail },
-      { name: 'Reports', href: '/investor-relations/reports', icon: FileBarChart },
-    ]
-  },
+  { name: 'Investor Relations', href: '/investor-relations', icon: TrendingUp },
   { 
     name: 'NGI Advisory', 
     href: '/ngi-advisory',

@@ -32,7 +32,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text, and_, or_, func
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # Import dependencies for export functionality
 try:
@@ -65,11 +65,11 @@ class ReportPeriod(BaseModel):
     start_date: date = Field(..., description="Report start date")
     end_date: date = Field(..., description="Report end date") 
     
-    @validator('end_date')
-    def end_date_after_start_date(cls, v, values):
-        if 'start_date' in values and v <= values['start_date']:
+    @model_validator(mode='after')
+    def _check_dates(cls, values):
+        if values.end_date <= values.start_date:
             raise ValueError('end_date must be after start_date')
-        return v
+        return values
 
 class IncomeStatementLine(BaseModel):
     """Model for income statement line items"""
@@ -222,14 +222,14 @@ class ReportExportRequest(BaseModel):
     period: Optional[ReportPeriod] = Field(None, description="Report period")
     as_of_date: Optional[date] = Field(None, description="As of date for balance sheet")
     
-    @validator('format')
+    @field_validator('format')
     def validate_format(cls, v):
         valid_formats = ['pdf', 'excel', 'csv']
         if v.lower() not in valid_formats:
             raise ValueError(f'Format must be one of: {", ".join(valid_formats)}')
         return v.lower()
     
-    @validator('report_type')
+    @field_validator('report_type')
     def validate_report_type(cls, v):
         valid_types = ['income_statement', 'balance_sheet', 'cash_flow', 'partner_capital']
         if v.lower() not in valid_types:
