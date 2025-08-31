@@ -2,26 +2,25 @@
 Database configuration for NGI Capital Internal System
 """
 
-import os
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 
-# Database URL from environment or default to SQLite
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///ngi_capital.db")
+# Use centralized config that selects the pytest DB when tests run
+from .config import DATABASE_URL
+
+# Import the single declarative Base from models to avoid duplicate metadata
+from .models import Base
 
 # Create engine
 engine = create_engine(
     DATABASE_URL,
     connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
-    echo=False  # Set to True for SQL query logging
+    echo=False,
 )
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Base for models
-Base = declarative_base()
 
 def get_db():
     """
@@ -34,17 +33,16 @@ def get_db():
     finally:
         db.close()
 
+
 def init_db():
     """
-    Initialize the database by creating all tables.
+    Initialize the database by creating all tables defined in models.
     """
-    from . import models  # Import models to register them
     Base.metadata.create_all(bind=engine)
+
 
 def drop_all_tables():
     """
-    Drop all tables in the database.
-    USE WITH CAUTION - This will delete all data!
+    Drop all tables in the database. USE WITH CAUTION.
     """
-    from . import models  # Import models to register them
     Base.metadata.drop_all(bind=engine)

@@ -20,7 +20,7 @@ import logging
 import os
 import sys
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, HTTPException, status, Depends
@@ -31,7 +31,7 @@ from fastapi.responses import JSONResponse
 import uvicorn
 
 # Import route modules - using absolute imports for Docker
-from src.api.routes import entities, reports, banking, documents, financial_reporting, employees, investor_relations
+from src.api.routes import entities, reports, banking, documents, financial_reporting, employees, investor_relations, accounting
 from src.api.config import get_database_path, DATABASE_URL, SECRET_KEY, ALGORITHM
 
 # Ensure logs directory exists before configuring file handler
@@ -165,7 +165,7 @@ async def add_security_headers(request: Request, call_next):
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     """Log all incoming requests"""
-    start_time = datetime.utcnow()
+    start_time = datetime.now(timezone.utc)
     
     # Get client IP
     client_ip = request.client.host if request.client else "unknown"
@@ -176,7 +176,7 @@ async def log_requests(request: Request, call_next):
     response = await call_next(request)
     
     # Calculate response time
-    process_time = (datetime.utcnow() - start_time).total_seconds()
+    process_time = (datetime.now(timezone.utc) - start_time).total_seconds()
     
     # Log request details
     logger.info(
@@ -255,7 +255,7 @@ async def login(credentials: dict):
     """
     import sqlite3
     import bcrypt
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     from jose import jwt
     
     email = credentials.get("email")
@@ -305,7 +305,7 @@ async def login(credentials: dict):
         cursor.execute("PRAGMA table_info(partners)")
         cols = [r[1] for r in cursor.fetchall()]
         if 'last_login' in cols:
-            cursor.execute("UPDATE partners SET last_login = ? WHERE id = ?", (datetime.utcnow(), partner_id))
+            cursor.execute("UPDATE partners SET last_login = ? WHERE id = ?", (datetime.now(timezone.utc), partner_id))
             conn.commit()
     except Exception:
         pass
@@ -316,8 +316,8 @@ async def login(credentials: dict):
     token_data = {
         "sub": email,
         "partner_id": partner_id,
-        "exp": datetime.utcnow() + timedelta(hours=12),
-        "iat": datetime.utcnow()
+        "exp": datetime.now(timezone.utc) + timedelta(hours=12),
+        "iat": datetime.now(timezone.utc)
     }
     
     access_token = jwt.encode(token_data, SECRET_KEY, algorithm=ALGORITHM)
@@ -489,13 +489,13 @@ async def health_check():
         db_ok = any(os.path.exists(p) for p in candidates)
         return {
             "status": "healthy",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "database": db_ok,
         }
     except Exception:
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={"status": "unhealthy", "timestamp": datetime.utcnow().isoformat()},
+            content={"status": "unhealthy", "timestamp": datetime.now(timezone.utc).isoformat()},
         )
 
 @app.get("/api/health", tags=["health"]) 
@@ -599,6 +599,7 @@ app.include_router(documents.router)
 app.include_router(financial_reporting.router)
 app.include_router(employees.router)
 app.include_router(investor_relations.router)
+app.include_router(accounting.router)
 
 # Simple transactions endpoints to satisfy tests
 @app.post("/api/transactions")

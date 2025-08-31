@@ -162,9 +162,17 @@ class ApiClient {
         case 404:
           toast.error('Resource not found.')
           break
-        case 422:
-          toast.error('Invalid data provided.')
+        case 422: {
+          const detail: string = message || ''
+          if (detail.toLowerCase().includes('balanced')) {
+            toast.error('Journal entry must be balanced (debits equal credits).')
+          } else if (detail.toLowerCase().includes('account code') || detail.toLowerCase().includes('invalid account code')) {
+            toast.error('Invalid Chart of Accounts mapping. Use 5-digit code and correct type (1xxxx asset, 2xxxx liability, 3xxxx equity, 4xxxx revenue, 5xxxx expense).')
+          } else {
+            toast.error('Invalid data provided.')
+          }
           break
+        }
         case 500:
           toast.error('Server error. Please try again later.')
           break
@@ -317,49 +325,44 @@ class ApiClient {
 
   // Accounting endpoints
   async getChartOfAccounts(entityId?: number): Promise<ChartAccount[]> {
-    const params = entityId ? { entity_id: entityId } : {}
-    const response = await this.client.get('/accounting/chart-of-accounts', { params })
+    if (!entityId) return []
+    const response = await this.client.get(`/api/accounting/chart-of-accounts/${entityId}`)
     return response.data
   }
 
   async createChartAccount(accountData: Partial<ChartAccount>): Promise<ChartAccount> {
-    const response = await this.client.post('/accounting/chart-of-accounts', accountData)
+    const response = await this.client.post('/api/accounting/chart-of-accounts', accountData)
     return response.data
   }
 
   async updateChartAccount(id: number, accountData: Partial<ChartAccount>): Promise<ChartAccount> {
-    const response = await this.client.put(`/accounting/chart-of-accounts/${id}`, accountData)
+    const response = await this.client.put(`/api/accounting/chart-of-accounts/${id}`, accountData)
     return response.data
   }
 
-  async getJournalEntries(params?: {
-    entity_id?: number
-    start_date?: string
-    end_date?: string
-    status?: string
-  }): Promise<ApiTransaction[]> {
-    const response = await this.client.get('/accounting/journal-entries', { params })
+  async getJournalEntries(params?: { entity_id?: number; start_date?: string; end_date?: string; status?: string }): Promise<ApiTransaction[]> {
+    if (!params?.entity_id) return []
+    const { entity_id, ...rest } = params
+    const response = await this.client.get(`/api/accounting/journal-entries/${entity_id}`, { params: rest })
     return response.data
   }
 
   async createJournalEntry(entryData: any): Promise<ApiTransaction> {
-    const response = await this.client.post('/accounting/journal-entries', entryData)
+    const response = await this.client.post('/api/accounting/journal-entries', entryData)
     return response.data
   }
 
   async getJournalEntryDetails(entryId: number): Promise<any> {
-    const response = await this.client.get(`/accounting/journal-entries/${entryId}/details`)
+    const response = await this.client.get(`/api/accounting/journal-entries/entry/${entryId}`)
     return response.data
   }
 
   async approveJournalEntry(entryId: number): Promise<void> {
-    await this.client.post(`/accounting/journal-entries/${entryId}/approve`)
+    await this.client.post(`/api/accounting/journal-entries/${entryId}/approve`)
   }
 
   async getTrialBalance(entityId: number, asOfDate: string): Promise<any> {
-    const response = await this.client.get('/accounting/trial-balance', {
-      params: { entity_id: entityId, as_of_date: asOfDate }
-    })
+    const response = await this.client.get('/api/accounting/financials/trial-balance', { params: { entity_id: entityId, as_of_date: asOfDate } })
     return response.data
   }
 
@@ -563,4 +566,13 @@ export async function hrUpdateEmployee(id: number, data: any): Promise<{ message
 
 export async function hrDeleteEmployee(id: number): Promise<{ message: string }> {
   return apiClient.request('DELETE', `/api/employees/${id}`)
+}
+// Accounting: Unposted entries and batch post
+export async function accountingGetUnpostedEntries(entityId: number): Promise<{ id: number; entry_number: string; entry_date: string; description: string }[]> {
+  const data = await apiClient.request<{ entries?: any[] }>('GET', '/api/accounting/journal-entries/unposted', undefined, { params: { entity_id: entityId } })
+  return data?.entries ?? []
+}
+
+export async function accountingPostBatchEntries(options: { entity_id?: number; entry_ids?: number[]; start_date?: string; end_date?: string }): Promise<{ posted: number }> {
+  return apiClient.request('POST', '/api/accounting/journal-entries/post-batch', options)
 }

@@ -12,8 +12,7 @@ from sqlalchemy import (
     Text, ForeignKey, CheckConstraint, Index, UniqueConstraint, Enum
 )
 from sqlalchemy.types import DECIMAL as SQLDecimal
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, validates
+from sqlalchemy.orm import relationship, validates, declarative_base
 from sqlalchemy.sql import func
 
 Base = declarative_base()
@@ -75,8 +74,16 @@ class Partners(Base):
     # Relationships
     created_transactions = relationship("Transactions", foreign_keys="[Transactions.created_by_id]", back_populates="creator")
     approved_transactions = relationship("Transactions", foreign_keys="[Transactions.approved_by_id]", back_populates="approver")
-    journal_entries = relationship("JournalEntries", back_populates="created_by_partner")
-    expense_reports = relationship("ExpenseReports", back_populates="submitted_by_partner")
+    journal_entries = relationship(
+        "JournalEntries",
+        foreign_keys="[JournalEntries.created_by_id]",
+        back_populates="created_by_partner",
+    )
+    expense_reports = relationship(
+        "ExpenseReports",
+        foreign_keys="[ExpenseReports.submitted_by_id]",
+        back_populates="submitted_by_partner",
+    )
     
     # Validation constraints
     __table_args__ = (
@@ -168,6 +175,8 @@ class JournalEntries(Base):
     created_by_id = Column(Integer, ForeignKey('partners.id'), nullable=False)
     approved_by_id = Column(Integer, ForeignKey('partners.id'))
     approval_status = Column(Enum(ApprovalStatus), default=ApprovalStatus.PENDING, nullable=False)
+    is_posted = Column(Boolean, default=False)
+    posted_date = Column(DateTime)
     approval_date = Column(DateTime)
     approval_notes = Column(Text)
     is_reversing_entry = Column(Boolean, default=False)
@@ -190,6 +199,7 @@ class JournalEntries(Base):
         UniqueConstraint('entity_id', 'entry_number', name='unique_entry_number_per_entity'),
         Index('idx_entry_date', 'entry_date'),
         Index('idx_approval_status', 'approval_status'),
+        Index('idx_is_posted', 'is_posted'),
     )
 
 

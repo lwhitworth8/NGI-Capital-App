@@ -1,39 +1,33 @@
 # Core Framework
 fastapi==0.109.0
-uvicorn[standard]==0.27.0
+# Avoid Windows build issues from extras (watchfiles/httptools); install plain uvicorn
+uvicorn==0.27.0
 python-multipart==0.0.6
 
 # Database
-sqlalchemy==2.0.25
+sqlalchemy>=2.0.36,<3
 alembic==1.13.1
-psycopg2-binary==2.9.9
-sqlite3-to-mysql==2.1.7
 
 # Authentication & Security
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-bcrypt==4.1.2
-cryptography==41.0.7
+bcrypt>=4.2.0,<5
+# cryptography 43+ publishes cp313 wheels; avoids building Rust
+cryptography>=43.0.0,<44
 python-dotenv==1.0.0
 
-# Data Processing
-pandas==2.1.4
-numpy==1.26.3
-openpyxl==3.1.2
+# Data/time utils
 python-dateutil==2.8.2
 
 # Document Processing
 pypdf==3.17.4
-pytesseract==0.3.10
-Pillow==10.2.0
-pdfplumber==0.10.3
-python-docx==0.8.11
+# Keep python-docx in base; 1.x supports Python 3.13
+python-docx>=1.1.2,<2
 
-# Analytics
-duckdb==0.9.2
+# (Optional analytics libs moved to requirements.optional.txt)
 
 # API Documentation
-pydantic==2.5.3
+pydantic>=2.8.0,<3
 email-validator==2.1.0.post1
 pydantic-settings==2.1.0
 
@@ -50,6 +44,5 @@ prometheus-client==0.19.0
 structlog==24.1.0
 
 # Additional utilities
-pendulum==3.0.0
 click==8.1.7
 rich==13.7.0
