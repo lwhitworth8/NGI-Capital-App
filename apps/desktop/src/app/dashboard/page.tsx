@@ -16,7 +16,7 @@ import {
   Clock
 } from 'lucide-react';
 
-const API_URL = 'http://localhost:8001';
+const API_URL = '/api';
 
 export default function DashboardPage() {
   const router = useRouter();

@@ -14,7 +14,11 @@ import {
 } from '@/types'
 import { toast } from 'sonner'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001'
+// Prefer relative /api in the browser so nginx can path-route at a single apex domain.
+// Fall back to NEXT_PUBLIC_API_URL (or localhost) when running on the server.
+const API_BASE_URL = typeof window !== 'undefined'
+  ? '/api'
+  : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001')
 
 // Types
 interface ApiError {
@@ -205,11 +209,11 @@ class ApiClient {
 
   // Authentication endpoints
   async login(credentials: LoginRequest): Promise<LoginResponse> {
-    console.log('Attempting login with URL:', `${API_BASE_URL}/api/auth/login`)
+    console.log('Attempting login with URL:', `${API_BASE_URL}/auth/login`)
     console.log('Credentials:', { email: credentials.email, password: '***' })
     
     try {
-      const response = await this.client.post('/api/auth/login', credentials)
+      const response = await this.client.post('/auth/login', credentials)
       console.log('Login response received:', response.data)
       
       const data = response.data
@@ -231,7 +235,7 @@ class ApiClient {
 
   // Profile endpoint (maps /auth/me to Partner)
   async getProfile(): Promise<AppPartner> {
-    const response = await this.client.get('/api/auth/me')
+    const response = await this.client.get('/auth/me')
     const me = response.data
     const partner: AppPartner = {
       id: me.id?.toString?.() || '0',
@@ -247,12 +251,36 @@ class ApiClient {
 
   async logout(): Promise<void> {
     try {
-      await this.client.post('/api/auth/logout')
+      await this.client.post('/auth/logout')
     } catch (error) {
       // Ignore logout errors
     } finally {
       this.clearAuth()
     }
+  }
+
+  // Password reset & profile preferences
+  async requestPasswordReset(email: string): Promise<void> {
+    await this.client.post('/auth/request-password-reset', { email })
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    await this.client.post('/auth/reset-password', { token, new_password: newPassword })
+  }
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<{ message: string }> {
+    const res = await this.client.post('/auth/change-password', { current_password: currentPassword, new_password: newPassword })
+    return res.data
+  }
+
+  async getPreferences(): Promise<{ theme: 'light'|'dark'|'system' }> {
+    const res = await this.client.get('/preferences')
+    return res.data
+  }
+
+  async setPreferences(prefs: { theme: 'light'|'dark'|'system' }): Promise<{ message: string }> {
+    const res = await this.client.post('/preferences', prefs)
+    return res.data
   }
 
   // Dashboard endpoints
@@ -273,7 +301,7 @@ class ApiClient {
 
   // Entity management endpoints
   async getEntities(): Promise<AppEntity[]> {
-    const response = await this.client.get('/api/entities')
+    const response = await this.client.get('/entities')
     const items = Array.isArray(response.data) ? response.data : (response.data?.entities ?? [])
     const mapped: AppEntity[] = items.map((e: any) => ({
       id: e.id?.toString?.() ?? '0',
@@ -326,43 +354,43 @@ class ApiClient {
   // Accounting endpoints
   async getChartOfAccounts(entityId?: number): Promise<ChartAccount[]> {
     if (!entityId) return []
-    const response = await this.client.get(`/api/accounting/chart-of-accounts/${entityId}`)
+    const response = await this.client.get(`/accounting/chart-of-accounts/${entityId}`)
     return response.data
   }
 
   async createChartAccount(accountData: Partial<ChartAccount>): Promise<ChartAccount> {
-    const response = await this.client.post('/api/accounting/chart-of-accounts', accountData)
+    const response = await this.client.post('/accounting/chart-of-accounts', accountData)
     return response.data
   }
 
   async updateChartAccount(id: number, accountData: Partial<ChartAccount>): Promise<ChartAccount> {
-    const response = await this.client.put(`/api/accounting/chart-of-accounts/${id}`, accountData)
+    const response = await this.client.put(`/accounting/chart-of-accounts/${id}`, accountData)
     return response.data
   }
 
   async getJournalEntries(params?: { entity_id?: number; start_date?: string; end_date?: string; status?: string }): Promise<ApiTransaction[]> {
     if (!params?.entity_id) return []
     const { entity_id, ...rest } = params
-    const response = await this.client.get(`/api/accounting/journal-entries/${entity_id}`, { params: rest })
+    const response = await this.client.get('/accounting/journal-entries', { params: { entity_id, ...rest } })
     return response.data
   }
 
   async createJournalEntry(entryData: any): Promise<ApiTransaction> {
-    const response = await this.client.post('/api/accounting/journal-entries', entryData)
+    const response = await this.client.post('/accounting/journal-entries', entryData)
     return response.data
   }
 
   async getJournalEntryDetails(entryId: number): Promise<any> {
-    const response = await this.client.get(`/api/accounting/journal-entries/entry/${entryId}`)
+    const response = await this.client.get(`/accounting/journal-entries/entry/${entryId}`)
     return response.data
   }
 
   async approveJournalEntry(entryId: number): Promise<void> {
-    await this.client.post(`/api/accounting/journal-entries/${entryId}/approve`)
+    await this.client.post(`/accounting/journal-entries/${entryId}/approve`)
   }
 
   async getTrialBalance(entityId: number, asOfDate: string): Promise<any> {
-    const response = await this.client.get('/api/accounting/financials/trial-balance', { params: { entity_id: entityId, as_of_date: asOfDate } })
+    const response = await this.client.get('/accounting/financials/trial-balance', { params: { entity_id: entityId, as_of_date: asOfDate } })
     return response.data
   }
 
@@ -523,23 +551,23 @@ export interface Employee {
 }
 
 export async function hrGetTeams(entityId: number): Promise<Team[]> {
-  return apiClient.request('GET', '/api/teams', undefined, { params: { entity_id: entityId } })
+  return apiClient.request('GET', '/teams', undefined, { params: { entity_id: entityId } })
 }
 
 export async function hrCreateTeam(data: { entity_id: number; name: string; description?: string }): Promise<Team> {
-  return apiClient.request('POST', '/api/teams', data)
+  return apiClient.request('POST', '/teams', data)
 }
 
 export async function hrGetProjects(entityId: number): Promise<Project[]> {
-  return apiClient.request('GET', '/api/projects', undefined, { params: { entity_id: entityId } })
+  return apiClient.request('GET', '/projects', undefined, { params: { entity_id: entityId } })
 }
 
 export async function hrCreateProject(data: { entity_id: number; name: string; description?: string; status?: string }): Promise<Project> {
-  return apiClient.request('POST', '/api/projects', data)
+  return apiClient.request('POST', '/projects', data)
 }
 
 export async function hrGetEmployees(entityId: number): Promise<Employee[]> {
-  return apiClient.request('GET', '/api/employees', undefined, { params: { entity_id: entityId } })
+  return apiClient.request('GET', '/employees', undefined, { params: { entity_id: entityId } })
 }
 
 export async function hrCreateEmployee(data: {
@@ -557,22 +585,22 @@ export async function hrCreateEmployee(data: {
   manager_id?: number | null
   project_ids?: number[]
 }): Promise<{ id: number }> {
-  return apiClient.request('POST', '/api/employees', data)
+  return apiClient.request('POST', '/employees', data)
 }
 
 export async function hrUpdateEmployee(id: number, data: any): Promise<{ message: string }> {
-  return apiClient.request('PUT', `/api/employees/${id}`, data)
+  return apiClient.request('PUT', `/employees/${id}`, data)
 }
 
 export async function hrDeleteEmployee(id: number): Promise<{ message: string }> {
-  return apiClient.request('DELETE', `/api/employees/${id}`)
+  return apiClient.request('DELETE', `/employees/${id}`)
 }
 // Accounting: Unposted entries and batch post
 export async function accountingGetUnpostedEntries(entityId: number): Promise<{ id: number; entry_number: string; entry_date: string; description: string }[]> {
-  const data = await apiClient.request<{ entries?: any[] }>('GET', '/api/accounting/journal-entries/unposted', undefined, { params: { entity_id: entityId } })
+  const data = await apiClient.request<{ entries?: any[] }>('GET', '/accounting/journal-entries/unposted', undefined, { params: { entity_id: entityId } })
   return data?.entries ?? []
 }
 
 export async function accountingPostBatchEntries(options: { entity_id?: number; entry_ids?: number[]; start_date?: string; end_date?: string }): Promise<{ posted: number }> {
-  return apiClient.request('POST', '/api/accounting/journal-entries/post-batch', options)
+  return apiClient.request('POST', '/accounting/journal-entries/post-batch', options)
 }

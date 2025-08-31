@@ -44,7 +44,7 @@ import {
 import { DocumentExtractionService, ExtractedData } from '@/lib/services/documentExtraction';
 import { EntityDatabaseService } from '@/lib/services/entityDatabase';
 
-const API_URL = 'http://localhost:8001';
+const API_URL = '/api';
 
 interface UploadedDocument {
   id: string;

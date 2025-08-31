@@ -16,6 +16,10 @@ from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+try:
+    from .config import DATABASE_URL
+except Exception:
+    DATABASE_URL = "sqlite:///ngi_capital.db"
 
 try:
     from .models import Partners as Partner
@@ -26,7 +30,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 # Security configuration
-SECRET_KEY = os.getenv("SECRET_KEY", "ngi-capital-secret-key-2024-secure-internal-app")
+SECRET_KEY = os.getenv("SECRET_KEY", "ngi-capital-secret-key-2025-secure-internal-app")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 720  # 12 hours
 
@@ -36,8 +40,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # HTTP Bearer security
 security = HTTPBearer()
 
-# Database setup
-DATABASE_URL = "sqlite:///ngi_capital.db"
+# Database setup (use central config when available)
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

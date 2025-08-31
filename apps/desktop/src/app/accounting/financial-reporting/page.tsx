@@ -64,7 +64,7 @@ export default function FinancialReportingPage() {
     try {
       // This would fetch from API/database
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('http://localhost:8001/api/entities', {
+      const response = await fetch('/api/entities', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },

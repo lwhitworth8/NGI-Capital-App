@@ -86,7 +86,7 @@ export default function CashFlowStatementPage() {
   const loadEntities = async () => {
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('http://localhost:8001/api/entities', {
+      const response = await fetch('/api/entities', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -130,7 +130,7 @@ export default function CashFlowStatementPage() {
     try {
       const token = localStorage.getItem('auth_token');
       const response = await fetch(
-        `http://localhost:8001/api/financial-reporting/cash-flow?entity_id=${selectedEntity}&period=${period}&fiscal_year=2024`,
+        `/api/financial-reporting/gl/cash-flow?entity_id=${selectedEntity}&period=${period}&fiscal_year=2024`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,

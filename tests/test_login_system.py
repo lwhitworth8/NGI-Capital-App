@@ -23,7 +23,7 @@ PARTNERS = [
     },
     {
         "email": "lwhitworth@ngicapitaladvisory.com",
-        "password": "TempPassword123!",
+        "password": "FlashJayz2002!$!",
         "name": "Landon Whitworth",
         "ownership": 50.0
     }

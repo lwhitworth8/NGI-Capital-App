@@ -67,7 +67,7 @@ export default function ChartOfAccountsPage() {
   const loadEntities = async () => {
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('http://localhost:8001/api/entities', {
+      const response = await fetch('/api/entities', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -99,7 +99,7 @@ export default function ChartOfAccountsPage() {
     try {
       const token = localStorage.getItem('auth_token');
       const response = await fetch(
-        `http://localhost:8001/api/financial-reporting/chart-of-accounts?entity_id=${selectedEntity}`,
+        `/api/financial-reporting/chart-of-accounts?entity_id=${selectedEntity}`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,

@@ -108,7 +108,7 @@ export default function JournalEntriesPage() {
   const loadEntities = async () => {
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('http://localhost:8001/api/entities', {
+      const response = await fetch('/api/entities', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -141,7 +141,7 @@ export default function JournalEntriesPage() {
     try {
       const token = localStorage.getItem('auth_token');
       const response = await fetch(
-        `http://localhost:8001/api/journal-entries?entity_id=${selectedEntity}`,
+        `/api/journal-entries?entity_id=${selectedEntity}`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,

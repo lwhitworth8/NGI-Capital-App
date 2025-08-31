@@ -87,7 +87,7 @@ export default function InternalControlsPage() {
   const loadEntities = async () => {
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('http://localhost:8001/api/entities', {
+      const response = await fetch('/api/entities', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -120,7 +120,7 @@ export default function InternalControlsPage() {
     try {
       const token = localStorage.getItem('auth_token');
       const response = await fetch(
-        `http://localhost:8001/api/internal-controls?entity_id=${selectedEntity}`,
+        `/api/internal-controls?entity_id=${selectedEntity}`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,

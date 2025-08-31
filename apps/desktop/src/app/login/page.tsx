@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { ThemeToggle } from '@/components/ui/ThemeToggle';
 
 // Use the apiClient for consistency
 import { apiClient } from '@/lib/api';
@@ -75,10 +74,6 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      {/* Theme Toggle */}
-      <div className="fixed top-6 right-6 z-50">
-        <ThemeToggle />
-      </div>
 
       <div className="w-full max-w-md">
         {/* Login Card */}
@@ -153,17 +148,24 @@ export default function LoginPage() {
                 {isLoading ? (
                   <div className="flex items-center justify-center">
                     <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div>
-                    Accessing...
+                    Signing in...
                   </div>
                 ) : (
                   <span className="flex items-center justify-center">
-                    Access Dashboard
+                    Log In
                     <svg className="ml-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
                   </span>
                 )}
               </button>
+
+              {/* Forgot password */}
+              <div className="text-center">
+                <a href="/reset-password" className="text-sm text-blue-600 hover:text-blue-700 underline">
+                  Forgot your password?
+                </a>
+              </div>
             </form>
 
             {/* Test Credentials for Development */}

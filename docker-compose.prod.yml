@@ -1,0 +1,54 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: ngi-backend-prod
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+      - SECRET_KEY=${SECRET_KEY:-ngi-capital-secret-key}
+      - DATABASE_PATH=/app/data/ngi_capital.db
+      - JWT_EXPIRES_HOURS=12
+    volumes:
+      # Persist and/or bring your real DB into the container
+      - ./ngi_capital.db:/app/data/ngi_capital.db
+    expose:
+      - "8001"
+    networks:
+      - ngi
+
+  frontend:
+    image: node:18-alpine
+    container_name: ngi-frontend-prod
+    working_dir: /app
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://nginx
+      - BACKEND_ORIGIN=http://backend:8001
+    command: sh -c "npm ci && npm run build && npm run start -p 3000"
+    volumes:
+      - ./apps/desktop:/app
+    expose:
+      - "3000"
+    depends_on:
+      - backend
+    networks:
+      - ngi
+
+  nginx:
+    image: nginx:alpine
+    container_name: ngi-nginx-prod
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - ngi
+
+networks:
+  ngi:
+    driver: bridge

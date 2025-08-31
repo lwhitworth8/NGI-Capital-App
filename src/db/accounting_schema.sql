@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS chart_of_accounts (
 -- =====================================================
 CREATE TABLE IF NOT EXISTS journal_entries (
     entry_id SERIAL PRIMARY KEY,
-    entry_number VARCHAR(20) UNIQUE NOT NULL, -- JE-2024-00001
+    entry_number VARCHAR(20) UNIQUE NOT NULL, -- JE-2025-00001
     entry_date DATE NOT NULL,
     posting_date DATE NOT NULL,
     entry_type VARCHAR(50) NOT NULL CHECK (entry_type IN (

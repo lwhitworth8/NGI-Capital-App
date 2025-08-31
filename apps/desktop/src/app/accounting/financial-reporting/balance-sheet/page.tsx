@@ -89,7 +89,7 @@ export default function BalanceSheetPage() {
   const loadEntities = async () => {
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await fetch('http://localhost:8001/api/entities', {
+      const response = await fetch('/api/entities', {
         headers: {
           'Authorization': `Bearer ${token}`,
         },
@@ -121,7 +121,7 @@ export default function BalanceSheetPage() {
     try {
       const token = localStorage.getItem('auth_token');
       const response = await fetch(
-        `http://localhost:8001/api/financial-reporting/balance-sheet?entity_id=${selectedEntity}&as_of_date=${asOfDate}`,
+        `/api/financial-reporting/gl/balance-sheet?entity_id=${selectedEntity}&as_of_date=${asOfDate}`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,

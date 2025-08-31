@@ -64,7 +64,12 @@ const navigation: NavItem[] = [
     href: '/ngi-advisory',
     icon: Briefcase
   },
-  // Settings moved to profile area at bottom
+  // Direct Settings nav entry for quick access
+  {
+    name: 'Settings',
+    href: '/settings',
+    icon: Settings
+  },
 ];
 
 export default function Sidebar() {

@@ -6,6 +6,10 @@ import os
 # Database configuration
 def get_database_path():
     """Get the database path based on environment"""
+    # Explicit override
+    env_path = os.getenv('DATABASE_PATH')
+    if env_path:
+        return os.path.abspath(env_path)
     # Use pytest test DB when running tests (create-on-use)
     if os.getenv('PYTEST_CURRENT_TEST'):
         # Always use absolute path to ensure all connections hit the same file
@@ -23,7 +27,7 @@ DATABASE_PATH = get_database_path()
 DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 
 # JWT Configuration
-SECRET_KEY = os.getenv("SECRET_KEY", "ngi-capital-secret-key-2024-secure-internal-app")
+SECRET_KEY = os.getenv("SECRET_KEY", "ngi-capital-secret-key-2025-secure-internal-app")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 12
 

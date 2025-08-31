@@ -10,6 +10,16 @@ from datetime import datetime, date, timedelta
 from decimal import Decimal
 import logging
 from enum import Enum
+from sqlalchemy.orm import Session
+from sqlalchemy import and_, func
+from ..database import get_db
+from ..models import (
+    ChartOfAccounts,
+    JournalEntries,
+    JournalEntryLines,
+    ApprovalStatus,
+    AccountType,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +171,212 @@ CHART_OF_ACCOUNTS = {
     "55000": {"name": "Income Tax Expense", "type": "account", "normal_balance": "debit"},
 }
 
+# Helpers: fiscal period parsing (July 1 - June 30 fiscal year)
+def _fiscal_period_to_dates(period_str: str, fiscal_year: Optional[int]) -> tuple[date, date]:
+    today = datetime.utcnow().date()
+    fy = fiscal_year
+    try:
+        if '-' in period_str:
+            p, y = period_str.split('-', 1)
+            period_key = p.upper()
+            fy = int(y)
+        else:
+            period_key = period_str.upper()
+    except Exception:
+        period_key = period_str.upper()
+    if fy is None:
+        fy = today.year + 1 if today.month >= 7 else today.year
+    fy_start = date(fy - 1, 7, 1)
+    fy_end = date(fy, 6, 30)
+    if period_key.startswith('Q'):
+        try:
+            q = int(period_key[1])
+        except Exception:
+            q = 1
+        if q == 1:
+            return date(fy - 1, 7, 1), date(fy - 1, 9, 30)
+        if q == 2:
+            return date(fy - 1, 10, 1), date(fy - 1, 12, 31)
+        if q == 3:
+            return date(fy, 1, 1), date(fy, 3, 31)
+        return date(fy, 4, 1), date(fy, 6, 30)
+    if period_key == 'FY':
+        return fy_start, fy_end
+    if period_key == 'YTD':
+        end = today if today <= fy_end else fy_end
+        return fy_start, end
+    if period_key == 'MTD':
+        start = date(today.year, today.month, 1)
+        return start, today
+    return fy_start, fy_end
+
+
+# GL-driven endpoints (preferred)
+@router.get("/gl/income-statement")
+async def gl_income_statement(
+    entity_id: int = Query(..., description="Entity ID"),
+    period: str = Query(..., description="Period like Q3-2024, FY-2024, YTD, MTD"),
+    fiscal_year: Optional[int] = Query(None, description="Fiscal year (July-Jun)"),
+    db: Session = Depends(get_db),
+):
+    start_date, end_date = _fiscal_period_to_dates(period, fiscal_year)
+    base = (
+        db.query(
+            ChartOfAccounts.account_code,
+            ChartOfAccounts.account_name,
+            ChartOfAccounts.account_type,
+            func.coalesce(func.sum(JournalEntryLines.debit_amount), 0).label('debits'),
+            func.coalesce(func.sum(JournalEntryLines.credit_amount), 0).label('credits'),
+        )
+        .join(JournalEntryLines, JournalEntryLines.account_id == ChartOfAccounts.id)
+        .join(JournalEntries, JournalEntryLines.journal_entry_id == JournalEntries.id)
+        .filter(
+            and_(
+                ChartOfAccounts.entity_id == entity_id,
+                JournalEntries.approval_status == ApprovalStatus.APPROVED,
+                JournalEntries.entry_date >= start_date,
+                JournalEntries.entry_date <= end_date,
+            )
+        )
+        .group_by(
+            ChartOfAccounts.account_code,
+            ChartOfAccounts.account_name,
+            ChartOfAccounts.account_type,
+        )
+        .order_by(ChartOfAccounts.account_code)
+    )
+    revenue_lines: list[dict[str, Any]] = []
+    expense_lines: list[dict[str, Any]] = []
+    total_revenue = Decimal('0.00')
+    total_expenses = Decimal('0.00')
+    for code, name, a_type, deb, cred in base.all():
+        d = Decimal(str(deb or 0))
+        c = Decimal(str(cred or 0))
+        if a_type == AccountType.REVENUE:
+            amt = c - d
+            total_revenue += amt
+            revenue_lines.append({"account_code": code, "account_name": name, "amount": float(amt)})
+        elif a_type == AccountType.EXPENSE:
+            amt = d - c
+            total_expenses += amt
+            expense_lines.append({"account_code": code, "account_name": name, "amount": float(amt)})
+    net_income = total_revenue - total_expenses
+    return {
+        "entity_id": entity_id,
+        "period": {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()},
+        "revenue_lines": revenue_lines,
+        "total_revenue": float(total_revenue),
+        "expense_lines": expense_lines,
+        "total_expenses": float(total_expenses),
+        "net_income": float(net_income),
+        "asc_reference": str(ASCStandard.ASC_220),
+    }
+
+
+@router.get("/gl/balance-sheet")
+async def gl_balance_sheet(
+    entity_id: int = Query(..., description="Entity ID"),
+    as_of_date: date = Query(..., description="As-of date"),
+    db: Session = Depends(get_db),
+):
+    base = (
+        db.query(
+            ChartOfAccounts.account_code,
+            ChartOfAccounts.account_name,
+            ChartOfAccounts.account_type,
+            func.coalesce(func.sum(JournalEntryLines.debit_amount), 0).label('debits'),
+            func.coalesce(func.sum(JournalEntryLines.credit_amount), 0).label('credits'),
+        )
+        .join(JournalEntryLines, JournalEntryLines.account_id == ChartOfAccounts.id)
+        .join(JournalEntries, JournalEntryLines.journal_entry_id == JournalEntries.id)
+        .filter(
+            and_(
+                ChartOfAccounts.entity_id == entity_id,
+                JournalEntries.approval_status == ApprovalStatus.APPROVED,
+                JournalEntries.entry_date <= as_of_date,
+            )
+        )
+        .group_by(
+            ChartOfAccounts.account_code,
+            ChartOfAccounts.account_name,
+            ChartOfAccounts.account_type,
+        )
+        .order_by(ChartOfAccounts.account_code)
+    )
+    assets: list[dict[str, Any]] = []
+    liabilities: list[dict[str, Any]] = []
+    equity: list[dict[str, Any]] = []
+    t_a = Decimal('0.00'); t_l = Decimal('0.00'); t_e = Decimal('0.00')
+    for code, name, a_type, deb, cred in base.all():
+        d = Decimal(str(deb or 0)); c = Decimal(str(cred or 0))
+        if a_type == AccountType.ASSET:
+            amt = d - c
+            t_a += amt
+            assets.append({"account_code": code, "account_name": name, "amount": float(amt)})
+        elif a_type == AccountType.LIABILITY:
+            amt = c - d
+            t_l += amt
+            liabilities.append({"account_code": code, "account_name": name, "amount": float(amt)})
+        elif a_type == AccountType.EQUITY:
+            amt = c - d
+            t_e += amt
+            equity.append({"account_code": code, "account_name": name, "amount": float(amt)})
+    return {
+        "entity_id": entity_id,
+        "as_of_date": as_of_date.isoformat(),
+        "asset_lines": assets,
+        "total_assets": float(t_a),
+        "liability_lines": liabilities,
+        "total_liabilities": float(t_l),
+        "equity_lines": equity,
+        "total_equity": float(t_e),
+        "assets_equal_liabilities_plus_equity": float(t_a) == float(t_l + t_e),
+        "asc_reference": str(ASCStandard.ASC_210),
+    }
+
+
+@router.get("/gl/cash-flow")
+async def gl_cash_flow(
+    entity_id: int = Query(..., description="Entity ID"),
+    period: str = Query(..., description="Period like Q3-2024, FY-2024, YTD, MTD"),
+    fiscal_year: Optional[int] = Query(None, description="Fiscal year (July-Jun)"),
+    db: Session = Depends(get_db),
+):
+    start_date, end_date = _fiscal_period_to_dates(period, fiscal_year)
+    base = (
+        db.query(
+            ChartOfAccounts.account_code,
+            ChartOfAccounts.account_name,
+            func.coalesce(func.sum(JournalEntryLines.debit_amount - JournalEntryLines.credit_amount), 0).label('amount')
+        )
+        .join(JournalEntryLines, JournalEntryLines.account_id == ChartOfAccounts.id)
+        .join(JournalEntries, JournalEntryLines.journal_entry_id == JournalEntries.id)
+        .filter(
+            and_(
+                ChartOfAccounts.entity_id == entity_id,
+                JournalEntries.approval_status == ApprovalStatus.APPROVED,
+                JournalEntries.entry_date >= start_date,
+                JournalEntries.entry_date <= end_date,
+                ChartOfAccounts.account_code.like('111%'),
+            )
+        )
+        .group_by(ChartOfAccounts.account_code, ChartOfAccounts.account_name)
+        .order_by(ChartOfAccounts.account_code)
+    )
+    lines: list[dict[str, Any]] = []
+    delta = Decimal('0.00')
+    for code, name, amt in base.all():
+        val = Decimal(str(amt or 0))
+        lines.append({"account_code": code, "account_name": name, "amount": float(val)})
+        delta += val
+    return {
+        "entity_id": entity_id,
+        "period": {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()},
+        "cash_lines": lines,
+        "net_change_in_cash": float(delta),
+        "asc_reference": str(ASCStandard.ASC_230),
+    }
+
 @router.get("/chart-of-accounts")
 async def get_chart_of_accounts(
     account_type: Optional[str] = None,
@@ -196,234 +412,178 @@ async def get_chart_of_accounts(
 
 @router.get("/income-statement")
 async def get_income_statement(
-    entity_id: str = Query(..., description="Entity ID or 'consolidated'"),
-    period: ReportingPeriod = Query(..., description="Reporting period"),
-    fiscal_year: int = Query(..., description="Fiscal year")
+    entity_id: int = Query(..., description="Entity ID"),
+    period: str = Query(..., description="Reporting period, e.g., Q3-2024, FY-2024, YTD, MTD"),
+    fiscal_year: Optional[int] = Query(None, description="Fiscal year (July-Jun)"),
+    db: Session = Depends(get_db),
 ):
-    """
-    Generate Income Statement (Statement of Operations)
-    Compliant with ASC 220 - Comprehensive Income
-    """
     try:
-        # This would pull from actual GL data
-        income_statement = {
+        start_date, end_date = _fiscal_period_to_dates(period, fiscal_year)
+        base = (
+            db.query(
+                ChartOfAccounts.account_code,
+                ChartOfAccounts.account_name,
+                ChartOfAccounts.account_type,
+                func.coalesce(func.sum(JournalEntryLines.debit_amount), 0).label('debits'),
+                func.coalesce(func.sum(JournalEntryLines.credit_amount), 0).label('credits'),
+            )
+            .join(JournalEntryLines, JournalEntryLines.account_id == ChartOfAccounts.id)
+            .join(JournalEntries, JournalEntryLines.journal_entry_id == JournalEntries.id)
+            .filter(
+                and_(
+                    ChartOfAccounts.entity_id == entity_id,
+                    JournalEntries.approval_status == ApprovalStatus.APPROVED,
+                    JournalEntries.entry_date >= start_date,
+                    JournalEntries.entry_date <= end_date,
+                )
+            )
+            .group_by(
+                ChartOfAccounts.account_code,
+                ChartOfAccounts.account_name,
+                ChartOfAccounts.account_type,
+            )
+            .order_by(ChartOfAccounts.account_code)
+        )
+        revenue_lines = []
+        expense_lines = []
+        total_revenue = Decimal('0.00')
+        total_expenses = Decimal('0.00')
+        for code, name, a_type, deb, cred in base.all():
+            d = Decimal(str(deb or 0))
+            c = Decimal(str(cred or 0))
+            if a_type == AccountType.REVENUE:
+                amt = c - d
+                total_revenue += amt
+                revenue_lines.append({"account_code": code, "account_name": name, "amount": float(amt)})
+            elif a_type == AccountType.EXPENSE:
+                amt = d - c
+                total_expenses += amt
+                expense_lines.append({"account_code": code, "account_name": name, "amount": float(amt)})
+        net_income = total_revenue - total_expenses
+        return {
             "entity_id": entity_id,
-            "period": period,
-            "fiscal_year": fiscal_year,
-            "asc_standard": ASCStandard.ASC_220,
-            "statement_date": datetime.now().isoformat(),
-            "currency": "USD",
-            "data": {
-                "revenues": {
-                    "advisory_services": 850000,
-                    "consulting_revenue": 400000,
-                    "investment_income": 75000,
-                    "total_revenue": 1325000
-                },
-                "cost_of_revenue": {
-                    "direct_costs": 250000,
-                    "gross_profit": 1075000,
-                    "gross_margin_percent": 81.1
-                },
-                "operating_expenses": {
-                    "salaries_and_wages": 420000,
-                    "employee_benefits": 84000,
-                    "rent_expense": 60000,
-                    "professional_fees": 45000,
-                    "marketing": 25000,
-                    "office_and_admin": 30000,
-                    "depreciation": 15000,
-                    "total_operating_expenses": 679000
-                },
-                "operating_income": 396000,
-                "other_income_expense": {
-                    "interest_income": 5000,
-                    "interest_expense": -12000,
-                    "total_other": -7000
-                },
-                "income_before_tax": 389000,
-                "income_tax_expense": {
-                    "federal_tax": 81690,  # 21% federal rate
-                    "state_tax": 34021,    # 8.84% CA rate
-                    "total_tax": 115711
-                },
-                "net_income": 273289,
-                "earnings_per_share": {
-                    "basic": 2.73,
-                    "diluted": 2.73
-                },
-                "comprehensive_income": {
-                    "net_income": 273289,
-                    "other_comprehensive_income": 0,
-                    "total_comprehensive_income": 273289
-                }
-            },
-            "notes": [
-                "Revenue recognized in accordance with ASC 606",
-                "Operating lease expense included per ASC 842",
-                "Income taxes calculated per ASC 740"
-            ]
+            "period": {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()},
+            "revenue_lines": revenue_lines,
+            "total_revenue": float(total_revenue),
+            "expense_lines": expense_lines,
+            "total_expenses": float(total_expenses),
+            "net_income": float(net_income),
+            "asc_reference": str(ASCStandard.ASC_220),
         }
-        
-        return income_statement
-        
     except Exception as e:
         logger.error(f"Error generating income statement: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to generate income statement"
-        )
+        raise HTTPException(status_code=500, detail="Failed to generate income statement")
 
 @router.get("/balance-sheet")
 async def get_balance_sheet(
-    entity_id: str = Query(..., description="Entity ID or 'consolidated'"),
-    as_of_date: date = Query(..., description="Balance sheet date")
+    entity_id: int = Query(..., description="Entity ID"),
+    as_of_date: date = Query(..., description="Balance sheet date"),
+    db: Session = Depends(get_db),
 ):
-    """
-    Generate Balance Sheet (Statement of Financial Position)
-    Compliant with ASC 210 - Balance Sheet
-    """
     try:
-        balance_sheet = {
+        base = (
+            db.query(
+                ChartOfAccounts.account_code,
+                ChartOfAccounts.account_name,
+                ChartOfAccounts.account_type,
+                func.coalesce(func.sum(JournalEntryLines.debit_amount), 0).label('debits'),
+                func.coalesce(func.sum(JournalEntryLines.credit_amount), 0).label('credits'),
+            )
+            .join(JournalEntryLines, JournalEntryLines.account_id == ChartOfAccounts.id)
+            .join(JournalEntries, JournalEntryLines.journal_entry_id == JournalEntries.id)
+            .filter(
+                and_(
+                    ChartOfAccounts.entity_id == entity_id,
+                    JournalEntries.approval_status == ApprovalStatus.APPROVED,
+                    JournalEntries.entry_date <= as_of_date,
+                )
+            )
+            .group_by(
+                ChartOfAccounts.account_code,
+                ChartOfAccounts.account_name,
+                ChartOfAccounts.account_type,
+            )
+            .order_by(ChartOfAccounts.account_code)
+        )
+        assets = []
+        liabilities = []
+        equity = []
+        t_a = Decimal('0.00'); t_l = Decimal('0.00'); t_e = Decimal('0.00')
+        for code, name, a_type, deb, cred in base.all():
+            d = Decimal(str(deb or 0)); c = Decimal(str(cred or 0))
+            if a_type == AccountType.ASSET:
+                amt = d - c
+                t_a += amt
+                assets.append({"account_code": code, "account_name": name, "amount": float(amt)})
+            elif a_type == AccountType.LIABILITY:
+                amt = c - d
+                t_l += amt
+                liabilities.append({"account_code": code, "account_name": name, "amount": float(amt)})
+            elif a_type == AccountType.EQUITY:
+                amt = c - d
+                t_e += amt
+                equity.append({"account_code": code, "account_name": name, "amount": float(amt)})
+        return {
             "entity_id": entity_id,
             "as_of_date": as_of_date.isoformat(),
-            "asc_standard": ASCStandard.ASC_210,
-            "currency": "USD",
-            "data": {
-                "assets": {
-                    "current_assets": {
-                        "cash_and_equivalents": 1250000,
-                        "accounts_receivable": 325000,
-                        "prepaid_expenses": 45000,
-                        "total_current_assets": 1620000
-                    },
-                    "non_current_assets": {
-                        "property_plant_equipment": 850000,
-                        "accumulated_depreciation": -125000,
-                        "intangible_assets": 200000,
-                        "investments": 1500000,
-                        "total_non_current_assets": 2425000
-                    },
-                    "total_assets": 4045000
-                },
-                "liabilities": {
-                    "current_liabilities": {
-                        "accounts_payable": 125000,
-                        "accrued_expenses": 85000,
-                        "current_portion_debt": 50000,
-                        "unearned_revenue": 65000,
-                        "total_current_liabilities": 325000
-                    },
-                    "non_current_liabilities": {
-                        "long_term_debt": 500000,
-                        "lease_obligations": 120000,  # ASC 842
-                        "deferred_tax_liabilities": 45000,
-                        "total_non_current_liabilities": 665000
-                    },
-                    "total_liabilities": 990000
-                },
-                "equity": {
-                    "common_stock": 100000,
-                    "additional_paid_in_capital": 900000,
-                    "retained_earnings": 2055000,
-                    "total_equity": 3055000
-                },
-                "total_liabilities_and_equity": 4045000
-            },
-            "ratios": {
-                "current_ratio": 4.98,
-                "debt_to_equity": 0.32,
-                "return_on_assets": 0.068,
-                "return_on_equity": 0.089
-            },
-            "notes": [
-                "Lease obligations recognized per ASC 842",
-                "Fair value measurements per ASC 820",
-                "Receivables net of allowance per ASC 326"
-            ]
+            "asset_lines": assets,
+            "total_assets": float(t_a),
+            "liability_lines": liabilities,
+            "total_liabilities": float(t_l),
+            "equity_lines": equity,
+            "total_equity": float(t_e),
+            "assets_equal_liabilities_plus_equity": float(t_a) == float(t_l + t_e),
+            "asc_reference": str(ASCStandard.ASC_210),
         }
-        
-        return balance_sheet
-        
     except Exception as e:
         logger.error(f"Error generating balance sheet: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to generate balance sheet"
-        )
+        raise HTTPException(status_code=500, detail="Failed to generate balance sheet")
 
 @router.get("/cash-flow")
 async def get_cash_flow_statement(
-    entity_id: str = Query(..., description="Entity ID or 'consolidated'"),
-    period: ReportingPeriod = Query(..., description="Reporting period"),
-    fiscal_year: int = Query(..., description="Fiscal year")
+    entity_id: int = Query(..., description="Entity ID"),
+    period: str = Query(..., description="Reporting period, e.g., Q3-2024, FY-2024, YTD, MTD"),
+    fiscal_year: Optional[int] = Query(None, description="Fiscal year (July-Jun)"),
+    db: Session = Depends(get_db),
 ):
-    """
-    Generate Statement of Cash Flows
-    Compliant with ASC 230 - Statement of Cash Flows
-    Using the indirect method
-    """
     try:
-        cash_flow = {
+        start_date, end_date = _fiscal_period_to_dates(period, fiscal_year)
+        base = (
+            db.query(
+                ChartOfAccounts.account_code,
+                ChartOfAccounts.account_name,
+                func.coalesce(func.sum(JournalEntryLines.debit_amount - JournalEntryLines.credit_amount), 0).label('amount')
+            )
+            .join(JournalEntryLines, JournalEntryLines.account_id == ChartOfAccounts.id)
+            .join(JournalEntries, JournalEntryLines.journal_entry_id == JournalEntries.id)
+            .filter(
+                and_(
+                    ChartOfAccounts.entity_id == entity_id,
+                    JournalEntries.approval_status == ApprovalStatus.APPROVED,
+                    JournalEntries.entry_date >= start_date,
+                    JournalEntries.entry_date <= end_date,
+                    ChartOfAccounts.account_code.like('111%'),
+                )
+            )
+            .group_by(ChartOfAccounts.account_code, ChartOfAccounts.account_name)
+            .order_by(ChartOfAccounts.account_code)
+        )
+        cash_lines = []
+        delta = Decimal('0.00')
+        for code, name, amt in base.all():
+            val = Decimal(str(amt or 0))
+            cash_lines.append({"account_code": code, "account_name": name, "amount": float(val)})
+            delta += val
+        return {
             "entity_id": entity_id,
-            "period": period,
-            "fiscal_year": fiscal_year,
-            "asc_standard": ASCStandard.ASC_230,
-            "method": "indirect",
-            "currency": "USD",
-            "data": {
-                "operating_activities": {
-                    "net_income": 273289,
-                    "adjustments": {
-                        "depreciation_amortization": 15000,
-                        "changes_in_working_capital": {
-                            "accounts_receivable": -45000,
-                            "prepaid_expenses": -5000,
-                            "accounts_payable": 25000,
-                            "accrued_expenses": 15000
-                        },
-                        "total_adjustments": 5000
-                    },
-                    "net_cash_from_operating": 278289
-                },
-                "investing_activities": {
-                    "capital_expenditures": -125000,
-                    "investments": -250000,
-                    "proceeds_from_sales": 50000,
-                    "net_cash_from_investing": -325000
-                },
-                "financing_activities": {
-                    "proceeds_from_debt": 200000,
-                    "debt_repayments": -50000,
-                    "partner_distributions": -100000,
-                    "net_cash_from_financing": 50000
-                },
-                "net_change_in_cash": 3289,
-                "beginning_cash": 1246711,
-                "ending_cash": 1250000,
-                "supplemental_disclosures": {
-                    "cash_paid_for_interest": 12000,
-                    "cash_paid_for_taxes": 115711,
-                    "non_cash_investing_financing": {
-                        "lease_obligations": 120000  # ASC 842
-                    }
-                }
-            },
-            "notes": [
-                "Prepared using the indirect method per ASC 230",
-                "Lease cash flows classified per ASC 842",
-                "Includes all material non-cash transactions"
-            ]
+            "period": {"start_date": start_date.isoformat(), "end_date": end_date.isoformat()},
+            "cash_lines": cash_lines,
+            "net_change_in_cash": float(delta),
+            "asc_reference": str(ASCStandard.ASC_230),
         }
-        
-        return cash_flow
-        
     except Exception as e:
         logger.error(f"Error generating cash flow statement: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to generate cash flow statement"
-        )
+        raise HTTPException(status_code=500, detail="Failed to generate cash flow statement")
 
 @router.get("/equity-statement")
 async def get_equity_statement(

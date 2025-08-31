@@ -10,12 +10,18 @@ services:
       - "8001:8001"
     volumes:
       - ./:/app
+      # Mount your real SQLite DB into the container so API uses it
+      - ./ngi_capital.db:/app/data/ngi_capital.db
     environment:
       - PYTHONUNBUFFERED=1
+      # Stable secret for JWTs in dev
+      - SECRET_KEY=${SECRET_KEY:-ngi-capital-secret-key-2025-secure-internal-app}
+      # Explicit DB path for clarity (config also auto-detects /app/data)
+      - DATABASE_PATH=/app/data/ngi_capital.db
     networks:
       - ngi-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -35,7 +41,7 @@ services:
       - /app/.next
     environment:
       - NODE_ENV=development
-      - NEXT_PUBLIC_API_URL=http://localhost:8001
+      - NEXT_PUBLIC_API_URL=http://backend:8001
       - BACKEND_ORIGIN=http://backend:8001
       - WATCHPACK_POLLING=true
     depends_on:

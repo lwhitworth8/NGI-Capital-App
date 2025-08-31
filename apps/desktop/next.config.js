@@ -19,6 +19,7 @@ const nextConfig = {
   },
   async rewrites() {
     return [
+      { source: '/api/:path*', destination: `${BACKEND_ORIGIN}/api/:path*` },
       { source: '/api/auth/:path*', destination: `${BACKEND_ORIGIN}/api/auth/:path*` },
       { source: '/api/dashboard/:path*', destination: `${BACKEND_ORIGIN}/api/dashboard/:path*` },
       { source: '/api/entities/:path*', destination: `${BACKEND_ORIGIN}/api/entities/:path*` },

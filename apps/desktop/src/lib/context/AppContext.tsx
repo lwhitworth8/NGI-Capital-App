@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
+import { useTheme } from 'next-themes';
 import { Partner, Entity, Transaction, DashboardMetrics, LoadingState } from '@/types';
 import { apiClient } from '@/lib/api';
 
@@ -175,6 +176,7 @@ interface AppProviderProps {
 // Provider Component
 export function AppProvider({ children }: AppProviderProps) {
   const [state, dispatch] = useReducer(appReducer, initialState);
+  const { setTheme: applyTheme } = useTheme();
 
   // Action creators
   const login = async (email: string, password: string) => {
@@ -195,6 +197,13 @@ export function AppProvider({ children }: AppProviderProps) {
         created_at: new Date().toISOString(),
       };
       dispatch({ type: 'SET_USER', payload: newUser });
+      // Load and apply theme preference from backend
+      try {
+        const prefs = await apiClient.getPreferences();
+        const prefTheme = (prefs?.theme as any) || 'light';
+        localStorage.setItem('theme_preference', prefTheme);
+        applyTheme(prefTheme);
+      } catch {}
       
       // Load initial data
       await loadDashboardData();
@@ -314,6 +323,12 @@ export function AppProvider({ children }: AppProviderProps) {
           apiClient.setAuthToken(token);
           const user = await apiClient.getProfile();
           dispatch({ type: 'SET_USER', payload: user });
+          try {
+            const prefs = await apiClient.getPreferences();
+            const prefTheme = (prefs?.theme as any) || 'light';
+            localStorage.setItem('theme_preference', prefTheme);
+            applyTheme(prefTheme);
+          } catch {}
           
           // Load initial data
           await Promise.all([loadDashboardData(), loadEntities()]);

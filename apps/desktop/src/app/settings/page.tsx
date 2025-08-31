@@ -1,51 +1,110 @@
-'use client'
+'use client';
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { useApp } from '@/lib/context/AppContext'
+import React, { useEffect, useState } from 'react';
+import { Card } from '@/components/ui/Card';
+import { useTheme } from 'next-themes';
+import { apiClient } from '@/lib/api';
+import { useApp } from '@/lib/context/AppContext';
 
 export default function SettingsPage() {
-  const router = useRouter()
-  const { state, logout } = useApp()
-  const [displayName, setDisplayName] = useState('')
-  const [email, setEmail] = useState('')
+  const { setTheme: applyTheme } = useTheme();
+  const { logout } = useApp();
+  const [theme, setTheme] = useState<'light'|'dark'|'system'>('system');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
 
   useEffect(() => {
-    const name = state.user?.name || (typeof window !== 'undefined' ? localStorage.getItem('user_name') || '' : '')
-    const em = state.user?.email || (typeof window !== 'undefined' ? localStorage.getItem('user_email') || '' : '')
-    setDisplayName(name || 'User')
-    setEmail(em || '')
-  }, [state.user])
+    (async () => {
+      try {
+        const prefs = await apiClient.getPreferences();
+        setTheme(prefs.theme);
+      } catch {}
+    })();
+  }, []);
 
-  const handleLogout = async () => {
-    await logout()
-    router.replace('/login')
-  }
+  const savePrefs = async () => {
+    setBusy(true); setMsg(''); setErr('');
+    try {
+      await apiClient.setPreferences({ theme });
+      setMsg('Preferences saved');
+      // Update local storage/theme toggle if present
+      localStorage.setItem('theme_preference', theme);
+    } catch (e: any) {
+      setErr(e?.response?.data?.detail || 'Could not save preferences');
+    } finally { setBusy(false); }
+  };
+
+  const changePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true); setMsg(''); setErr('');
+    if (newPassword !== confirmPassword) { setErr('Passwords do not match'); setBusy(false); return; }
+    try {
+      await apiClient.changePassword(currentPassword, newPassword);
+      setMsg('Password updated');
+      setCurrentPassword(''); setNewPassword(''); setConfirmPassword('');
+    } catch (e: any) {
+      setErr(e?.response?.data?.detail || 'Could not update password');
+    } finally { setBusy(false); }
+  };
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold text-foreground mb-6">Account Settings</h1>
-
-      <div className="space-y-6">
-        <div className="card-modern p-6">
-          <h2 className="text-lg font-semibold mb-4">Profile</h2>
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between"><span className="text-muted-foreground">Name</span><span className="font-medium">{displayName}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Email</span><span className="font-medium">{email}</span></div>
+    <div className="min-h-screen bg-background p-6">
+      <div className="max-w-3xl mx-auto grid gap-6">
+        <Card className="ngi-card-elevated p-6">
+          <h2 className="text-xl font-semibold mb-4">Appearance</h2>
+          <div className="grid gap-2">
+            <label className="text-sm">Theme Preference</label>
+            <select
+              value={theme}
+              onChange={(e) => setTheme(e.target.value as any)}
+              className="px-3 py-2 rounded-md border bg-background text-foreground w-60"
+              disabled={busy}
+            >
+              <option value="system">System</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+            <button
+              onClick={async () => { await savePrefs(); applyTheme(theme); }}
+              disabled={busy}
+              className="mt-2 inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 text-sm font-medium rounded-md text-center w-auto max-w-max justify-self-start"
+            >
+              Save
+            </button>
           </div>
-        </div>
+        </Card>
 
-        <div className="card-modern p-6">
-          <h2 className="text-lg font-semibold mb-4">Session</h2>
+        <Card className="ngi-card-elevated p-6">
+          <h2 className="text-xl font-semibold mb-4">Change Password</h2>
+          {msg && <p className="text-sm text-emerald-600 mb-2">{msg}</p>}
+          {err && <p className="text-sm text-destructive mb-2">{err}</p>}
+          <form onSubmit={changePassword} className="grid gap-3 max-w-md">
+            <input type="password" placeholder="Current password" className="px-3 py-2 rounded-md border bg-background text-foreground" value={currentPassword} onChange={(e)=>setCurrentPassword(e.target.value)} disabled={busy} />
+            <input type="password" placeholder="New password" className="px-3 py-2 rounded-md border bg-background text-foreground" value={newPassword} onChange={(e)=>setNewPassword(e.target.value)} disabled={busy} />
+            <input type="password" placeholder="Confirm new password" className="px-3 py-2 rounded-md border bg-background text-foreground" value={confirmPassword} onChange={(e)=>setConfirmPassword(e.target.value)} disabled={busy} />
+            <button
+              disabled={busy}
+              className="inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 text-sm font-medium rounded-md text-center w-auto max-w-max justify-self-start"
+            >
+              Update Password
+            </button>
+          </form>
+        </Card>
+
+        <Card className="ngi-card-elevated p-6">
+          <h2 className="text-xl font-semibold mb-4">Account</h2>
           <button
-            onClick={handleLogout}
-            className="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-medium transition-colors"
+            onClick={logout}
+            className="inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 text-sm font-medium rounded-md text-center w-auto max-w-max"
           >
             Log Out
           </button>
-        </div>
+        </Card>
       </div>
     </div>
-  )
+  );
 }
-

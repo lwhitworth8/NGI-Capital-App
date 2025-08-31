@@ -8,7 +8,7 @@ import { Card } from '@/components/ui/Card';
 import { ThemeToggle } from '@/components/ui/ThemeToggle';
 
 // Hardcode for now to ensure it works
-const API_URL = 'http://localhost:8001';
+const API_URL = '/api';
 
 export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
