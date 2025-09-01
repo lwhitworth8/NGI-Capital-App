@@ -106,15 +106,14 @@ export default function IncomeStatementPage() {
   };
 
   useEffect(() => {
-    // Update available periods when entity changes
-    if (selectedEntity) {
-      const periods = getAvailablePeriods(selectedEntity);
-      setAvailablePeriods(periods);
-      
-      // If current period not available for entity, select first available
-      if (periods.length > 0 && !periods.includes(period)) {
-        setPeriod(periods[0]);
-      }
+    // Update available periods when entity changes; default to consolidated when none selected
+    const scope = selectedEntity || 'consolidated'
+    const periods = getAvailablePeriods(scope);
+    setAvailablePeriods(periods);
+    
+    // If current period not available for entity, select first available
+    if (periods.length > 0 && !periods.includes(period)) {
+      setPeriod(periods[0]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEntity]);

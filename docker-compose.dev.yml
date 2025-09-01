@@ -18,6 +18,10 @@ services:
       - SECRET_KEY=${SECRET_KEY:-ngi-capital-secret-key-2025-secure-internal-app}
       # Explicit DB path for clarity (config also auto-detects /app/data)
       - DATABASE_PATH=/app/data/ngi_capital.db
+      # Clerk (fill these from your Clerk dashboard)
+      - CLERK_AUDIENCE=backend
+      - CLERK_ISSUER=${CLERK_ISSUER:-https://YOUR-CLERK-SUBDOMAIN.clerk.accounts.dev}
+      - CLERK_JWKS_URL=${CLERK_JWKS_URL:-https://YOUR-CLERK-SUBDOMAIN.clerk.accounts.dev/.well-known/jwks.json}
     networks:
       - ngi-network
     healthcheck:
@@ -44,6 +48,11 @@ services:
       - NEXT_PUBLIC_API_URL=http://backend:8001
       - BACKEND_ORIGIN=http://backend:8001
       - WATCHPACK_POLLING=true
+      # Clerk publishable key and URLs
+      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-pk_test_replace_me}
+      - CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-pk_test_replace_me}
+      - CLERK_SIGN_IN_URL=/sign-in
+      - CLERK_SIGN_UP_URL=/sign-up
     depends_on:
       - backend
     networks:

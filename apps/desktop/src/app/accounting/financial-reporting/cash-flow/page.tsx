@@ -105,15 +105,14 @@ export default function CashFlowStatementPage() {
   };
 
   useEffect(() => {
-    // Update available periods when entity changes
-    if (selectedEntity) {
-      const periods = getAvailablePeriods(selectedEntity);
-      setAvailablePeriods(periods);
-      
-      // If current period not available for entity, select first available
-      if (periods.length > 0 && !periods.includes(period)) {
-        setPeriod(periods[0]);
-      }
+    // Update available periods when entity changes; default to consolidated when none selected
+    const scope = selectedEntity || 'consolidated'
+    const periods = getAvailablePeriods(scope);
+    setAvailablePeriods(periods);
+    
+    // If current period not available for entity, select first available
+    if (periods.length > 0 && !periods.includes(period)) {
+      setPeriod(periods[0]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEntity]);
@@ -220,6 +219,9 @@ export default function CashFlowStatementPage() {
           <h1 className="text-3xl font-bold text-foreground">Cash Flow Statement</h1>
           <p className="text-muted-foreground mt-1">
             Statement of Cash Flows - Indirect Method
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Fiscal Year: Jan 1 - Dec 31
           </p>
         </div>
         <button 

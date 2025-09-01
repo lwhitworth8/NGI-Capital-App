@@ -18,14 +18,9 @@ jest.mock('../lib/api', () => ({
   },
 }));
 
-// Mock localStorage
-const localStorageMock = {
-  getItem: jest.fn(),
-  setItem: jest.fn(),
-  removeItem: jest.fn(),
-  clear: jest.fn(),
-};
-global.localStorage = localStorageMock as any;
+// Spy on real localStorage (jsdom) to assert calls
+const setItemSpy = jest.spyOn(Storage.prototype, 'setItem');
+const removeItemSpy = jest.spyOn(Storage.prototype, 'removeItem');
 
 // Test component that uses auth
 const TestComponent = () => {
@@ -52,6 +47,8 @@ describe('Authentication', () => {
       },
     });
     jest.clearAllMocks();
+    setItemSpy.mockClear();
+    removeItemSpy.mockClear();
   });
 
   it('renders authentication provider', () => {
@@ -100,11 +97,11 @@ describe('Authentication', () => {
       expect(screen.getByTestId('user-name')).toHaveTextContent('Andre Nurmamade');
     });
 
-    expect(localStorageMock.setItem).toHaveBeenCalledWith('auth_token', mockToken);
+    expect(setItemSpy).toHaveBeenCalledWith('auth_token', mockToken);
   });
 
   it('handles logout', async () => {
-    localStorageMock.getItem.mockReturnValue('mock-token');
+    window.localStorage.setItem('auth_token', 'mock-token');
     
     const mockUser = {
       id: 1,
@@ -135,7 +132,7 @@ describe('Authentication', () => {
       expect(screen.getByTestId('user-name')).toHaveTextContent('No User');
     });
 
-    expect(localStorageMock.removeItem).toHaveBeenCalledWith('auth_token');
+    expect(removeItemSpy).toHaveBeenCalledWith('auth_token');
   });
 
   it('restricts access to partner emails only', async () => {

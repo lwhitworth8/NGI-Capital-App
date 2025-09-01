@@ -106,7 +106,7 @@ export default function ResetPasswordPage() {
         </Card>
         <div className="flex items-center justify-start">
           <button
-            onClick={() => router.push('/login')}
+            onClick={() => router.push('/sign-in')}
             className="inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 text-sm font-medium rounded-md text-center w-auto max-w-max"
           >
             Back to Login

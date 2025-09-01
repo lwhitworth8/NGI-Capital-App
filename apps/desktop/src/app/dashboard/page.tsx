@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -16,7 +16,7 @@ import {
   Clock
 } from 'lucide-react';
 
-const API_URL = '/api';
+import { apiClient } from '@/lib/api'
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -25,51 +25,29 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('auth_token');
-    const userName = localStorage.getItem('user_name');
-    const userEmail = localStorage.getItem('user_email');
-    
-    if (!token) {
-      router.push('/login');
-      return;
-    }
-
-    setUserData({
-      name: userName,
-      email: userEmail,
-    });
-
-    fetchMetrics(token);
-  }, [router]);
-
-  const fetchMetrics = async (token: string) => {
-    try {
-      console.log('Fetching dashboard metrics with token:', token);
-      
-      const response = await fetch(`${API_URL}/api/dashboard/metrics`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      console.log('Dashboard response status:', response.status);
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Dashboard data received:', data);
-        setMetrics(data);
-      } else {
-        console.error('Dashboard fetch failed with status:', response.status);
-        // Set some default metrics so the page still loads
-        setMetrics({
-          total_assets: 0,
-          monthly_revenue: 0,
-          entity_count: 0,
-          recent_activity: []
-        });
+    const init = async () => {
+      try {
+        const me = await apiClient.getProfile()
+        setUserData({ name: me.name, email: me.email })
+        await fetchMetrics()
+      } catch (e) {
+        // Let Clerk gating handle redirect; avoid duplicate router actions
+      } finally {
+        setLoading(false)
       }
+    }
+    init()
+  }, [router])
+
+  const fetchMetrics = async () => {
+    try {
+      const data = await apiClient.getDashboardMetrics()
+      setMetrics({
+        total_assets: data.total_aum ?? 0,
+        monthly_revenue: data.monthly_revenue ?? 0,
+        monthly_expenses: data.monthly_expenses ?? 0,
+        recent_activity: [],
+      })
     } catch (error: any) {
       console.error('Failed to fetch metrics:', error);
       // Set default metrics even on error
@@ -80,7 +58,7 @@ export default function DashboardPage() {
         recent_activity: []
       });
     } finally {
-      setLoading(false);
+      // loading flag handled in init()
     }
   };
 

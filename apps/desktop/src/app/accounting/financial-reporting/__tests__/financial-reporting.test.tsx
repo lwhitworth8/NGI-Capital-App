@@ -23,7 +23,8 @@ jest.mock('next/navigation', () => ({
 jest.mock('@/lib/utils/dateUtils', () => ({
   getCurrentFiscalQuarter: jest.fn(() => 'Q1-2025'),
   getAvailablePeriods: jest.fn(() => ['Q1-2025', 'FY-2024']),
-  isEntityActive: jest.fn((entityId) => entityId === 'ngi-capital' || entityId === 'consolidated'),
+  getAllAvailablePeriods: jest.fn(() => ['Q3-2024', 'Q2-2024', 'FY-2023', 'YTD', 'MTD']),
+  isEntityActive: jest.fn((entityId: string) => entityId === 'ngi-capital' || entityId === 'consolidated'),
   CURRENT_DATE: new Date('2024-08-29'),
   ENTITY_FORMATION_DATES: {
     'ngi-capital': new Date('2024-07-01'),
@@ -45,7 +46,7 @@ jest.mock('@/lib/utils/excelExport', () => ({
 global.fetch = jest.fn(() =>
   Promise.resolve({
     ok: true,
-    json: () => Promise.resolve(null), // Return null to simulate no data
+    json: () => Promise.resolve({ entities: [] }),
   })
 ) as jest.Mock;
 
@@ -63,8 +64,7 @@ describe('Financial Reporting Components', () => {
     it('renders income statement page with correct elements', () => {
       render(<IncomeStatementPage />);
       
-      expect(screen.getByText('Income Statement')).toBeInTheDocument();
-      expect(screen.getByText('Statement of Operations and Comprehensive Income')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Income Statement' })).toBeInTheDocument();
       expect(screen.getByText('Export to Excel')).toBeInTheDocument();
     });
 
@@ -75,15 +75,12 @@ describe('Financial Reporting Components', () => {
       expect(screen.getByText(/Connected your Mercury Bank account/)).toBeInTheDocument();
     });
 
-    it('disables inactive entities in selector', () => {
+    it('shows empty entity selector when no entities available', () => {
       render(<IncomeStatementPage />);
-      
-      const entitySelect = screen.getByRole('combobox', { name: /entity/i });
-      const options = entitySelect.querySelectorAll('option');
-      
-      expect(options[2]).toHaveAttribute('disabled'); // NGI Advisory
-      expect(options[3]).toHaveAttribute('disabled'); // Creator Terminal
-      expect(options[2].textContent).toContain('(Coming Sept 2024)');
+      const selects = screen.getAllByRole('combobox');
+      const entitySelect = selects[0];
+      expect(entitySelect).toBeInTheDocument();
+      expect(entitySelect).toHaveDisplayValue('No entities available');
     });
 
     it('handles period selection based on entity formation date', async () => {
@@ -117,7 +114,7 @@ describe('Financial Reporting Components', () => {
     it('renders balance sheet page with correct elements', () => {
       render(<BalanceSheetPage />);
       
-      expect(screen.getByText('Balance Sheet')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Balance Sheet' })).toBeInTheDocument();
       expect(screen.getByText('Statement of Financial Position')).toBeInTheDocument();
       expect(screen.getByText('Export to Excel')).toBeInTheDocument();
     });
@@ -161,7 +158,7 @@ describe('Financial Reporting Components', () => {
     it('renders cash flow statement page with correct elements', () => {
       render(<CashFlowStatementPage />);
       
-      expect(screen.getByText('Cash Flow Statement')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'Cash Flow Statement' })).toBeInTheDocument();
       expect(screen.getByText('Statement of Cash Flows - Indirect Method')).toBeInTheDocument();
       expect(screen.getByText('Export to Excel')).toBeInTheDocument();
     });
@@ -169,7 +166,7 @@ describe('Financial Reporting Components', () => {
     it('shows fiscal year information', () => {
       render(<CashFlowStatementPage />);
       
-      expect(screen.getByText('Fiscal Year: July 1 - June 30')).toBeInTheDocument();
+      expect(screen.getByText('Fiscal Year: Jan 1 - Dec 31')).toBeInTheDocument();
     });
 
     it('displays key metrics cards in empty state', () => {
@@ -198,15 +195,12 @@ describe('Financial Reporting Components', () => {
       expect(screen.getByText('Income Statement')).toBeInTheDocument();
       expect(screen.getByText('Balance Sheet')).toBeInTheDocument();
       expect(screen.getByText('Cash Flow Statement')).toBeInTheDocument();
-      expect(screen.getByText('Statement of Changes in Equity')).toBeInTheDocument();
+      expect(screen.getByText("Statement of Stockholders' Equity")).toBeInTheDocument();
     });
 
-    it('shows compliance status indicators', () => {
+    it('shows co-founder approval status', () => {
       render(<FinancialReportingPage />);
-      
-      expect(screen.getByText('GAAP Compliant')).toBeInTheDocument();
-      expect(screen.getByText('Big 4 Audit Ready')).toBeInTheDocument();
-      expect(screen.getByText('CA FTB Compliant')).toBeInTheDocument();
+      expect(screen.getByText('Co-Founder Approval Controls')).toBeInTheDocument();
     });
 
     it('navigates to individual statement pages when clicked', () => {

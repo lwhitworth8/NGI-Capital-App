@@ -9,7 +9,7 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 
-from fastapi import HTTPException, Security, status, Depends
+from fastapi import HTTPException, Security, status, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -38,7 +38,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 720  # 12 hours
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # HTTP Bearer security
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 # Database setup (use central config when available)
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
@@ -108,11 +108,23 @@ def authenticate_partner(db: Session, email: str, password: str) -> Optional[Par
     logger.info(f"Successful login for partner: {email}")
     return partner
 
-async def get_current_partner(credentials: HTTPAuthorizationCredentials = Security(security)) -> Dict[str, Any]:
-    """Get the current authenticated partner from JWT token"""
-    token = credentials.credentials
-    
+async def get_current_partner(request: Request, credentials: HTTPAuthorizationCredentials = Security(security)) -> Dict[str, Any]:
+    """Get the current authenticated partner from JWT token.
+    Supports Authorization: Bearer token or HttpOnly cookie 'auth_token'.
+    """
+    token = None
+    if credentials and getattr(credentials, 'credentials', None):
+        token = credentials.credentials
+    else:
+        token = request.cookies.get('auth_token')
+
     try:
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Missing authentication token",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         payload = verify_token(token)
         email = payload.get("sub")
         
@@ -134,13 +146,14 @@ async def get_current_partner(credentials: HTTPAuthorizationCredentials = Securi
                 headers={"WWW-Authenticate": "Bearer"},
             )
         
-        return {
+        result = {
             "id": partner.id,
             "email": partner.email,
             "name": partner.name,
             "ownership_percentage": float(partner.ownership_percentage),
             "is_authenticated": True
         }
+        return result
         
     except JWTError:
         raise HTTPException(
@@ -149,7 +162,10 @@ async def get_current_partner(credentials: HTTPAuthorizationCredentials = Securi
             headers={"WWW-Authenticate": "Bearer"},
         )
     finally:
-        db.close()
+        try:
+            db.close()
+        except Exception:
+            pass
 
 def require_partner_access():
     """Dependency to require authenticated partner access"""

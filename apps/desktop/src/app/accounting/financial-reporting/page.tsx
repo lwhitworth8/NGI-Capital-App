@@ -122,12 +122,21 @@ export default function FinancialReportingPage() {
 
   const currentEntity = entities.find(e => e.id === selectedEntity);
 
-  // If no entities exist yet, show setup screen
+  // If no entities exist yet, show setup screen (keep header with export button visible)
   if (entities.length === 0) {
     return (
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold text-foreground">Financial Reporting</h1>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => exportAllStatements(null, null, null, null, selectedEntity, reportingPeriod)}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors flex items-center gap-2"
+            >
+              <Download className="h-4 w-4" />
+              Export Financial Package
+            </button>
+          </div>
         </div>
 
         <Card className="p-12">
@@ -186,6 +195,67 @@ export default function FinancialReportingPage() {
                 <Upload className="h-5 w-5" />
                 Upload Formation Documents
               </button>
+            </div>
+          </div>
+        </Card>
+
+        {/* Financial Statements Grid (visible even in empty state for navigation/testing) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {financialStatements.map((statement) => {
+            const Icon = statement.icon;
+            return (
+              <Card 
+                key={statement.id} 
+                className="p-6 hover:shadow-lg transition-all cursor-pointer group"
+                onClick={() => router.push(`/accounting/financial-reporting/${statement.id}`)}
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 bg-primary/10 rounded-lg">
+                      <Icon className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors">
+                        {statement.name}
+                      </h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {statement.description}
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                </div>
+                <div className="pt-4 border-t border-border">
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    Awaiting transactions and journal entries
+                  </p>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* Co-Founder Approval Status Bar (visible in empty state) */}
+        <Card className="p-4 bg-muted/30">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Lock className="h-5 w-5 text-primary" />
+              <div>
+                <p className="text-sm font-medium">Co-Founder Approval Controls</p>
+                <p className="text-xs text-muted-foreground">
+                  All transactions require dual approval from co-founders
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 ${currentUserEmail === 'anurmamade@ngicapitaladvisory.com' ? 'bg-green-500' : 'bg-gray-400'} rounded-full`}></div>
+                <span>Andre: {currentUserEmail === 'anurmamade@ngicapitaladvisory.com' ? 'Online' : 'Offline'}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className={`w-2 h-2 ${currentUserEmail === 'lwhitworth@ngicapitaladvisory.com' ? 'bg-green-500' : 'bg-gray-400'} rounded-full`}></div>
+                <span>Landon: {currentUserEmail === 'lwhitworth@ngicapitaladvisory.com' ? 'Online' : 'Offline'}</span>
+              </div>
             </div>
           </div>
         </Card>

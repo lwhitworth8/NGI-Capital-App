@@ -8,16 +8,9 @@ export default function HomePage() {
   const router = useRouter();
 
   useEffect(() => {
-    // Check if user has a token in localStorage
-    const token = localStorage.getItem('auth_token');
-    
-    if (token) {
-      // If token exists, redirect to dashboard
-      router.replace('/dashboard');
-    } else {
-      // If no token, redirect to login
-      router.replace('/login');
-    }
+    // Defer auth handling to Clerk middleware; always route to dashboard.
+    // If not signed in, middleware will redirect to /sign-in.
+    router.replace('/dashboard');
   }, [router]);
 
   return (

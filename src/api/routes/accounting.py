@@ -6,7 +6,7 @@ GAAP-compliant accounting endpoints with approval workflows and audit trail
 from datetime import datetime, date
 from decimal import Decimal
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func, desc, asc, select
@@ -164,13 +164,20 @@ class RevenueRecognitionRequest(BaseModel):
 
 # Dependency to get current user from JWT token
 async def get_current_partner(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
 ) -> Partners:
-    if not credentials:
+    # Support Authorization header or HttpOnly cookie token
+    token = None
+    if credentials and getattr(credentials, 'credentials', None):
+        token = credentials.credentials
+    else:
+        token = request.cookies.get('auth_token')
+    if not token:
         raise HTTPException(status_code=403, detail="Partner authentication required")
     try:
-        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email = payload.get("sub")
         if not email:
             raise HTTPException(status_code=403, detail="Invalid token")

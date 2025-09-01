@@ -1,6 +1,6 @@
 /**
  * Date utilities for NGI Capital financial reporting
- * Handles fiscal year (July 1 - June 30) and entity formation dates
+ * Handles fiscal year (Jan 1 - Dec 31) and entity formation dates
  * ALL entity data comes from uploaded documents - no hardcoded values
  */
 
@@ -26,14 +26,11 @@ export const CURRENT_DATE = new Date();
 
 /**
  * Get the current fiscal year based on date
- * Fiscal year runs July 1 - June 30
+ * Fiscal year is aligned to calendar year (Jan 1 - Dec 31)
  */
 export function getCurrentFiscalYear(date: Date = CURRENT_DATE): number {
-  const month = date.getMonth();
-  const year = date.getFullYear();
-  // If we're in July-December, we're in FY of next year
-  // If we're in Jan-June, we're in FY of current year
-  return month >= 6 ? year + 1 : year; // month is 0-indexed, so June = 5, July = 6
+  // Use UTC to avoid timezone off-by-one around midnight UTC
+  return date.getUTCFullYear();
 }
 
 /**
@@ -41,8 +38,8 @@ export function getCurrentFiscalYear(date: Date = CURRENT_DATE): number {
  */
 export function getFiscalYearDates(fiscalYear: number): { start: Date; end: Date } {
   return {
-    start: new Date(fiscalYear - 1, 6, 1), // July 1 of previous calendar year
-    end: new Date(fiscalYear, 5, 30) // June 30 of fiscal year
+    start: new Date(Date.UTC(fiscalYear, 0, 1)), // Jan 1 (UTC)
+    end: new Date(Date.UTC(fiscalYear, 11, 31)), // Dec 31 (UTC)
   };
 }
 
@@ -50,17 +47,16 @@ export function getFiscalYearDates(fiscalYear: number): { start: Date; end: Date
  * Get current fiscal quarter
  */
 export function getCurrentFiscalQuarter(date: Date = CURRENT_DATE): string {
-  const month = date.getMonth();
+  const month = date.getUTCMonth();
   const fiscalYear = getCurrentFiscalYear(date);
-  
-  // Q1: July - September (months 6-8)
-  // Q2: October - December (months 9-11)
-  // Q3: January - March (months 0-2)
-  // Q4: April - June (months 3-5)
-  
-  if (month >= 6 && month <= 8) return `Q1-${fiscalYear}`;
-  if (month >= 9 && month <= 11) return `Q2-${fiscalYear}`;
-  if (month >= 0 && month <= 2) return `Q3-${fiscalYear}`;
+
+  // Q1: Jan - Mar (months 0-2)
+  // Q2: Apr - Jun (months 3-5)
+  // Q3: Jul - Sep (months 6-8)
+  // Q4: Oct - Dec (months 9-11)
+  if (month >= 0 && month <= 2) return `Q1-${fiscalYear}`;
+  if (month >= 3 && month <= 5) return `Q2-${fiscalYear}`;
+  if (month >= 6 && month <= 8) return `Q3-${fiscalYear}`;
   return `Q4-${fiscalYear}`;
 }
 
@@ -114,20 +110,20 @@ export function getAvailablePeriods(entityId: string): string[] {
 function isPeriodStarted(period: string, formationDate: Date): boolean {
   const [quarterOrFY, year] = period.split('-');
   const fiscalYear = parseInt(year);
-  
+
   if (quarterOrFY === 'FY') {
     const fyDates = getFiscalYearDates(fiscalYear);
     return formationDate <= fyDates.start && CURRENT_DATE >= fyDates.start;
   }
-  
-  // Quarter logic
+
+  // Quarter logic for calendar fiscal year
   const quarterStarts: Record<string, Date> = {
-    'Q1': new Date(fiscalYear - 1, 6, 1), // July 1
-    'Q2': new Date(fiscalYear - 1, 9, 1), // October 1
-    'Q3': new Date(fiscalYear, 0, 1), // January 1
-    'Q4': new Date(fiscalYear, 3, 1), // April 1
+    'Q1': new Date(Date.UTC(fiscalYear, 0, 1)),  // Jan 1 (UTC)
+    'Q2': new Date(Date.UTC(fiscalYear, 3, 1)),  // Apr 1 (UTC)
+    'Q3': new Date(Date.UTC(fiscalYear, 6, 1)),  // Jul 1 (UTC)
+    'Q4': new Date(Date.UTC(fiscalYear, 9, 1)),  // Oct 1 (UTC)
   };
-  
+
   const quarterStart = quarterStarts[quarterOrFY];
   return quarterStart && formationDate <= quarterStart && CURRENT_DATE >= quarterStart;
 }
@@ -136,11 +132,13 @@ function isPeriodStarted(period: string, formationDate: Date): boolean {
  * Format date for display
  */
 export function formatDate(date: Date): string {
-  return date.toLocaleDateString('en-US', {
+  // Format in UTC for deterministic output across timezones
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'UTC',
     year: 'numeric',
     month: 'long',
-    day: 'numeric'
-  });
+    day: 'numeric',
+  }).format(date);
 }
 
 /**
@@ -172,21 +170,19 @@ export function getAllAvailablePeriods(): string[] {
   
   // Add current quarter
   periods.push(currentQuarter);
-  
+
   // Add previous quarters in current FY
   const currentQ = parseInt(currentQuarter.split('-')[0].charAt(1));
   for (let q = currentQ - 1; q >= 1; q--) {
     periods.push(`Q${q}-${currentFY}`);
   }
-  
-  // Add previous fiscal year quarters if we're past Q1
-  if (currentQ > 1 || currentDate.getMonth() < 6) {
-    const prevFY = currentFY - 1;
-    for (let q = 4; q >= 1; q--) {
-      periods.push(`Q${q}-${prevFY}`);
-    }
-    periods.push(`FY-${prevFY}`);
+
+  // Add previous fiscal year quarters and FY
+  const prevFY = currentFY - 1;
+  for (let q = 4; q >= 1; q--) {
+    periods.push(`Q${q}-${prevFY}`);
   }
+  periods.push(`FY-${prevFY}`);
   
   // Add YTD and MTD
   periods.push('YTD');

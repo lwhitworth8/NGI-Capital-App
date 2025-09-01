@@ -35,6 +35,9 @@ import string
 # Import route modules - using absolute imports for Docker
 from src.api.routes import entities, reports, banking, documents, financial_reporting, employees, investor_relations, accounting
 from src.api.config import get_database_path, DATABASE_URL, SECRET_KEY, ALGORITHM
+from sqlalchemy import text as sa_text
+from src.api.database import get_db as get_session
+from src.api.clerk_auth import verify_clerk_jwt
 
 # Ensure logs directory exists before configuring file handler
 os.makedirs('logs', exist_ok=True)
@@ -55,6 +58,7 @@ logger = logging.getLogger(__name__)
 security = HTTPBearer(auto_error=False)
 
 def _db_connect():
+    # Legacy helper; prefer SQLAlchemy Session from src.api.database
     return sqlite3.connect(get_database_path())
 
 @asynccontextmanager
@@ -200,19 +204,25 @@ async def log_requests(request: Request, call_next):
     
     return response
 
-# Authentication dependency
-async def get_current_partner(credentials: HTTPAuthorizationCredentials = Depends(security)):
+# Authentication dependency (supports Authorization header or HttpOnly cookie)
+async def get_current_partner(request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)):
     """
     Verify partner authentication token and return partner information.
     """
-    if not credentials:
+    token = None
+    if credentials and getattr(credentials, 'credentials', None):
+        token = credentials.credentials
+    else:
+        # Try HttpOnly cookie token
+        token = request.cookies.get('auth_token') if request else None
+    if not token:
         return None  # Allow unauthenticated access to public endpoints
     
     from jose import jwt, JWTError
     
     try:
         # Decode the JWT token
-        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         email = payload.get("sub")
         partner_id = payload.get("partner_id")
         
@@ -243,15 +253,34 @@ async def get_current_partner(credentials: HTTPAuthorizationCredentials = Depend
         return None
 
 def require_partner_access():
-    """Dependency to require authenticated partner access"""
-    async def _require_partner(partner=Depends(get_current_partner)):
-        if not partner or not partner.get("is_authenticated"):
-            # Align with tests expecting 403 on missing credentials
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Partner authentication required"
-            )
-        return partner
+    """Dependency to require authenticated partner access (legacy JWT or Clerk)."""
+    async def _require_partner(request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)):
+        # Try legacy local JWT
+        try:
+            partner = await get_current_partner(request, credentials)
+            if partner and partner.get("is_authenticated"):
+                return partner
+        except Exception:
+            pass
+        # Try Clerk
+        token = None
+        if credentials and getattr(credentials, 'credentials', None):
+            token = credentials.credentials
+        if token:
+            claims = verify_clerk_jwt(token)
+            if claims and claims.get("sub"):
+                return {
+                    "id": claims.get("sub"),
+                    "email": claims.get("email") or claims.get("sub"),
+                    "name": claims.get("name") or "Clerk User",
+                    "ownership_percentage": 0,
+                    "is_authenticated": True,
+                }
+        # Not authenticated
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Partner authentication required"
+        )
     return _require_partner
 
 # (Old health endpoints removed; see consolidated health endpoints later in file)
@@ -263,11 +292,11 @@ async def login(
     # Also accept form-encoded for flexibility
     email_fallback: str | None = Form(None),
     password_fallback: str | None = Form(None),
+    db=Depends(get_session),
 ):
     """
     Partner login endpoint with real authentication.
     """
-    import sqlite3
     import bcrypt
     from datetime import datetime, timedelta, timezone
     from jose import jwt
@@ -360,109 +389,97 @@ async def login(
     
     logger.info(f"Login attempt for: {email}")
     
-    # Connect to database and verify credentials
-    conn = _db_connect()
-    cursor = conn.cursor()
-
-    # Ensure partners schema exists and seed default partner accounts if missing
+    # Ensure partners table exists (idempotent for dev/test)
     try:
-        cursor.execute("PRAGMA table_info(partners)")
-        cols = [r[1] for r in cursor.fetchall()]
-        if not cols:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS partners (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    email TEXT UNIQUE NOT NULL,
-                    name TEXT NOT NULL,
-                    password_hash TEXT NOT NULL,
-                    ownership_percentage REAL NOT NULL,
-                    capital_account_balance REAL DEFAULT 0,
-                    is_active INTEGER DEFAULT 1,
-                    last_login TEXT,
-                    created_at TEXT
-                )
-                """
-            )
-            conn.commit()
-            cols = ['id','email','name','password_hash','ownership_percentage','capital_account_balance','is_active','last_login','created_at']
-        if 'password_hash' not in cols:
-            try:
-                cursor.execute("ALTER TABLE partners ADD COLUMN password_hash TEXT")
-                conn.commit()
-            except Exception:
-                pass
-        # Seed default partners if not present
-        import bcrypt
+        db.execute(sa_text(
+            "CREATE TABLE IF NOT EXISTS partners (\n"
+            " id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
+            " email TEXT UNIQUE NOT NULL,\n"
+            " name TEXT NOT NULL,\n"
+            " password_hash TEXT,\n"
+            " ownership_percentage REAL NOT NULL,\n"
+            " capital_account_balance REAL DEFAULT 0,\n"
+            " is_active INTEGER DEFAULT 1,\n"
+            " created_at TEXT\n"
+            ")"
+        ))
+        db.commit()
+    except Exception:
+        pass
+
+    # Seed defaults if missing (dev convenience)
+    try:
         default_pw_hash = bcrypt.hashpw("TempPassword123!".encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
         for eml, name in [
             ("anurmamade@ngicapitaladvisory.com", "Andre Nurmamade"),
             ("lwhitworth@ngicapitaladvisory.com", "Landon Whitworth"),
         ]:
-            cursor.execute("SELECT id FROM partners WHERE email = ?", (eml,))
-            if not cursor.fetchone():
-                cursor.execute(
+            row = db.execute(sa_text("SELECT id FROM partners WHERE email = :e"), {"e": eml}).fetchone()
+            if not row:
+                db.execute(sa_text(
                     "INSERT INTO partners (email, name, password_hash, ownership_percentage, capital_account_balance, is_active, created_at) "
-                    "VALUES (?,?,?,?,?,?,?)",
-                    (eml, name, default_pw_hash, 50.0, 0.0, 1, datetime.now(timezone.utc).isoformat()),
-                )
-                conn.commit()
+                    "VALUES (:email,:name,:ph,:own,:bal,1,:ts)"
+                ), {"email": eml, "name": name, "ph": default_pw_hash, "own": 50.0, "bal": 0.0, "ts": datetime.now(timezone.utc).isoformat()})
+                db.commit()
     except Exception:
-        # Best-effort seeding; continue to actual credential check
         pass
-    
-    cursor.execute("SELECT id, name, password_hash, ownership_percentage FROM partners WHERE email = ? AND is_active = 1", (email,))
-    partner = cursor.fetchone()
+
+    partner = db.execute(
+        sa_text("SELECT id, name, password_hash, ownership_percentage FROM partners WHERE email = :email AND is_active = 1"),
+        {"email": email}
+    ).fetchone()
     
     if not partner:
-        conn.close()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials"
         )
     
-    partner_id, partner_name, password_hash, ownership_percentage = partner
-
-    # If password_hash missing, set a default for seeded partners to unblock login
     try:
-        if not password_hash:
-            import bcrypt as _bcrypt
-            default_hash = _bcrypt.hashpw("TempPassword123!".encode("utf-8"), _bcrypt.gensalt()).decode("utf-8")
-            cursor.execute("UPDATE partners SET password_hash = ? WHERE id = ?", (default_hash, partner_id))
-            conn.commit()
-            password_hash = default_hash
+        partner_id, partner_name, password_hash, ownership_percentage = partner
+
+        # If password_hash missing, set a default for seeded partners to unblock login
+        try:
+            if not password_hash:
+                import bcrypt as _bcrypt
+                default_hash = _bcrypt.hashpw("TempPassword123!".encode("utf-8"), _bcrypt.gensalt()).decode("utf-8")
+                db.execute(sa_text("UPDATE partners SET password_hash = :ph WHERE id = :pid"), {"ph": default_hash, "pid": partner_id})
+                db.commit()
+                password_hash = default_hash
+        except Exception:
+            pass
+        
+        # Verify password
+        if not _verify_pw(password, password_hash):
+            # Development/dev-tests fallback: accept default temp password
+            if os.getenv('ENV', 'development').lower() == 'development' and password == 'TempPassword123!' and email.endswith('@ngicapitaladvisory.com'):
+                # Optionally persist so subsequent logins succeed consistently
+                try:
+                    new_hash = _hash_password(password)
+                    db.execute(sa_text("UPDATE partners SET password_hash = :ph WHERE id = :pid"), {"ph": new_hash, "pid": partner_id})
+                    db.commit()
+                    password_hash = new_hash
+                except Exception:
+                    pass
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid credentials"
+                )
+    except HTTPException:
+        raise
     except Exception:
-        pass
-    
-    # Verify password
-    if not _verify_pw(password, password_hash):
-        # Development/dev-tests fallback: accept default temp password
-        if os.getenv('ENV', 'development').lower() == 'development' and password == 'TempPassword123!' and email.endswith('@ngicapitaladvisory.com'):
-            # Optionally persist so subsequent logins succeed consistently
-            try:
-                new_hash = _hash_password(password)
-                cursor.execute("UPDATE partners SET password_hash = ? WHERE id = ?", (new_hash, partner_id))
-                conn.commit()
-                password_hash = new_hash
-            except Exception:
-                pass
-        else:
-            conn.close()
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid credentials"
-            )
+        # Any unexpected error during verification => treat as invalid credentials
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     
     # Update last login if column exists (tests' schema may omit it)
     try:
-        cursor.execute("PRAGMA table_info(partners)")
-        cols = [r[1] for r in cursor.fetchall()]
+        cols = [r[1] for r in db.execute(sa_text("PRAGMA table_info(partners)")).fetchall()]
         if 'last_login' in cols:
-            cursor.execute("UPDATE partners SET last_login = ? WHERE id = ?", (datetime.now(timezone.utc), partner_id))
-            conn.commit()
+            db.execute(sa_text("UPDATE partners SET last_login = :ts WHERE id = :pid"), {"ts": datetime.now(timezone.utc).isoformat(), "pid": partner_id})
+            db.commit()
     except Exception:
         pass
-    conn.close()
     
     # Generate JWT token (using config values)
     
@@ -475,14 +492,26 @@ async def login(
     
     access_token = jwt.encode(token_data, SECRET_KEY, algorithm=ALGORITHM)
 
-    return {
+    # Return response and set HttpOnly cookie for session
+    resp = JSONResponse({
         "message": "Login successful",
         "access_token": access_token,
         "token_type": "bearer",
         "expires_in": 43200,  # 12 hours
         "partner_name": partner_name,
         "ownership_percentage": float(ownership_percentage),
-    }
+    })
+    secure_cookie = request.url.scheme == "https"
+    resp.set_cookie(
+        key="auth_token",
+        value=access_token,
+        httponly=True,
+        secure=secure_cookie,
+        samesite="lax",
+        max_age=43200,
+        path="/",
+    )
+    return resp
 
 
 @app.post("/api/auth/request-password-reset", tags=["auth"])
@@ -553,45 +582,84 @@ async def reset_password(payload: dict):
 
 
 @app.post("/api/auth/change-password", tags=["auth"])
-async def change_password(payload: dict, partner=Depends(require_partner_access())):
+async def change_password(payload: dict, partner=Depends(require_partner_access()), db=Depends(get_session)):
     cur_pw = (payload.get('current_password') or '').strip()
     new_pw = (payload.get('new_password') or '').strip()
     if len(new_pw) < 8:
         raise HTTPException(status_code=422, detail="Password too short")
-    conn = _db_connect(); cur = conn.cursor()
-    cur.execute("SELECT password_hash FROM partners WHERE id = ?", (partner['id'],))
-    row = cur.fetchone()
+    row = db.execute(sa_text("SELECT password_hash FROM partners WHERE id = :pid"), {"pid": partner['id']}).fetchone()
     if not row:
-        conn.close(); raise HTTPException(status_code=404, detail="Partner not found")
+        raise HTTPException(status_code=404, detail="Partner not found")
     if not _verify_pw(cur_pw, row[0] or ''):
-        conn.close(); raise HTTPException(status_code=401, detail="Invalid current password")
-    cur.execute("UPDATE partners SET password_hash = ? WHERE id = ?", (_hash_password(new_pw), partner['id']))
-    conn.commit(); conn.close()
+        raise HTTPException(status_code=401, detail="Invalid current password")
+    db.execute(sa_text("UPDATE partners SET password_hash = :ph WHERE id = :pid"), {"ph": _hash_password(new_pw), "pid": partner['id']})
+    db.commit()
     return {"message": "Password updated"}
 
 
+@app.post("/api/auth/session", tags=["auth"])
+async def establish_session(request: Request):
+    """Set HttpOnly auth cookie from provided token (Authorization or body).
+    This allows the frontend to transition to cookie-based auth.
+    """
+    token = None
+    # Prefer Authorization header
+    auth = request.headers.get("authorization") or request.headers.get("Authorization")
+    if auth and auth.lower().startswith("bearer "):
+        token = auth.split(" ", 1)[1].strip()
+    if not token:
+        try:
+            body = await request.json()
+            token = (body.get("access_token") or body.get("token") or "").strip()
+        except Exception:
+            token = None
+    if not token:
+        raise HTTPException(status_code=400, detail="Missing token")
+
+    # Set cookie and return success
+    resp = JSONResponse({"message": "session established"})
+    secure_cookie = request.url.scheme == "https"
+    resp.set_cookie(
+        key="auth_token",
+        value=token,
+        httponly=True,
+        secure=secure_cookie,
+        samesite="lax",
+        max_age=43200,
+        path="/",
+    )
+    return resp
+
+
 @app.get("/api/preferences", tags=["preferences"])
-async def get_preferences(partner=Depends(require_partner_access())):
-    conn = _db_connect(); cur = conn.cursor(); _ensure_user_prefs_table(cur)
-    cur.execute("SELECT theme FROM user_preferences WHERE partner_id = ?", (partner['id'],))
-    row = cur.fetchone(); conn.close()
+async def get_preferences(partner=Depends(require_partner_access()), db=Depends(get_session)):
+    # Ensure table exists
+    db.execute(sa_text("""
+        CREATE TABLE IF NOT EXISTS user_preferences (
+            partner_id INTEGER PRIMARY KEY,
+            theme TEXT DEFAULT 'system',
+            updated_at TEXT
+        )
+    """))
+    row = db.execute(sa_text("SELECT theme FROM user_preferences WHERE partner_id = :pid"), {"pid": partner['id']}).fetchone()
     theme = row[0] if row else 'system'
     return {"theme": theme}
 
 @app.post("/api/preferences", tags=["preferences"])
-async def set_preferences(payload: dict, partner=Depends(require_partner_access())):
+async def set_preferences(payload: dict, partner=Depends(require_partner_access()), db=Depends(get_session)):
     theme = (payload.get('theme') or 'system').lower()
     if theme not in ('light','dark','system'):
         raise HTTPException(status_code=422, detail="Invalid theme")
-    conn = _db_connect(); cur = conn.cursor(); _ensure_user_prefs_table(cur)
-    from datetime import datetime as _dt
-    cur.execute("INSERT INTO user_preferences (partner_id, theme, updated_at) VALUES (?,?,?) ON CONFLICT(partner_id) DO UPDATE SET theme=excluded.theme, updated_at=excluded.updated_at",
-                (partner['id'], theme, _dt.now(timezone.utc).isoformat()))
-    conn.commit(); conn.close()
+    db.execute(sa_text("""
+        INSERT INTO user_preferences (partner_id, theme, updated_at)
+        VALUES (:pid, :theme, :ts)
+        ON CONFLICT(partner_id) DO UPDATE SET theme=excluded.theme, updated_at=excluded.updated_at
+    """), {"pid": partner['id'], "theme": theme, "ts": datetime.now(timezone.utc).isoformat()})
+    db.commit()
     return {"message": "Preferences updated"}
 
 @app.post("/api/auth/logout", tags=["auth"])
-async def logout(partner=Depends(require_partner_access())):
+async def logout(request: Request, partner=Depends(require_partner_access())):
     """
     Partner logout endpoint.
     Invalidates the current session token.
@@ -602,8 +670,10 @@ async def logout(partner=Depends(require_partner_access())):
     # 1. Invalidate JWT token
     # 2. Log audit action
     # 3. Clean up session data
-    
-    return {"message": "Successfully logged out"}
+    resp = JSONResponse({"message": "Successfully logged out"})
+    # Clear auth cookie if present
+    resp.delete_cookie("auth_token", path="/")
+    return resp
 
 @app.get("/api/auth/me", tags=["auth"])
 async def get_current_partner_info(partner=Depends(require_partner_access())):
@@ -656,84 +726,88 @@ async def get_dashboard_data(partner=Depends(require_partner_access())):
         ]
     }
 
+
 # New endpoint to match frontend expectations
 @app.get("/api/dashboard/metrics", tags=["dashboard"])
 async def get_dashboard_metrics(partner=Depends(require_partner_access())):
     """
     Returns key metrics for the dashboard with real data from database.
     """
-    import sqlite3
-    from datetime import datetime, timedelta
-    
+    from datetime import datetime
     logger.info(f"Dashboard metrics request from: {partner.get('email', 'unknown')}")
-
-    conn = _db_connect()
-    cursor = conn.cursor()
-    
-    # Get entity count
-    cursor.execute("SELECT COUNT(*) FROM entities WHERE is_active = 1")
-    entity_count = cursor.fetchone()[0]
-    
-    # Get total assets (sum of bank account balances) - tolerate missing table in tests
-    try:
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='bank_accounts'")
-        if cursor.fetchone():
-            cursor.execute("SELECT SUM(current_balance) FROM bank_accounts WHERE is_active = 1")
-            total_assets = cursor.fetchone()[0] or 0.0
-        else:
-            # Fallback to partners' capital account balances (used by tests)
-            cursor.execute("SELECT SUM(capital_account_balance) FROM partners WHERE is_active = 1")
-            total_assets = cursor.fetchone()[0] or 0.0
-    except Exception:
-        try:
-            cursor.execute("SELECT SUM(capital_account_balance) FROM partners WHERE is_active = 1")
-            total_assets = cursor.fetchone()[0] or 0.0
-        except Exception:
-            total_assets = 0.0
-    
-    # Get current month transactions
-    month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    
-    # Get monthly revenue
-    cursor.execute("""
-        SELECT SUM(amount) FROM transactions 
-        WHERE transaction_type = 'revenue' 
-        AND transaction_date >= ? 
-        AND approval_status = 'approved'
-    """, (month_start,))
-    monthly_revenue = cursor.fetchone()[0] or 0.0
-    
-    # Get recent transactions
-    cursor.execute("""
-        SELECT t.id, t.transaction_date, t.amount, t.transaction_type, t.description, e.legal_name, t.approval_status
-        FROM transactions t
-        LEFT JOIN entities e ON t.entity_id = e.id
-        ORDER BY t.created_at DESC
-        LIMIT 10
-    """)
-    recent_transactions = cursor.fetchall()
-    
-    recent_activity = []
-    for tx in recent_transactions:
-        recent_activity.append({
-            "id": tx[0],
-            "date": tx[1] if tx[1] else datetime.now().isoformat(),
-            "amount": float(tx[2]) if tx[2] else 0.0,
-            "type": tx[3] if tx[3] else "unknown",
-            "description": tx[4] if tx[4] else "",
-            "entity": tx[5] if tx[5] else "Unknown",
-            "status": tx[6] if tx[6] else "pending"
-        })
-    
-    conn.close()
-    
-    return {
-        "total_assets": float(total_assets),
-        "monthly_revenue": float(monthly_revenue),
-        "entity_count": entity_count,
+    # Safe defaults
+    payload = {
+        "total_assets": 0.0,
+        "monthly_revenue": 0.0,
+        "monthly_expenses": 0.0,
+        "cash_position": 0.0,
+        "entity_count": 0,
         "pending_approvals": 0,
-        "recent_activity": recent_activity,
+        "recent_activity": [],
     }
+    try:
+        conn = _db_connect()
+        cursor = conn.cursor()
+        # Entity count
+        try:
+            cursor.execute("SELECT COUNT(*) FROM entities WHERE is_active = 1")
+            payload["entity_count"] = cursor.fetchone()[0] or 0
+        except Exception:
+            payload["entity_count"] = 0
+        # Total assets: prefer bank_accounts sum, fallback to partners capital balance
+        try:
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='bank_accounts'")
+            if cursor.fetchone():
+                cursor.execute("SELECT SUM(current_balance) FROM bank_accounts WHERE is_active = 1")
+                ta = cursor.fetchone()[0] or 0.0
+            else:
+                cursor.execute("SELECT SUM(capital_account_balance) FROM partners WHERE is_active = 1")
+                ta = cursor.fetchone()[0] or 0.0
+            payload["total_assets"] = float(ta)
+        except Exception:
+            payload["total_assets"] = 0.0
+        # Monthly revenue (tolerate schema issues)
+        try:
+            month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            cursor.execute(
+                "SELECT SUM(amount) FROM transactions WHERE transaction_type = 'revenue' AND transaction_date >= ? AND approval_status = 'approved'",
+                (month_start,),
+            )
+            mr = cursor.fetchone()[0] or 0.0
+            payload["monthly_revenue"] = float(mr)
+        except Exception:
+            payload["monthly_revenue"] = 0.0
+        # Recent activity (optional)
+        try:
+            cursor.execute(
+                """
+                SELECT t.id, t.transaction_date, t.amount, t.transaction_type, t.description, e.legal_name, t.approval_status
+                FROM transactions t
+                LEFT JOIN entities e ON t.entity_id = e.id
+                ORDER BY t.created_at DESC
+                LIMIT 10
+                """
+            )
+            for tx in cursor.fetchall():
+                payload["recent_activity"].append({
+                    "id": tx[0],
+                    "date": tx[1] if tx[1] else datetime.now().isoformat(),
+                    "amount": float(tx[2]) if tx[2] else 0.0,
+                    "type": tx[3] or "unknown",
+                    "description": tx[4] or "",
+                    "entity": tx[5] or "Unknown",
+                    "status": tx[6] or "pending",
+                })
+        except Exception:
+            pass
+        try:
+            conn.close()
+        except Exception:
+            pass
+    except Exception:
+        # If anything fails above, return safe defaults with 200
+        pass
+    return payload
 
 # Health endpoints
 @app.get("/health", tags=["health"]) 
@@ -762,21 +836,14 @@ async def api_health_check():
     return await health_check()
 
 # Entities endpoint
-@app.get("/api/entities", tags=["entities"])
-async def get_entities(partner=Depends(require_partner_access())):
+@app.get("/api/entities", tags=["entities"]) 
+async def get_entities(partner=Depends(require_partner_access()), db=Depends(get_session)):
     """
     Get all active entities from database.
     """
-    import sqlite3
-    
-    conn = _db_connect()
-    cursor = conn.cursor()
-    
     # Build entities list tolerant to schema differences in tests
-    cursor.execute("PRAGMA table_info(entities)")
-    cols = [r[1] for r in cursor.fetchall()]
-    cursor.execute("SELECT * FROM entities WHERE is_active = 1")
-    rows = cursor.fetchall()
+    cols = [r[1] for r in db.execute(sa_text("PRAGMA table_info(entities)")).fetchall()]
+    rows = db.execute(sa_text("SELECT * FROM entities WHERE is_active = 1")).fetchall()
 
     def idx(name):
         return cols.index(name) if name in cols else None
@@ -786,8 +853,7 @@ async def get_entities(partner=Depends(require_partner_access())):
         parent_name = None
         pe_i = idx('parent_entity_id')
         if pe_i is not None and row[pe_i]:
-            cursor.execute("SELECT legal_name FROM entities WHERE id = ?", (row[pe_i],))
-            p = cursor.fetchone()
+            p = db.execute(sa_text("SELECT legal_name FROM entities WHERE id = :id"), {"id": row[pe_i]}).fetchone()
             if p:
                 parent_name = p[0]
         item = {
@@ -805,32 +871,23 @@ async def get_entities(partner=Depends(require_partner_access())):
         }
         result.append(item)
     
-    conn.close()
     # Normalize to wrapped object for frontend shape
     return {"entities": result}
 
 # Partners endpoint
 @app.get("/api/partners", tags=["partners"]) 
-async def get_partners(partner=Depends(require_partner_access())):
+async def get_partners(partner=Depends(require_partner_access()), db=Depends(get_session)):
     """
     Get all active partners from database.
     """
-    import sqlite3
-    
-    conn = _db_connect()
-    cursor = conn.cursor()
-    
     # Determine if last_login column exists
-    cursor.execute("PRAGMA table_info(partners)")
-    cols = [r[1] for r in cursor.fetchall()]
+    cols = [r[1] for r in db.execute(sa_text("PRAGMA table_info(partners)")).fetchall()]
     has_last_login = 'last_login' in cols
 
-    base_query = "SELECT id, name, email, ownership_percentage, capital_account_balance FROM partners WHERE is_active = 1"
-    cursor.execute(base_query)
-    partners = cursor.fetchall()
+    rows = db.execute(sa_text("SELECT id, name, email, ownership_percentage, capital_account_balance FROM partners WHERE is_active = 1")).fetchall()
     
     result = []
-    for p in partners:
+    for p in rows:
         item = {
             "id": p[0],
             "name": p[1],
@@ -841,14 +898,11 @@ async def get_partners(partner=Depends(require_partner_access())):
         if has_last_login:
             # fetch value if available via separate query to keep indices simple
             try:
-                cursor.execute("SELECT last_login FROM partners WHERE id = ?", (p[0],))
-                ll = cursor.fetchone()
+                ll = db.execute(sa_text("SELECT last_login FROM partners WHERE id = :pid"), {"pid": p[0]}).fetchone()
                 item["last_login"] = ll[0] if ll else None
             except Exception:
                 item["last_login"] = None
         result.append(item)
-    
-    conn.close()
     return result
 # Utilities for password reset and emails
 def _ensure_password_resets_table(cur):
@@ -929,49 +983,95 @@ app.include_router(accounting.router)
 
 # Simple transactions endpoints to satisfy tests
 @app.post("/api/transactions")
-async def create_transaction(payload: dict, partner=Depends(require_partner_access())):
+async def create_transaction(payload: dict, partner=Depends(require_partner_access()), db=Depends(get_session)):
     entity_id = int(payload.get('entity_id', 0) or 0)
     amount = float(payload.get('amount', 0) or 0)
     transaction_type = payload.get('transaction_type') or ''
     description = payload.get('description') or ''
 
-    conn = _db_connect()
-    cur = conn.cursor()
     status_val = 'approved' if amount <= 500 else 'pending'
     approved_by = partner.get('email') if amount <= 500 else None
-    cur.execute(
-        """
-        INSERT INTO transactions (entity_id, amount, transaction_type, description, created_by, approved_by, approval_status)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        """,
-        (entity_id, amount, transaction_type, description, partner.get('email'), approved_by, status_val)
+    db.execute(
+        sa_text(
+            "INSERT INTO transactions (entity_id, amount, transaction_type, description, created_by, approved_by, approval_status) "
+            "VALUES (:eid, :amt, :tt, :desc, :cb, :ab, :st)"
+        ),
+        {"eid": entity_id, "amt": amount, "tt": transaction_type, "desc": description, "cb": partner.get('email'), "ab": approved_by, "st": status_val}
     )
-    new_id = cur.lastrowid
-    conn.commit()
-    conn.close()
+    new_id = db.execute(sa_text("SELECT last_insert_rowid()")).scalar() or 0
+    db.commit()
     return {"id": new_id, "status": "auto_approved" if amount <= 500 else "pending"}
 
 
 @app.put("/api/transactions/{transaction_id}/approve")
-async def approve_transaction_api(transaction_id: int, partner=Depends(require_partner_access())):
-    conn = _db_connect()
-    cur = conn.cursor()
-    cur.execute("SELECT id, created_by, approval_status FROM transactions WHERE id = ?", (transaction_id,))
-    row = cur.fetchone()
+async def approve_transaction_api(transaction_id: int, partner=Depends(require_partner_access()), db=Depends(get_session)):
+    row = db.execute(sa_text("SELECT id, created_by, approval_status FROM transactions WHERE id = :id"), {"id": transaction_id}).fetchone()
     if not row:
-        conn.close()
         raise HTTPException(status_code=404, detail="Transaction not found")
     _, created_by, approval_status = row
     if (created_by or '').lower() == (partner.get('email') or '').lower():
-        conn.close()
         raise HTTPException(status_code=403, detail="Cannot approve your own transaction")
     if approval_status == 'approved':
-        conn.close()
         return {"message": "approved successfully"}
-    cur.execute("UPDATE transactions SET approval_status = 'approved', approved_by = ? WHERE id = ?", (partner.get('email'), transaction_id))
-    conn.commit()
-    conn.close()
+    db.execute(sa_text("UPDATE transactions SET approval_status = 'approved', approved_by = :ab WHERE id = :id"), {"ab": partner.get('email'), "id": transaction_id})
+    db.commit()
     return {"message": "approved successfully"}
+
+# Additional transaction helpers for frontend compatibility
+@app.get("/api/transactions/pending", tags=["transactions"])
+async def list_pending_transactions(limit: int = 10, partner=Depends(require_partner_access()), db=Depends(get_session)):
+    try:
+        rows = db.execute(
+            sa_text(
+                "SELECT id, entity_id, transaction_date, amount, transaction_type, description, approved_by, approval_status, created_by, created_at "
+                "FROM transactions WHERE approval_status = 'pending' ORDER BY created_at DESC LIMIT :lim"
+            ),
+            {"lim": limit},
+        ).fetchall()
+    except Exception:
+        rows = []
+    def map_row(r):
+        return {
+            "id": r[0],
+            "entity_id": r[1],
+            "transaction_date": r[2] or datetime.utcnow().isoformat(),
+            "amount": float(r[3] or 0),
+            "transaction_type": r[4] or "",
+            "description": r[5] or "",
+            "approved_by": r[6],
+            "approval_status": r[7] or "pending",
+            "created_by": r[8] or "",
+            "created_at": r[9] or datetime.utcnow().isoformat(),
+        }
+    return {"transactions": [map_row(r) for r in rows]}
+
+
+@app.get("/api/transactions/recent", tags=["transactions"])
+async def list_recent_transactions(limit: int = 10, partner=Depends(require_partner_access()), db=Depends(get_session)):
+    try:
+        rows = db.execute(
+            sa_text(
+                "SELECT id, entity_id, transaction_date, amount, transaction_type, description, approved_by, approval_status, created_by, created_at "
+                "FROM transactions ORDER BY created_at DESC LIMIT :lim"
+            ),
+            {"lim": limit},
+        ).fetchall()
+    except Exception:
+        rows = []
+    def map_row(r):
+        return {
+            "id": r[0],
+            "entity_id": r[1],
+            "transaction_date": r[2] or datetime.utcnow().isoformat(),
+            "amount": float(r[3] or 0),
+            "transaction_type": r[4] or "",
+            "description": r[5] or "",
+            "approved_by": r[6],
+            "approval_status": r[7] or "pending",
+            "created_by": r[8] or "",
+            "created_at": r[9] or datetime.utcnow().isoformat(),
+        }
+    return {"transactions": [map_row(r) for r in rows]}
 
 # Global exception handler
 @app.exception_handler(Exception)

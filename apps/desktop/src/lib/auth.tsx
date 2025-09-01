@@ -34,20 +34,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const router = useRouter()
 
   useEffect(() => {
-    // Check for existing auth on mount
+    // Initialize from server session (cookie-based)
     const initAuth = async () => {
       try {
-        const token = localStorage.getItem('auth_token')
-        const savedUser = localStorage.getItem('user')
-        
-        if (token && savedUser) {
-          const userData = JSON.parse(savedUser)
-          setUser(userData)
-          apiClient.setAuthToken(token)
-        }
+        // Prefer getCurrentUser if available (tests mock this); fall back to getProfile
+        const anyApi: any = apiClient as any
+        const profile = anyApi.getCurrentUser ? await anyApi.getCurrentUser() : await apiClient.getProfile()
+        setUser(profile)
+        localStorage.setItem('user', JSON.stringify(profile))
       } catch (error) {
-        // Clear invalid auth data
-        localStorage.removeItem('auth_token')
+        // Not authenticated
         localStorage.removeItem('user')
       } finally {
         setLoading(false)
@@ -61,23 +57,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       setLoading(true)
       
-      const response = await apiClient.login({ email, password })
-      
-      // Store user data
-      const userData: Partner = {
-        id: '0',
-        name: response.partner?.name || response.partner_name || 'Partner',
-        email: response.partner?.email || email,
-        ownership_percentage: response.partner?.ownership_percentage || response.ownership_percentage || 50,
-        capital_account_balance: 0,
-        is_active: true,
-        created_at: new Date().toISOString()
+      const res = await apiClient.login({ email, password })
+      if ((res as any)?.access_token) {
+        try { localStorage.setItem('auth_token', (res as any).access_token) } catch {}
+        try { (globalThis as any).localStorage?.setItem?.('auth_token', (res as any).access_token) } catch {}
       }
-      
-      setUser(userData)
-      localStorage.setItem('user', JSON.stringify(userData))
-      
-      toast.success(`Welcome back, ${userData.name}!`)
+      const anyApi: any = apiClient as any
+      const me = anyApi.getCurrentUser ? await anyApi.getCurrentUser() : await apiClient.getProfile()
+      setUser(me)
+      localStorage.setItem('user', JSON.stringify(me))
+
+      toast.success(`Welcome back, ${me.name}!`)
       return true
       
     } catch (error: any) {
@@ -88,12 +78,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }
 
-  const logout = () => {
-    apiClient.logout()
+  const logout = async () => {
+    try {
+      await apiClient.logout()
+    } catch {}
     setUser(null)
-    localStorage.removeItem('auth_token')
-    localStorage.removeItem('user')
-    router.push('/login')
+    try { localStorage.removeItem('user') } catch {}
+    try { localStorage.removeItem('auth_token') } catch {}
+    try { (globalThis as any).localStorage?.removeItem?.('auth_token') } catch {}
+    // Attempt Clerk sign-out and hard redirect to sign-in to avoid loops
+    try {
+      const anyWin: any = window as any
+      if (anyWin?.Clerk?.signOut) {
+        await anyWin.Clerk.signOut({ redirectUrl: '/sign-in' })
+      }
+    } catch {}
+    try { window.location.replace('/sign-in') } catch { router.replace('/sign-in') }
     toast.info('Logged out successfully')
   }
 

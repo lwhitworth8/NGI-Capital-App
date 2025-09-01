@@ -184,19 +184,9 @@ export function AppProvider({ children }: AppProviderProps) {
       dispatch({ type: 'SET_AUTH_LOADING', payload: true });
       dispatch({ type: 'SET_ERROR', payload: null });
       
-      const response = await apiClient.login({ email, password });
-      apiClient.setAuthToken(response.access_token);
-      
-      const newUser: Partner = {
-        id: '0',
-        name: response.partner?.name || response.partner_name || 'Partner',
-        email: response.partner?.email || email,
-        ownership_percentage: response.partner?.ownership_percentage || response.ownership_percentage || 50,
-        capital_account_balance: 0,
-        is_active: true,
-        created_at: new Date().toISOString(),
-      };
-      dispatch({ type: 'SET_USER', payload: newUser });
+      await apiClient.login({ email, password });
+      const user = await apiClient.getProfile();
+      dispatch({ type: 'SET_USER', payload: user });
       // Load and apply theme preference from backend
       try {
         const prefs = await apiClient.getPreferences();
@@ -221,6 +211,11 @@ export function AppProvider({ children }: AppProviderProps) {
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
+      // Best-effort Clerk sign-out
+      try {
+        const anyWin: any = window as any;
+        await anyWin?.Clerk?.signOut?.({ redirectUrl: '/sign-in' });
+      } catch {}
       dispatch({ type: 'CLEAR_DATA' });
     }
   };
@@ -317,26 +312,17 @@ export function AppProvider({ children }: AppProviderProps) {
   // Initialize app
   useEffect(() => {
     const initializeApp = async () => {
-      const token = localStorage.getItem('auth_token');
-      if (token) {
+      try {
+        const user = await apiClient.getProfile();
+        dispatch({ type: 'SET_USER', payload: user });
         try {
-          apiClient.setAuthToken(token);
-          const user = await apiClient.getProfile();
-          dispatch({ type: 'SET_USER', payload: user });
-          try {
-            const prefs = await apiClient.getPreferences();
-            const prefTheme = (prefs?.theme as any) || 'light';
-            localStorage.setItem('theme_preference', prefTheme);
-            applyTheme(prefTheme);
-          } catch {}
-          
-          // Load initial data
-          await Promise.all([loadDashboardData(), loadEntities()]);
-        } catch (error) {
-          localStorage.removeItem('auth_token');
-          dispatch({ type: 'SET_AUTH_LOADING', payload: false });
-        }
-      } else {
+          const prefs = await apiClient.getPreferences();
+          const prefTheme = (prefs?.theme as any) || 'light';
+          localStorage.setItem('theme_preference', prefTheme);
+          applyTheme(prefTheme);
+        } catch {}
+        await Promise.all([loadDashboardData(), loadEntities()]);
+      } catch (error) {
         dispatch({ type: 'SET_AUTH_LOADING', payload: false });
       }
     };
