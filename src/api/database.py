@@ -58,6 +58,19 @@ def get_db():
         yield db
     finally:
         db.close()
+        # In tests/development with SQLite on Windows, proactively dispose the engine
+        # to release file handles between tests to avoid file locking issues.
+        try:
+            if _engine is not None and _current_url and _current_url.startswith("sqlite"):
+                _engine.dispose()
+        except Exception:
+            pass
+        # Encourage prompt GC of SQLite connections on Windows
+        try:
+            import gc as _gc
+            _gc.collect()
+        except Exception:
+            pass
 
 
 def init_db():

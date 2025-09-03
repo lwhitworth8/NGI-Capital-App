@@ -12,6 +12,8 @@ import logging
 import json
 import re
 from pathlib import Path
+import sqlite3
+from src.api.config import get_database_path
 
 # Document processing libraries
 import pypdf
@@ -382,6 +384,73 @@ async def process_document(document_id: str):
                 "status": "pending_approval"
             })
         
+        # If tax-related, persist into tax_documents for the Tax module
+        try:
+            if category == "tax":
+                # best-effort mapping of entity slug to id
+                slug = (entity or '').lower()
+                name_hint = None
+                if slug == 'ngi-advisory':
+                    name_hint = 'NGI Capital Advisory'
+                elif slug == 'creator-terminal':
+                    name_hint = 'Creator Terminal'
+                else:
+                    name_hint = 'NGI Capital'
+                eid = None
+                try:
+                    conn = sqlite3.connect(get_database_path())
+                    cur = conn.cursor()
+                    if name_hint:
+                        cur.execute("SELECT id FROM entities WHERE legal_name LIKE ? LIMIT 1", (f"%{name_hint}%",))
+                        row = cur.fetchone()
+                        if row:
+                            eid = int(row[0])
+                    # derive year/jur/form
+                    tax_year = None
+                    try:
+                        tax_year = int(extracted_data.get('tax_year')) if extracted_data.get('tax_year') else None
+                    except Exception:
+                        tax_year = None
+                    form_type = (extracted_data.get('form_type') or '').upper()
+                    text_up = (text or '').upper()
+                    jurisdiction = 'FED'
+                    if 'DELAWARE' in text_up or form_type.startswith('DE_'):
+                        jurisdiction = 'DE'
+                    elif 'CALIFORNIA' in text_up or form_type.startswith('CA_'):
+                        jurisdiction = 'CA'
+                    cur.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS tax_documents (
+                            id TEXT PRIMARY KEY,
+                            entity_id INTEGER,
+                            year INTEGER,
+                            jurisdiction TEXT,
+                            form TEXT,
+                            title TEXT,
+                            file_url TEXT,
+                            uploaded_at TEXT DEFAULT (datetime('now'))
+                        )
+                        """
+                    )
+                    cur.execute(
+                        "INSERT OR REPLACE INTO tax_documents (id, entity_id, year, jurisdiction, form, title, file_url) VALUES (?,?,?,?,?,?,?)",
+                        (
+                            document_id,
+                            eid,
+                            tax_year,
+                            jurisdiction,
+                            form_type,
+                            f"{form_type or 'TAX'} {tax_year or ''}".strip(),
+                            str(file_path),
+                        ),
+                    )
+                    conn.commit(); conn.close()
+                    result["database_updates"].append({"action": "insert_tax_document", "entity_id": eid, "year": tax_year, "jurisdiction": jurisdiction, "form": form_type})
+                except Exception as _e:
+                    logger.warning("tax_documents insert skipped: %s", str(_e))
+        except Exception:
+            pass
+
         # Move to processed folder
         processed_path = PROCESSED_DIR / file_path.name
         file_path.rename(processed_path)

@@ -3,6 +3,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* NGI UI theme bridge for up/down semantic colors */
+@import url("../lib/ui/theme-bridge.css");
+
 @layer base {
   :root {
     /* Modern Apple-inspired Light Mode */

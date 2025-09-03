@@ -5,6 +5,7 @@ Sets up the NGI Capital database with basic tables and initial data.
 """
 
 import sqlite3
+import os
 from datetime import datetime
 import bcrypt
 
@@ -19,7 +20,8 @@ def init_database():
     print("=" * 50)
     
     # Connect to database
-    conn = sqlite3.connect('ngi_capital.db')
+    db_path = os.getenv('DATABASE_PATH', 'ngi_capital.db')
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
     # Create partners table
@@ -28,7 +30,7 @@ def init_database():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT UNIQUE NOT NULL,
             name TEXT NOT NULL,
-            password_hash TEXT NOT NULL,
+            password_hash TEXT,
             ownership_percentage REAL NOT NULL,
             capital_account_balance REAL DEFAULT 0,
             is_active BOOLEAN DEFAULT 1,
@@ -36,6 +38,13 @@ def init_database():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # Ensure required columns exist for older DBs
+    try:
+        pcols = [r[1] for r in cursor.execute("PRAGMA table_info(partners)").fetchall()]
+        if 'password_hash' not in pcols:
+            cursor.execute("ALTER TABLE partners ADD COLUMN password_hash TEXT")
+    except Exception:
+        pass
     print("[OK] Partners table created")
     
     # Create entities table
@@ -104,18 +113,32 @@ def init_database():
     """)
     print("[OK] Transactions table created")
     
-    # Create chart_of_accounts table
+    # Create chart_of_accounts table aligned with API expectations
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS chart_of_accounts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            account_number TEXT UNIQUE NOT NULL,
-            account_name TEXT NOT NULL,
-            account_type TEXT NOT NULL,
-            account_category TEXT,
-            is_active BOOLEAN DEFAULT 1,
+            entity_id INTEGER,
+            account_code TEXT,
+            account_name TEXT,
+            account_type TEXT,
+            description TEXT,
+            is_active INTEGER DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # Add missing columns if table pre-existed under an older schema
+    try:
+        cols = [r[1] for r in cursor.execute("PRAGMA table_info(chart_of_accounts)").fetchall()]
+        if 'entity_id' not in cols:
+            cursor.execute("ALTER TABLE chart_of_accounts ADD COLUMN entity_id INTEGER")
+        if 'account_code' not in cols:
+            cursor.execute("ALTER TABLE chart_of_accounts ADD COLUMN account_code TEXT")
+        if 'description' not in cols:
+            cursor.execute("ALTER TABLE chart_of_accounts ADD COLUMN description TEXT")
+        if 'is_active' not in cols:
+            cursor.execute("ALTER TABLE chart_of_accounts ADD COLUMN is_active INTEGER DEFAULT 1")
+    except Exception:
+        pass
     print("[OK] Chart of accounts table created")
     
     # Create bank_accounts table
@@ -187,7 +210,14 @@ def init_database():
             """, (email, name, password_hash, ownership, 0.0, 1))
             print(f"[OK] Created partner: {name}")
         else:
-            print(f"    Partner already exists: {name}")
+            # Ensure password_hash is set for existing partner rows
+            cursor.execute("SELECT password_hash FROM partners WHERE email = ?", (email,))
+            row = cursor.fetchone()
+            if not row or not row[0]:
+                cursor.execute("UPDATE partners SET password_hash = ? WHERE email = ?", (get_password_hash(password), email))
+                print(f"[OK] Set password for partner: {name}")
+            else:
+                print(f"    Partner already exists: {name}")
     
     # Insert entities
     # Check if NGI Capital LLC exists
@@ -273,14 +303,14 @@ def init_database():
     # Insert bank accounts
     cursor.execute("""
         INSERT OR IGNORE INTO bank_accounts (entity_id, bank_name, account_name, account_type, 
-                                            account_number_masked, routing_number, current_balance, is_primary, is_active)
+                                            account_number_last4, routing_number, current_balance, is_primary, is_active)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (ngi_llc_id, "Mercury Bank", "NGI Capital Operating Account", "checking", 
           "****1234", "021000021", 0.0, 1, 1))
     
     cursor.execute("""
         INSERT OR IGNORE INTO bank_accounts (entity_id, bank_name, account_name, account_type, 
-                                            account_number_masked, routing_number, current_balance, is_primary, is_active)
+                                            account_number_last4, routing_number, current_balance, is_primary, is_active)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (ngi_llc_id, "Mercury Bank", "NGI Capital Savings Account", "savings", 
           "****5678", "021000021", 0.0, 0, 1))

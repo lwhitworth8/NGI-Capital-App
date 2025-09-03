@@ -74,7 +74,8 @@ function ForceReauthOnLoad() {
   useEffect(() => {
     try {
       if (typeof window === 'undefined') return
-      const enabled = (process.env.NEXT_PUBLIC_FORCE_REAUTH_ON_LOAD || 'true').toLowerCase() === 'true'
+      // Default disabled to avoid unexpected redirects when navigating between routes
+      const enabled = (process.env.NEXT_PUBLIC_FORCE_REAUTH_ON_LOAD || 'false').toLowerCase() === 'true'
       if (!enabled) return
       const onAuthRoute = /^\/(sign-in|sign-up)/.test(window.location.pathname)
       const done = sessionStorage.getItem('ngi_force_reauth_done') === '1'

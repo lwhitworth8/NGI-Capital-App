@@ -31,18 +31,13 @@ interface NavItem {
 }
 
 const navigation: NavItem[] = [
-  { 
-    name: 'Dashboard', 
-    href: '/dashboard',
-    icon: Home 
-  },
-  { 
-    name: 'Entities', 
-    href: '/entities',
-    icon: Building2
-  },
-  { 
-    name: 'Accounting', 
+  // 1. Dashboard
+  { name: 'Dashboard', href: '/dashboard', icon: Home },
+  // 2. Entities
+  { name: 'Entities', href: '/entities', icon: Building2 },
+  // 3. Accounting modules
+  {
+    name: 'Accounting',
     href: '/accounting',
     icon: Calculator,
     children: [
@@ -51,25 +46,18 @@ const navigation: NavItem[] = [
       { name: 'Journal Entries', href: '/accounting/journal-entries', icon: FileText },
       { name: 'Documents', href: '/accounting/documents', icon: FileText },
       { name: 'Internal Controls', href: '/accounting/internal-controls', icon: Shield },
-    ]
+    ],
   },
-  { 
-    name: 'Employees', 
-    href: '/employees',
-    icon: Users
-  },
-  { name: 'Investor Relations', href: '/investor-relations', icon: TrendingUp },
-  { 
-    name: 'NGI Advisory', 
-    href: '/ngi-advisory',
-    icon: Briefcase
-  },
-  // Direct Settings nav entry for quick access
-  {
-    name: 'Settings',
-    href: '/settings',
-    icon: Settings
-  },
+  // 4. Finance
+  { name: 'Finance', href: '/finance', icon: DollarSign },
+  // 5. Tax
+  { name: 'Tax', href: '/tax', icon: FileSpreadsheet },
+  // 6. Employees
+  { name: 'Employees', href: '/employees', icon: Users },
+  // 7. Investor Management (renamed from Investor Relations)
+  { name: 'Investor Management', href: '/investor-relations', icon: TrendingUp },
+  // 8. NGI Capital Advisory (renamed)
+  { name: 'NGI Capital Advisory', href: '/ngi-advisory', icon: Briefcase },
 ];
 
 export default function Sidebar() {

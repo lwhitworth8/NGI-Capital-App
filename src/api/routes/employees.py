@@ -1,9 +1,13 @@
 """
 Employees/HR routes
-Implements minimal teams, projects, and employees endpoints to satisfy tests.
+-------------------
+
+Multi-entity Employee module endpoints with teams/projects, KPIs and To-Dos.
+Schema evolution is done non-destructively for SQLite to avoid breaking
+existing data/tests.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -16,7 +20,34 @@ from ..auth import require_partner_access
 router = APIRouter(prefix="/api", tags=["employees"])
 
 
+def _has_table(db: Session, name: str) -> bool:
+    row = db.execute(sa_text("SELECT name FROM sqlite_master WHERE type='table' AND name = :n"), {"n": name}).fetchone()
+    return bool(row)
+
+
+def _has_column(db: Session, table: str, column: str) -> bool:
+    try:
+        rows = db.execute(sa_text(f"PRAGMA table_info({table})")).fetchall()
+        return any((r[1] == column) for r in rows)
+    except Exception:
+        return False
+
+
+def _add_column_if_missing(db: Session, table: str, column: str, coltype: str) -> None:
+    if not _has_column(db, table, column):
+        db.execute(sa_text(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}"))
+
+
+def _resolve_entity_id(entity: Optional[int] = None, entity_id: Optional[int] = None) -> int:
+    """Accept either query param name and return a single int id (or 0)."""
+    try:
+        return int(entity or 0) or int(entity_id or 0)
+    except Exception:
+        return 0
+
+
 def _ensure_hr_schema(db: Session) -> None:
+    # Teams
     db.execute(
         sa_text(
             """
@@ -25,11 +56,16 @@ def _ensure_hr_schema(db: Session) -> None:
                 entity_id INTEGER NOT NULL,
                 name TEXT NOT NULL,
                 description TEXT,
-                is_active INTEGER DEFAULT 1
+                type TEXT,
+                lead_employee_id INTEGER,
+                active INTEGER DEFAULT 1,
+                created_at TEXT,
+                updated_at TEXT
             )
             """
         )
     )
+    # Projects (for Advisory)
     db.execute(
         sa_text(
             """
@@ -44,6 +80,7 @@ def _ensure_hr_schema(db: Session) -> None:
             """
         )
     )
+    # Employees (add evolvable columns below)
     db.execute(
         sa_text(
             """
@@ -66,6 +103,7 @@ def _ensure_hr_schema(db: Session) -> None:
             """
         )
     )
+    # Legacy employee->project links
     db.execute(
         sa_text(
             """
@@ -76,6 +114,99 @@ def _ensure_hr_schema(db: Session) -> None:
             """
         )
     )
+    # Team memberships
+    db.execute(
+        sa_text(
+            """
+            CREATE TABLE IF NOT EXISTS team_memberships (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                team_id INTEGER NOT NULL,
+                employee_id INTEGER NOT NULL,
+                role_on_team TEXT,
+                start_date TEXT,
+                end_date TEXT,
+                allocation_pct REAL DEFAULT 100,
+                UNIQUE(team_id, employee_id, start_date)
+            )
+            """
+        )
+    )
+    # Employee tasks
+    db.execute(
+        sa_text(
+            """
+            CREATE TABLE IF NOT EXISTS employee_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                employee_id INTEGER,
+                entity_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                notes TEXT,
+                due_at TEXT,
+                status TEXT DEFAULT 'Open',
+                created_by TEXT,
+                created_at TEXT,
+                updated_at TEXT
+            )
+            """
+        )
+    )
+
+    # Employee entity memberships (normalization)
+    db.execute(
+        sa_text(
+            """
+            CREATE TABLE IF NOT EXISTS employee_entity_memberships (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                employee_id INTEGER NOT NULL,
+                entity_id INTEGER NOT NULL,
+                primary_entity INTEGER DEFAULT 0,
+                cost_center TEXT,
+                allocation_pct REAL DEFAULT 100,
+                UNIQUE(employee_id, entity_id)
+            )
+            """
+        )
+    )
+
+    # Evolve employees table with richer fields when missing
+    for col, typ in [
+        ("legal_name", "TEXT"),
+        ("preferred_name", "TEXT"),
+        ("work_location", "TEXT"),
+        ("level", "TEXT"),
+        ("base_comp", "REAL"),
+        ("currency", "TEXT"),
+        ("benefits_json", "TEXT"),
+        ("pii_json_encrypted", "TEXT"),
+        ("deleted_at", "TEXT"),
+        ("created_at", "TEXT"),
+        ("updated_at", "TEXT"),
+    ]:
+        try:
+            _add_column_if_missing(db, "employees", col, typ)
+        except Exception:
+            pass
+
+    # Ensure teams has newer columns on older DBs
+    for col, typ in [
+        ("type", "TEXT"),
+        ("lead_employee_id", "INTEGER"),
+        ("active", "INTEGER DEFAULT 1"),
+        ("created_at", "TEXT"),
+        ("updated_at", "TEXT"),
+    ]:
+        try:
+            _add_column_if_missing(db, "teams", col, typ)
+        except Exception:
+            pass
+
+    # Helpful indexes
+    try:
+        db.execute(sa_text("CREATE INDEX IF NOT EXISTS idx_employees_status ON employees(status)"))
+        db.execute(sa_text("CREATE INDEX IF NOT EXISTS idx_employees_type ON employees(employment_type)"))
+        db.execute(sa_text("CREATE INDEX IF NOT EXISTS idx_emp_memberships_entity ON employee_entity_memberships(entity_id)"))
+    except Exception:
+        pass
 
 
 def _ensure_default_teams(db: Session, entity_id: int) -> None:
@@ -87,7 +218,7 @@ def _ensure_default_teams(db: Session, entity_id: int) -> None:
         if not row:
             db.execute(
                 sa_text(
-                    "INSERT INTO teams (entity_id, name, description, is_active) VALUES (:e,:n,'',1)"
+                    "INSERT INTO teams (entity_id, name, description, active, created_at, updated_at) VALUES (:e,:n,'',1,datetime('now'),datetime('now'))"
                 ),
                 {"e": entity_id, "n": name},
             )
@@ -96,17 +227,21 @@ def _ensure_default_teams(db: Session, entity_id: int) -> None:
 
 @router.get("/teams")
 async def list_teams(
-    entity_id: int = Query(...),
+    entity: int | None = Query(None),
+    entity_id: int | None = Query(None),
     partner=Depends(require_partner_access()),
     db: Session = Depends(get_db),
 ):
     _ensure_hr_schema(db)
-    _ensure_default_teams(db, entity_id)
+    eid = _resolve_entity_id(entity, entity_id)
+    if not eid:
+        raise HTTPException(status_code=422, detail="entity is required")
+    _ensure_default_teams(db, eid)
     rows = db.execute(
         sa_text(
-            "SELECT id, name, description, is_active FROM teams WHERE entity_id = :e ORDER BY name"
+            "SELECT id, name, description, COALESCE(active,1), type, lead_employee_id FROM teams WHERE entity_id = :e ORDER BY name"
         ),
-        {"e": entity_id},
+        {"e": eid},
     ).fetchall()
     return [
         {
@@ -114,6 +249,8 @@ async def list_teams(
             "name": r[1],
             "description": r[2],
             "is_active": bool(r[3]),
+            "type": r[4],
+            "lead_employee_id": r[5],
         }
         for r in rows
     ]
@@ -126,31 +263,88 @@ async def create_team(
     db: Session = Depends(get_db),
 ):
     _ensure_hr_schema(db)
-    entity_id = int(payload.get("entity_id") or 0)
+    entity_id = _resolve_entity_id(payload.get("entity"), payload.get("entity_id"))
     name = (payload.get("name") or "").strip()
     if not entity_id or not name:
         raise HTTPException(status_code=422, detail="Missing entity_id or name")
     db.execute(
-        sa_text("INSERT INTO teams (entity_id, name, description, is_active) VALUES (:e,:n,:d,1)"),
-        {"e": entity_id, "n": name, "d": payload.get("description") or ""},
+        sa_text("INSERT INTO teams (entity_id, name, description, type, lead_employee_id, active, created_at, updated_at) VALUES (:e,:n,:d,:t,:lead,1,datetime('now'),datetime('now'))"),
+        {
+            "e": entity_id,
+            "n": name,
+            "d": payload.get("description") or "",
+            "t": payload.get("type") or None,
+            "lead": payload.get("lead_employee_id") or None,
+        },
     )
     new_id = db.execute(sa_text("SELECT last_insert_rowid()")).scalar()
     db.commit()
     return {"id": int(new_id or 0)}
 
 
-@router.get("/projects")
-async def list_projects(
-    entity_id: int = Query(...),
+@router.post("/teams/{team_id}/members")
+async def add_team_member(
+    team_id: int,
+    payload: Dict[str, Any],
     partner=Depends(require_partner_access()),
     db: Session = Depends(get_db),
 ):
     _ensure_hr_schema(db)
+    emp_id = int(payload.get("employee_id") or 0)
+    if not emp_id:
+        raise HTTPException(status_code=422, detail="employee_id required")
+    db.execute(
+        sa_text(
+            "INSERT OR IGNORE INTO team_memberships (team_id, employee_id, role_on_team, start_date, allocation_pct) VALUES (:tid,:eid,:role,:sd,:ap)"
+        ),
+        {
+            "tid": team_id,
+            "eid": emp_id,
+            "role": payload.get("role_on_team") or None,
+            "sd": payload.get("start_date") or None,
+            "ap": float(payload.get("allocation_pct") or 100),
+        },
+    )
+    try:
+        db.execute(sa_text("UPDATE employees SET team_id = :tid WHERE id = :id"), {"tid": team_id, "id": emp_id})
+    except Exception:
+        pass
+    db.commit()
+    return {"message": "added"}
+
+
+@router.delete("/teams/{team_id}/members/{employee_id}")
+async def remove_team_member(
+    team_id: int,
+    employee_id: int,
+    partner=Depends(require_partner_access()),
+    db: Session = Depends(get_db),
+):
+    _ensure_hr_schema(db)
+    db.execute(
+        sa_text("DELETE FROM team_memberships WHERE team_id = :tid AND employee_id = :eid"),
+        {"tid": team_id, "eid": employee_id},
+    )
+    db.commit()
+    return {"message": "removed"}
+
+
+@router.get("/projects")
+async def list_projects(
+    entity: int | None = Query(None),
+    entity_id: int | None = Query(None),
+    partner=Depends(require_partner_access()),
+    db: Session = Depends(get_db),
+):
+    _ensure_hr_schema(db)
+    eid = _resolve_entity_id(entity, entity_id)
+    if not eid:
+        raise HTTPException(status_code=422, detail="entity is required")
     rows = db.execute(
         sa_text(
             "SELECT id, name, description, status FROM projects WHERE entity_id = :e ORDER BY id DESC"
         ),
-        {"e": entity_id},
+        {"e": eid},
     ).fetchall()
     return [
         {
@@ -170,7 +364,7 @@ async def create_project(
     db: Session = Depends(get_db),
 ):
     _ensure_hr_schema(db)
-    entity_id = int(payload.get("entity_id") or 0)
+    entity_id = _resolve_entity_id(payload.get("entity"), payload.get("entity_id"))
     name = (payload.get("name") or "").strip()
     if not entity_id or not name:
         raise HTTPException(status_code=422, detail="Missing entity_id or name")
@@ -192,24 +386,55 @@ async def create_project(
 
 @router.get("/employees")
 async def list_employees(
-    entity_id: int = Query(...),
+    entity: int | None = Query(None),
+    entity_id: int | None = Query(None),
+    q: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    team: Optional[int] = Query(None),
+    type: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(100, ge=1, le=500),
     partner=Depends(require_partner_access()),
     db: Session = Depends(get_db),
 ):
     _ensure_hr_schema(db)
-    rows = db.execute(
-        sa_text(
-            """
-            SELECT e.id, e.name, e.email, e.title, e.role, e.classification, e.status, e.employment_type,
-                   e.start_date, e.end_date, e.team_id,
-                   (SELECT name FROM teams t WHERE t.id = e.team_id) as team_name
-            FROM employees e
-            WHERE e.entity_id = :e AND e.is_deleted = 0
-            ORDER BY e.id DESC
-            """
-        ),
-        {"e": entity_id},
-    ).fetchall()
+    eid = _resolve_entity_id(entity, entity_id)
+    if not eid:
+        raise HTTPException(status_code=422, detail="entity is required")
+    # Build dynamic filtering
+    where = [" (e.is_deleted = 0 OR e.is_deleted IS NULL) "]
+    params: Dict[str, Any] = {"eid": eid, "lim": int(pageSize), "off": int((page - 1) * pageSize)}
+    # Prefer membership scoping if table exists
+    use_memberships = _has_table(db, "employee_entity_memberships")
+    if use_memberships:
+        from_clause = " employees e LEFT JOIN employee_entity_memberships m ON m.employee_id = e.id AND m.entity_id = :eid "
+        where.append(" (e.entity_id = :eid OR m.entity_id IS NOT NULL) ")
+    else:
+        from_clause = " employees e "
+        where.append(" e.entity_id = :eid ")
+    if q:
+        where.append(" (lower(e.name) LIKE :q OR lower(coalesce(e.email,'')) LIKE :q OR lower(coalesce(e.title,'')) LIKE :q) ")
+        params["q"] = f"%{q.lower()}%"
+    if status:
+        where.append(" lower(coalesce(e.status,'active')) = :st ")
+        params["st"] = status.lower()
+    if type:
+        where.append(" lower(coalesce(e.employment_type,'')) = :tp ")
+        params["tp"] = type.lower()
+    if team:
+        where.append(" e.team_id = :tid ")
+        params["tid"] = int(team)
+    where_sql = " AND ".join(where)
+    sql = f"""
+        SELECT e.id, coalesce(e.legal_name, e.name) as name, e.email, e.title, e.role, e.classification, e.status, e.employment_type,
+               e.start_date, e.end_date, e.team_id,
+               (SELECT name FROM teams t WHERE t.id = e.team_id) as team_name
+        FROM {from_clause}
+        WHERE {where_sql}
+        ORDER BY e.id DESC
+        LIMIT :lim OFFSET :off
+    """
+    rows = db.execute(sa_text(sql), params).fetchall()
     result: List[Dict[str, Any]] = []
     for r in rows:
         projects = db.execute(
@@ -245,8 +470,8 @@ async def create_employee(
     db: Session = Depends(get_db),
 ):
     _ensure_hr_schema(db)
-    entity_id = int(payload.get("entity_id") or 0)
-    name = (payload.get("name") or "").strip()
+    entity_id = _resolve_entity_id(payload.get("entity"), payload.get("entity_id"))
+    name = (payload.get("legal_name") or payload.get("name") or "").strip()
     email = (payload.get("email") or "").strip()
     if not entity_id or not name or not email:
         raise HTTPException(status_code=422, detail="Missing required fields")
@@ -262,13 +487,15 @@ async def create_employee(
     db.execute(
         sa_text(
             """
-            INSERT INTO employees (entity_id, name, email, title, role, classification, status, employment_type, start_date, end_date, team_id, manager_id)
-            VALUES (:e,:n,:em,:ti,:ro,:cl,:st,:et,:sd,:ed,:tid,:mid)
+            INSERT INTO employees (entity_id, name, legal_name, preferred_name, email, title, role, classification, status, employment_type, start_date, end_date, team_id, manager_id, created_at, updated_at)
+            VALUES (:e,:n,:ln,:pn,:em,:ti,:ro,:cl,:st,:et,:sd,:ed,:tid,:mid,datetime('now'),datetime('now'))
             """
         ),
         {
             "e": entity_id,
             "n": name,
+            "ln": name,
+            "pn": payload.get("preferred_name") or None,
             "em": email,
             "ti": payload.get("title"),
             "ro": payload.get("role"),
@@ -281,7 +508,26 @@ async def create_employee(
             "mid": payload.get("manager_id") or None,
         },
     )
-    new_id = int(db.execute(sa_text("SELECT last_insert_rowid()")).scalar() or 0)
+    new_id = int(db.execute(sa_text("SELECT last_insert_rowid()" )).scalar() or 0)
+    # Optional memberships
+    try:
+        memberships = payload.get("memberships") or []
+        if isinstance(memberships, list):
+            for m in memberships:
+                try:
+                    ent = _resolve_entity_id(m.get("entity"), m.get("entityId") or m.get("entity_id"))
+                    if not ent:
+                        continue
+                    ap = float(m.get("allocationPct") or m.get("allocation_pct") or 100)
+                    pr = 1 if (m.get("primary") or m.get("primary_entity")) else 0
+                    db.execute(
+                        sa_text("INSERT OR IGNORE INTO employee_entity_memberships (employee_id, entity_id, allocation_pct, primary_entity) VALUES (:eid,:ent,:ap,:pr)"),
+                        {"eid": new_id, "ent": ent, "ap": ap, "pr": pr},
+                    )
+                except Exception:
+                    pass
+    except Exception:
+        pass
     pids = payload.get("project_ids") or []
     if isinstance(pids, list) and pids:
         for pid in pids:
@@ -340,3 +586,203 @@ async def delete_employee(
     db.commit()
     return {"message": "deleted"}
 
+
+@router.post("/employees/{emp_id}/memberships")
+async def add_employee_membership(
+    emp_id: int,
+    payload: Dict[str, Any],
+    partner=Depends(require_partner_access()),
+    db: Session = Depends(get_db),
+):
+    _ensure_hr_schema(db)
+    ent = _resolve_entity_id(payload.get("entity"), payload.get("entityId") or payload.get("entity_id"))
+    if not ent:
+        raise HTTPException(status_code=422, detail="entity is required")
+    ap = float(payload.get("allocationPct") or payload.get("allocation_pct") or 100)
+    pr = 1 if (payload.get("primary") or payload.get("primary_entity")) else 0
+    db.execute(
+        sa_text("INSERT OR REPLACE INTO employee_entity_memberships (employee_id, entity_id, allocation_pct, primary_entity) VALUES (:eid,:ent,:ap,:pr)"),
+        {"eid": emp_id, "ent": ent, "ap": ap, "pr": pr},
+    )
+    db.commit()
+    return {"message": "added"}
+
+
+@router.get("/employees/kpis")
+async def employees_kpis(
+    entity_id: int,
+    partner=Depends(require_partner_access()),
+    db: Session = Depends(get_db),
+):
+    _ensure_hr_schema(db)
+    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+    now = _dt.now(_tz.utc)
+    def parse(d):
+        try:
+            return _dt.fromisoformat(d)
+        except Exception:
+            try:
+                return _dt.fromisoformat(d+"T00:00:00")
+            except Exception:
+                return None
+    rows = db.execute(sa_text("SELECT status, employment_type, start_date, end_date FROM employees WHERE entity_id = :e AND (is_deleted IS NULL OR is_deleted = 0)"), {"e": entity_id}).fetchall()
+    total = len(rows)
+    active = sum(1 for r in rows if (r[0] or 'active').lower() == 'active')
+    new_hires = sum(1 for r in rows if (parse(r[2]) and (now - parse(r[2]).replace(tzinfo=_tz.utc) <= _td(days=30))))
+    attrition = sum(1 for r in rows if (parse(r[3]) and (now - parse(r[3]).replace(tzinfo=_tz.utc) <= _td(days=365))))
+    contractors = sum(1 for r in rows if (r[1] or '').lower() in ('contractor','contract'))
+    interns_students = sum(1 for r in rows if (r[1] or '').lower() in ('intern','student'))
+    months = []
+    for r in rows:
+        sd = parse(r[2]); ed = parse(r[3]) or now
+        if sd:
+            months.append(max(0, (ed - sd.replace(tzinfo=_tz.utc)).days/30.0))
+    avg_tenure = round(sum(months)/len(months), 1) if months else 0.0
+    return {
+        "headcount": total,
+        "active": active,
+        "newHires30d": new_hires,
+        "openRoles": 0,
+        "attrition12m": attrition,
+        "avgTenureMonths": avg_tenure,
+        "payrollThisMonth": 0,
+        "contractors": contractors,
+        "interns_or_students": interns_students,
+    }
+
+
+@router.get("/employee-todos")
+async def list_employee_todos(
+    entity_id: int,
+    assignee: int | None = None,
+    status: str | None = None,
+    partner=Depends(require_partner_access()),
+    db: Session = Depends(get_db),
+):
+    _ensure_hr_schema(db)
+    q = "SELECT id, employee_id, entity_id, title, notes, due_at, status, created_by, created_at, updated_at FROM employee_tasks WHERE entity_id = :e"
+    params: Dict[str, Any] = {"e": entity_id}
+    if assignee:
+        q += " AND employee_id = :a"; params["a"] = assignee
+    if status:
+        q += " AND status = :s"; params["s"] = status
+    rows = db.execute(sa_text(q + " ORDER BY COALESCE(due_at, created_at) ASC"), params).fetchall()
+    return [
+        {"id": r[0], "employee_id": r[1], "entity_id": r[2], "title": r[3], "notes": r[4], "due_at": r[5], "status": r[6], "created_by": r[7], "created_at": r[8], "updated_at": r[9]}
+        for r in rows
+    ]
+
+
+@router.post("/employee-todos")
+async def create_employee_todo(
+    payload: Dict[str, Any],
+    partner=Depends(require_partner_access()),
+    db: Session = Depends(get_db),
+):
+    _ensure_hr_schema(db)
+    eid = int(payload.get('entity_id') or 0)
+    title = (payload.get('title') or '').strip()
+    if not eid or not title:
+        raise HTTPException(status_code=422, detail="entity_id and title required")
+    db.execute(sa_text("INSERT INTO employee_tasks (employee_id, entity_id, title, notes, due_at, status, created_by, created_at, updated_at) VALUES (:emp,:ent,:ti,:no,:due,:st,:cb,datetime('now'),datetime('now'))"),
+               {"emp": payload.get('employee_id'), "ent": eid, "ti": title, "no": payload.get('notes'), "due": payload.get('due_at'), "st": payload.get('status') or 'Open', "cb": partner.get('email') if isinstance(partner, dict) else None})
+    new_id = int(db.execute(sa_text("SELECT last_insert_rowid()")).scalar() or 0)
+    db.commit()
+    return {"id": new_id}
+
+
+@router.patch("/employee-todos/{task_id}")
+async def patch_employee_todo(
+    task_id: int,
+    payload: Dict[str, Any],
+    partner=Depends(require_partner_access()),
+    db: Session = Depends(get_db),
+):
+    _ensure_hr_schema(db)
+    fields = []
+    params: Dict[str, Any] = {"id": task_id}
+    for k in ("title","notes","due_at","status","employee_id"):
+        if k in payload:
+            fields.append(f"{k} = :{k}")
+            params[k] = payload[k]
+    if not fields:
+        return {"message": "no changes"}
+    db.execute(sa_text("UPDATE employee_tasks SET " + ", ".join(fields) + ", updated_at = datetime('now') WHERE id = :id"), params)
+    db.commit()
+    return {"message": "updated"}
+
+
+@router.post("/employees/import")
+async def import_employees(
+    payload: Dict[str, Any],
+    partner=Depends(require_partner_access()),
+    db: Session = Depends(get_db),
+):
+    """
+    Import employees from CSV text. Columns: name, email, type, start, entity, team
+    Accepts payload.csv as string. Dedupe by email.
+    """
+    _ensure_hr_schema(db)
+    csv_text = payload.get("csv")
+    if not isinstance(csv_text, str) or not csv_text.strip():
+        raise HTTPException(status_code=422, detail="csv required")
+    import csv as _csv
+    from io import StringIO as _SIO
+    reader = _csv.DictReader(_SIO(csv_text))
+    created = 0
+    for row in reader:
+        name = (row.get("name") or "").strip()
+        email = (row.get("email") or "").strip().lower()
+        if not name or not email:
+            continue
+        # Skip if exists
+        exists = db.execute(sa_text("SELECT id FROM employees WHERE lower(email) = :em AND (is_deleted = 0 OR is_deleted IS NULL)"), {"em": email}).fetchone()
+        if exists:
+            continue
+        ent = row.get("entity") or payload.get("entity") or payload.get("entity_id")
+        ent_id = _resolve_entity_id(ent, None)
+        team_id = None
+        tname = (row.get("team") or "").strip()
+        if ent_id and tname:
+            tr = db.execute(sa_text("SELECT id FROM teams WHERE entity_id = :e AND lower(name) = :n"), {"e": ent_id, "n": tname.lower()}).fetchone()
+            if tr:
+                team_id = int(tr[0])
+        db.execute(
+            sa_text("INSERT INTO employees (entity_id, name, legal_name, email, employment_type, start_date, team_id, status, created_at, updated_at) VALUES (:e,:n,:n,:em,:tp,:sd,:tid,'active',datetime('now'),datetime('now'))"),
+            {
+                "e": ent_id or 0,
+                "n": name,
+                "em": email,
+                "tp": row.get("type") or None,
+                "sd": row.get("start") or None,
+                "tid": team_id,
+            },
+        )
+        created += 1
+    db.commit()
+    return {"created": created}
+
+
+@router.get("/employees/export")
+async def export_employees(
+    entity: int | None = Query(None),
+    entity_id: int | None = Query(None),
+    partner=Depends(require_partner_access()),
+    db: Session = Depends(get_db),
+):
+    _ensure_hr_schema(db)
+    eid = _resolve_entity_id(entity, entity_id)
+    if not eid:
+        raise HTTPException(status_code=422, detail="entity is required")
+    if _has_table(db, "employee_entity_memberships"):
+        rows = db.execute(sa_text("SELECT e.name, e.email, e.employment_type, e.start_date FROM employees e JOIN employee_entity_memberships m ON m.employee_id = e.id AND m.entity_id = :e WHERE (e.is_deleted = 0 OR e.is_deleted IS NULL)"), {"e": eid}).fetchall()
+    else:
+        rows = db.execute(sa_text("SELECT name, email, employment_type, start_date FROM employees WHERE entity_id = :e AND (is_deleted = 0 OR is_deleted IS NULL)"), {"e": eid}).fetchall()
+    import csv as _csv
+    from io import StringIO as _SIO
+    out = _SIO()
+    w = _csv.writer(out)
+    w.writerow(["name","email","type","start","entity"])
+    for r in rows:
+        w.writerow([r[0], r[1], r[2] or "", r[3] or "", eid])
+    return {"csv": out.getvalue()}

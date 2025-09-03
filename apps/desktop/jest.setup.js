@@ -32,3 +32,23 @@ jest.mock('next/navigation', () => {
     useSearchParams: () => new URLSearchParams(),
   };
 });
+
+// Provide a minimal global.fetch for components that call fetch in effects
+if (typeof global.fetch === 'undefined') {
+  global.fetch = jest.fn(() =>
+    Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+  );
+}
+
+// Polyfill ResizeObserver for recharts' ResponsiveContainer in jsdom
+if (typeof global.ResizeObserver === 'undefined') {
+  class ResizeObserver {
+    constructor(callback) {
+      this.callback = callback;
+    }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  global.ResizeObserver = ResizeObserver;
+}

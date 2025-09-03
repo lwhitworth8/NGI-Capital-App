@@ -119,7 +119,11 @@ class ApiClient {
             const anyWin: any = window as any
             const clerk = anyWin.Clerk
             if (clerk?.session?.getToken) {
-              const token = await clerk.session.getToken({ template: 'backend' })
+              let token: string | null = null
+              try { token = await clerk.session.getToken({ template: 'backend' }) } catch {}
+              if (!token) {
+                try { token = await clerk.session.getToken() } catch {}
+              }
               if (token) {
                 config.headers = config.headers || {}
                 ;(config.headers as any).Authorization = `Bearer ${token}`
@@ -132,10 +136,39 @@ class ApiClient {
       (error) => Promise.reject(error)
     )
 
-    // Response interceptor for error handling
+    // Response interceptor: attempt session bridge + one retry on 401
     this.client.interceptors.response.use(
       (response) => response,
-      (error) => {
+      async (error) => {
+        const status = error?.response?.status
+        const original: any = error?.config || {}
+        if (typeof window !== 'undefined' && status === 401 && !original.__retried401) {
+          try {
+            // Ask backend to set HttpOnly session cookie using current Authorization
+            const auth = (original.headers?.Authorization || original.headers?.authorization) as string | undefined
+            if (auth && auth.toLowerCase().startsWith('bearer ')) {
+              await fetch('/api/auth/session', { method: 'POST', headers: { Authorization: auth } })
+              // retry original request once
+              original.__retried401 = true
+              return this.client.request(original)
+            }
+            // If original lacked Authorization, try to obtain a Clerk token now and bridge a session
+            const anyWin: any = window as any
+            const clerk = anyWin?.Clerk
+            if (clerk?.session?.getToken) {
+              let token: string | null = null
+              try { token = await clerk.session.getToken({ template: 'backend' }) } catch {}
+              if (!token) {
+                try { token = await clerk.session.getToken() } catch {}
+              }
+              if (token) {
+                await fetch('/api/auth/session', { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+                original.__retried401 = true
+                return this.client.request(original)
+              }
+            }
+          } catch {}
+        }
         this.handleApiError(error)
         return Promise.reject(error)
       }
@@ -159,14 +192,8 @@ class ApiClient {
 
       switch (status) {
         case 401:
-          this.clearAuth()
-          toast.error('Authentication required. Please log in.')
-          if (typeof window !== 'undefined') {
-            const p = window.location.pathname || ''
-            if (!p.includes('/sign-in') && !p.includes('/sign-up')) {
-              window.location.href = '/sign-in'
-            }
-          }
+          // Do not force redirect; a session-bridge retry may have already happened.
+          toast.error('Authentication error. Please retry. If it persists, sign in again.')
           break
         case 403:
           toast.error('Access denied. Insufficient permissions.')
@@ -430,6 +457,77 @@ class ApiClient {
     return response.data
   }
 
+  // --- Tax API ---
+  async taxGetEntities(): Promise<{ defaultId?: number|string; items: any[] }> {
+    const res = await this.client.get('/tax/entities')
+    return res.data
+  }
+  async taxGetProfile(entityId: number|string): Promise<any> {
+    const res = await this.client.get('/tax/profile', { params: { entity: entityId } })
+    return res.data
+  }
+  async taxGetObligations(entityId: number|string): Promise<any[]> {
+    const res = await this.client.get('/tax/obligations', { params: { entity: entityId } })
+    return res.data
+  }
+  async taxSeedObligations(entityId: number|string): Promise<{ seeded: number }> {
+    const res = await this.client.post('/tax/seed-obligations', undefined, { params: { entity: entityId } })
+    return res.data
+  }
+  async taxRefreshCalendar(entityId: number|string): Promise<{ updated: number }> {
+    const res = await this.client.post('/tax/refresh-calendar', undefined, { params: { entity: entityId } })
+    return res.data
+  }
+  async taxGetCalendar(entityId: number|string, from?: string, to?: string): Promise<any[]> {
+    const res = await this.client.get('/tax/calendar', { params: { entity: entityId, from, to } })
+    return res.data
+  }
+  async taxGetFilings(entityId: number|string, year?: number): Promise<any[]> {
+    const res = await this.client.get('/tax/filings', { params: { entity: entityId, year } })
+    return res.data
+  }
+  async taxUpsertFiling(data: { entityId: number|string; jurisdiction: string; form: string; periodStart: string; periodEnd: string; dueDate?: string; amount?: number }): Promise<{ id: string }> {
+    const res = await this.client.post('/tax/filings', data)
+    return res.data
+  }
+  async taxPatchFiling(id: string, patch: { status?: string; amount?: number; filedDate?: string; confirmationNumber?: string }): Promise<{ message: string }> {
+    const res = await this.client.patch(`/tax/filings/${id}`, patch)
+    return res.data
+  }
+  async taxGetDocuments(entityId: number|string, year?: number): Promise<any[]> {
+    const res = await this.client.get('/tax/documents', { params: { entity: entityId, year } })
+    return res.data
+  }
+  async taxAddDocument(data: { entityId: number|string; year: number; jurisdiction: string; form: string; title: string; fileUrl: string }): Promise<{ id: string }> {
+    const res = await this.client.post('/tax/documents', data)
+    return res.data
+  }
+  async taxCalcDEFranchise(data: { entityId: number|string; method: 'authorized'|'assumed'; inputs: Record<string, any> }): Promise<any> {
+    const res = await this.client.post('/tax/calc/de-franchise', data)
+    return res.data
+  }
+  async taxCalcCaLlcFee(data: { entityId: number|string; year: number; revenue: { total: number; caPortion?: number } }): Promise<any> {
+    const res = await this.client.post('/tax/calc/ca-llc-fee', data)
+    return res.data
+  }
+  // Config
+  async taxListConfigVersions(): Promise<any[]> {
+    const res = await this.client.get('/tax/config/versions')
+    return res.data
+  }
+  async taxCreateConfigVersion(notes?: string): Promise<{ id: string }> {
+    const res = await this.client.post('/tax/config/versions', { notes })
+    return res.data
+  }
+  async taxListConfigItems(versionId?: string): Promise<any[]> {
+    const res = await this.client.get('/tax/config/items', { params: { versionId } })
+    return res.data
+  }
+  async taxUpsertConfigItem(item: { id?: string; versionId: string; key: string; value: any }): Promise<{ id: string }> {
+    const res = await this.client.post('/tax/config/items', item)
+    return res.data
+  }
+
   // Transaction approval endpoints
   async approveTransaction(transactionId: number | string): Promise<void> {
     await this.client.post(`/transactions/${transactionId}/approve`)
@@ -604,6 +702,26 @@ export async function hrUpdateEmployee(id: number, data: any): Promise<{ message
 
 export async function hrDeleteEmployee(id: number): Promise<{ message: string }> {
   return apiClient.request('DELETE', `/employees/${id}`)
+}
+
+// Employees KPIs & To-Dos
+export async function hrGetEmployeeKpis(entityId: number): Promise<any> {
+  return apiClient.request('GET', '/employees/kpis', undefined, { params: { entity_id: entityId } })
+}
+
+export async function hrGetEmployeeTodos(entityId: number, opts?: { assignee?: number; status?: string }): Promise<any[]> {
+  const params: any = { entity_id: entityId }
+  if (opts?.assignee) params.assignee = opts.assignee
+  if (opts?.status) params.status = opts.status
+  return apiClient.request('GET', '/employee-todos', undefined, { params })
+}
+
+export async function hrCreateEmployeeTodo(data: { entity_id: number; employee_id?: number; title: string; notes?: string; due_at?: string; status?: string }): Promise<{ id: number }> {
+  return apiClient.request('POST', '/employee-todos', data)
+}
+
+export async function hrPatchEmployeeTodo(id: number, patch: { title?: string; notes?: string; due_at?: string; status?: string; employee_id?: number }): Promise<{ message: string }> {
+  return apiClient.request('PATCH', `/employee-todos/${id}`, patch)
 }
 // Accounting: Unposted entries and batch post
 export async function accountingGetUnpostedEntries(entityId: number): Promise<{ id: number; entry_number: string; entry_date: string; description: string }[]> {

@@ -1,5 +1,5 @@
 /**
- * Sidebar nav tests: ensure Settings entry is present and navigates
+ * Sidebar nav tests: ensure core entries render and navigate
  */
 
 import React from 'react'
@@ -14,22 +14,22 @@ jest.mock('next/navigation', () => ({
 }))
 
 describe('Sidebar navigation', () => {
-  it('renders Settings nav entry', () => {
+  it('renders Finance and Tax nav entries', () => {
     render(<Sidebar />)
-    expect(screen.getByText('Settings')).toBeInTheDocument()
+    expect(screen.getByText('Finance')).toBeInTheDocument()
+    expect(screen.getByText('Tax')).toBeInTheDocument()
   })
 
-  it('navigates to /settings when clicking Settings', () => {
+  it('navigates to /finance when clicking Finance', () => {
     render(<Sidebar />)
-    const settingsButton = screen.getByText('Settings')
-    // Clicking nav button should change window.location.href
+    const btn = screen.getByText('Finance')
     const originalHref = window.location.href
     Object.defineProperty(window, 'location', {
       value: { href: originalHref },
       writable: true,
     })
-    fireEvent.click(settingsButton)
-    expect((window as any).location.href).toContain('/settings')
+    fireEvent.click(btn)
+    expect((window as any).location.href).toContain('/finance')
   })
 })
 

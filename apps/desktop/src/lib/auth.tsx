@@ -93,7 +93,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         await anyWin.Clerk.signOut({ redirectUrl: '/sign-in' })
       }
     } catch {}
-    try { window.location.replace('/sign-in') } catch { router.replace('/sign-in') }
+    try { router.replace('/sign-in') } catch {}
     toast.info('Logged out successfully')
   }
 

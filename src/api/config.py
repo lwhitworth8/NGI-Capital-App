@@ -9,11 +9,27 @@ def get_database_path():
     # Explicit override
     env_path = os.getenv('DATABASE_PATH')
     if env_path:
-        return os.path.abspath(env_path)
-    # Use pytest test DB when running tests (create-on-use)
+        # If an explicit path is set but doesn't exist in development, fall back to local file
+        p = os.path.abspath(env_path)
+        if os.path.exists(p):
+            return p
+        if os.getenv('ENV', 'development').lower() == 'development' and os.path.exists('ngi_capital.db'):
+            return os.path.abspath('ngi_capital.db')
+        return p
+    # Use pytest DB when running tests
     if os.getenv('PYTEST_CURRENT_TEST'):
-        # Always use absolute path to ensure all connections hit the same file
-        return os.path.abspath('test_ngi_capital.db')
+        # Prefer the canonical test DB only if it already exists so modules
+        # that seed it (e.g., investor-relations tests) can share it.
+        canonical = os.path.abspath('test_ngi_capital.db')
+        current_test = os.getenv('PYTEST_CURRENT_TEST', '')
+        # Investor relations tests expect the app to use the canonical path
+        if 'test_investor_relations.py' in current_test:
+            return canonical
+        if os.path.exists(canonical):
+            return canonical
+        # Otherwise, use a per-run ephemeral file under .tmp to avoid locks
+        os.makedirs('.tmp', exist_ok=True)
+        return os.path.abspath('.tmp/pytest.db')
     # Check if running in Docker
     if os.path.exists('/app/data'):
         return '/app/data/ngi_capital.db'

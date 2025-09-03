@@ -31,6 +31,7 @@ from jose import jwt, JWTError
 router = APIRouter(prefix="/api/accounting", tags=["accounting"])
 security = HTTPBearer()
 
+
 # Pydantic models for API requests/responses
 class ChartOfAccountRequest(BaseModel):
     entity_id: int
