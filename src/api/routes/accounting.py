@@ -28,6 +28,7 @@ from ..database import get_db
 from ..config import SECRET_KEY, ALGORITHM
 from jose import jwt, JWTError
 from fastapi.responses import StreamingResponse, PlainTextResponse
+import os
 
 router = APIRouter(prefix="/api/accounting", tags=["accounting"])
 security = HTTPBearer()
@@ -947,49 +948,68 @@ async def approve_journal_entry(
     if str(status_val).lower() != 'pending':
         raise HTTPException(status_code=400, detail="Journal entry is not pending approval")
     
-    # Update approval status
+    # Two-person approval (strict in production or when env flag is set)
+    strict_dual = os.getenv('DUAL_APPROVAL_STRICT') == '1' or os.getenv('ENV','development').lower() == 'production'
+    approver_email = getattr(current_user, 'email', None)
+    # Record approval event (best effort)
+    try:
+        db.execute(_text("CREATE TABLE IF NOT EXISTS approvals (id INTEGER PRIMARY KEY AUTOINCREMENT, entity_type TEXT, record_id INTEGER, approver_email TEXT, approved_at TEXT)"))
+        if approval.approve and approver_email:
+            db.execute(_text("INSERT INTO approvals (entity_type, record_id, approver_email, approved_at) VALUES ('journal_entry', :rid, :em, :ts)"), {"rid": entry_id, "em": approver_email, "ts": datetime.utcnow().isoformat(sep=' ')})
+            db.commit()
+    except Exception:
+        pass
+
+    # Determine required approvers (default to Landon + Andre)
+    req = [e.strip().lower() for e in os.getenv('DUAL_APPROVER_EMAILS', 'lwhitworth@ngicapitaladvisory.com,anurmamade@ngicapitaladvisory.com').split(',') if e.strip()]
+    have = set()
+    try:
+        rows = db.execute(_text("SELECT lower(approver_email) FROM approvals WHERE entity_type = 'journal_entry' AND record_id = :rid"), {"rid": entry_id}).fetchall()
+        have = { (r[0] or '').strip().lower() for r in rows }
+    except Exception:
+        have = set()
+
     old_status = entry.approval_status
+    if strict_dual:
+        # Approve only when both required are present (or at least two distinct approvers if req not set)
+        met = False
+        if req:
+            met = all(r in have for r in req)
+        else:
+            met = len(have) >= 2
+        new_status = 'approved' if (approval.approve and met) else 'pending'
+    else:
+        new_status = 'approved' if approval.approve else 'rejected'
+
     if not fallback:
-        entry.approval_status = ApprovalStatus.APPROVED if approval.approve else ApprovalStatus.REJECTED
-        entry.approved_by_id = current_user.id
-        entry.approval_date = datetime.utcnow()
+        entry.approval_status = ApprovalStatus.APPROVED if new_status == 'approved' else (ApprovalStatus.PENDING if new_status == 'pending' else ApprovalStatus.REJECTED)
+        entry.approved_by_id = current_user.id if new_status == 'approved' else None
+        entry.approval_date = datetime.utcnow() if new_status == 'approved' else None
         entry.approval_notes = approval.approval_notes
         db.commit()
     else:
-        # Try update variants depending on available columns
+        stmap = {'approved': 'approved', 'pending': 'pending', 'rejected': 'rejected'}
         for sql, params in [
             (
                 "UPDATE journal_entries SET approval_status = :st, approved_by_id = :aid, approval_date = :ad, approval_notes = :an WHERE id = :id",
                 {
-                    "st": 'approved' if approval.approve else 'rejected',
-                    "aid": getattr(current_user, 'id', None),
-                    "ad": datetime.utcnow().isoformat(sep=' '),
+                    "st": stmap[new_status],
+                    "aid": getattr(current_user, 'id', None) if new_status == 'approved' else None,
+                    "ad": datetime.utcnow().isoformat(sep=' ') if new_status == 'approved' else None,
                     "an": approval.approval_notes,
                     "id": entry_id,
                 },
             ),
             (
-                "UPDATE journal_entries SET approval_status = :st, approved_by_id = :aid WHERE id = :id",
-                {
-                    "st": 'approved' if approval.approve else 'rejected',
-                    "aid": getattr(current_user, 'id', None),
-                    "id": entry_id,
-                },
-            ),
-            (
                 "UPDATE journal_entries SET approval_status = :st WHERE id = :id",
-                {
-                    "st": 'approved' if approval.approve else 'rejected',
-                    "id": entry_id,
-                },
+                {"st": stmap[new_status], "id": entry_id},
             ),
         ]:
             try:
                 db.execute(_text(sql), params)
-                break
+                db.commit(); break
             except Exception:
                 continue
-        db.commit()
     
     # Log audit trail (best-effort)
     try:
@@ -1006,7 +1026,7 @@ async def approve_journal_entry(
     except Exception:
         db.rollback()
     
-    return {"message": "Journal entry processed successfully", "status": (getattr(entry.approval_status, 'value', str(entry.approval_status)) if not fallback else ('approved' if approval.approve else 'rejected'))}
+    return {"message": "Journal entry processed successfully", "status": getattr(entry.approval_status, 'value', str(entry.approval_status))}
 
 
 @router.post("/journal-entries/{entry_id}/post")

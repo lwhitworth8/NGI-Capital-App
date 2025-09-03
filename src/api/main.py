@@ -1167,6 +1167,29 @@ async def approve_transaction_api(transaction_id: int, partner=Depends(require_p
         raise HTTPException(status_code=403, detail="Cannot approve your own transaction")
     if approval_status == 'approved':
         return {"message": "approved successfully"}
+    # Dual-approval strict mode
+    strict_dual = os.getenv('DUAL_APPROVAL_STRICT') == '1' or os.getenv('ENV','development').lower() == 'production'
+    approver_email = partner.get('email')
+    try:
+        db.execute(sa_text("CREATE TABLE IF NOT EXISTS approvals (id INTEGER PRIMARY KEY AUTOINCREMENT, entity_type TEXT, record_id INTEGER, approver_email TEXT, approved_at TEXT)"))
+        if approver_email:
+            db.execute(sa_text("INSERT INTO approvals (entity_type, record_id, approver_email, approved_at) VALUES ('transaction', :rid, :em, :ts)"), {"rid": transaction_id, "em": approver_email, "ts": datetime.utcnow().isoformat()})
+            db.commit()
+    except Exception:
+        pass
+    if strict_dual:
+        req = [e.strip().lower() for e in os.getenv('DUAL_APPROVER_EMAILS', 'lwhitworth@ngicapitaladvisory.com,anurmamade@ngicapitaladvisory.com').split(',') if e.strip()]
+        have = set()
+        try:
+            rows = db.execute(sa_text("SELECT lower(approver_email) FROM approvals WHERE entity_type = 'transaction' AND record_id = :rid"), {"rid": transaction_id}).fetchall()
+            have = { (r[0] or '').strip().lower() for r in rows }
+        except Exception:
+            have = set()
+        met = all(r in have for r in req) if req else len(have) >= 2
+        if not met:
+            # leave pending until both approvals present
+            db.execute(sa_text("UPDATE transactions SET approval_status = 'pending' WHERE id = :id"), {"id": transaction_id}); db.commit()
+            return {"message": "awaiting second approval"}
     db.execute(sa_text("UPDATE transactions SET approval_status = 'approved', approved_by = :ab WHERE id = :id"), {"ab": partner.get('email'), "id": transaction_id})
     db.commit()
     return {"message": "approved successfully"}

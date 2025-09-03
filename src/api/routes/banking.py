@@ -456,6 +456,45 @@ async def manual_match(payload: Dict[str, Any], db: Session = Depends(get_db)):
     db.commit()
     return {"message": "matched"}
 
+
+@router.post("/reconciliation/split")
+async def split_transaction(payload: Dict[str, Any], db: Session = Depends(get_db)):
+    """Split a transaction into multiple parts. Payload: { txn_id, splits: [{ amount, description }] }"""
+    tid = int(payload.get('txn_id') or 0)
+    splits = payload.get('splits') or []
+    if not tid or not isinstance(splits, list) or not splits:
+        raise HTTPException(status_code=422, detail="txn_id and splits required")
+    row = db.execute(sa_text("SELECT bank_account_id, amount, description, transaction_date, transaction_type, balance_after FROM bank_transactions WHERE id = :id"), {"id": tid}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    ba, amt, desc, tdate, ttype, bal = row
+    total = 0.0
+    for s in splits:
+        try: total += float(s.get('amount') or 0)
+        except Exception: pass
+    if round(abs(total) - abs(float(amt or 0)), 2) != 0:
+        raise HTTPException(status_code=400, detail="Split amounts must sum to original amount")
+    # Update original to first split, insert the rest
+    first = splits[0]
+    db.execute(sa_text("UPDATE bank_transactions SET amount = :a, description = :d WHERE id = :id"), {"a": float(first.get('amount') or 0), "d": (first.get('description') or desc), "id": tid})
+    for s in splits[1:]:
+        db.execute(sa_text("INSERT INTO bank_transactions (bank_account_id, external_transaction_id, transaction_date, posted_date, amount, description, transaction_type, balance_after, is_reconciled) VALUES (:ba, :x, :td, :pd, :amt, :desc, :tt, :bal, 0)"), {
+            "ba": ba, "x": f"split_{tid}_{datetime.utcnow().timestamp()}", "td": tdate, "pd": tdate, "amt": float(s.get('amount') or 0), "desc": s.get('description') or desc, "tt": ttype, "bal": bal or 0.0
+        })
+    db.commit()
+    return {"message": "split", "parts": len(splits)}
+
+
+@router.get("/reconciliation/stats")
+async def reconciliation_stats(db: Session = Depends(get_db)):
+    """Return cleared percentage per account."""
+    rows = db.execute(sa_text("SELECT ba.id, ba.account_name, SUM(CASE WHEN bt.is_reconciled = 1 THEN 1 ELSE 0 END) as cleared, COUNT(bt.id) as total FROM bank_accounts ba LEFT JOIN bank_transactions bt ON bt.bank_account_id = ba.id GROUP BY ba.id, ba.account_name"), {}).fetchall()
+    out = []
+    for id_, name, cleared, total in rows:
+        pct = (float(cleared or 0) / float(total or 1)) * 100.0
+        out.append({"bank_account_id": id_, "account_name": name, "cleared": int(cleared or 0), "total": int(total or 0), "percent": round(pct, 1)})
+    return out
+
 @router.get("/pending-approvals")
 async def get_pending_approvals(db: Session = Depends(get_db)):
     # Integrate with accounting transactions table if present

@@ -22,6 +22,7 @@ from src.api.config import get_database_path
 from sqlalchemy.orm import Session
 from sqlalchemy import text as sa_text
 from src.api.database import get_db
+import os
 
 # Document processing libraries (best-effort imports)
 try:
@@ -789,6 +790,40 @@ async def process_document(document_id: str, entity_id: int | None = Query(None)
                     result["database_updates"].append({"action": "insert_tax_document", "entity_id": eid, "year": tax_year, "jurisdiction": jurisdiction, "form": form_type})
                 except Exception as _e:
                     logger.warning("tax_documents insert skipped: %s", str(_e))
+        except Exception:
+            pass
+
+        # First-Time Close automation on formation documents
+        try:
+            if os.getenv('FIRST_TIME_CLOSE_AUTO') == '1' and category == 'formation':
+                # Seed minimal COA and lock months from July to current using close logic
+                if entity_id:
+                    # ensure minimal COA
+                    _ensure_minimal_accounts(db, int(entity_id))
+                    from datetime import date as _date
+                    today = _date.today()
+                    start_year = today.year
+                    start_month = 7
+                    # Iterate from July to previous month
+                    y, m = start_year, start_month
+                    while (y < today.year) or (y == today.year and m <= today.month):
+                        # Skip current month locking
+                        if (y, m) < (today.year, today.month):
+                            try:
+                                from .accounting import close_preview as _cp, close_run as _cr
+                            except Exception:
+                                _cp = None; _cr = None
+                            # Only run when API functions are imported; otherwise do nothing
+                            if _cp and _cr:
+                                try:
+                                    await _cp(entity_id=int(entity_id), year=y, month=m, partner=None, db=db)  # type: ignore
+                                    await _cr(payload={"entity_id": int(entity_id), "year": y, "month": m}, partner=None, db=db)  # type: ignore
+                                except Exception:
+                                    pass
+                        # increment month
+                        m += 1
+                        if m > 12:
+                            m = 1; y += 1
         except Exception:
             pass
 
