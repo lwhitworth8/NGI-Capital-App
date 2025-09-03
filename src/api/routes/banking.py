@@ -86,13 +86,39 @@ def _ensure_bank_tables(db: Session):
     db.commit()
 
 
+def _resolve_mercury_creds(entity: Optional[str]) -> Dict[str, Optional[str]]:
+    """Resolve API credentials by entity slug; fallback to global env vars.
+    Slugs supported: 'ngi-capital-llc', 'ngi-capital-inc', 'creator-terminal'.
+    """
+    mapping = {
+        'ngi-capital-llc': (
+            os.getenv('NGI_CAPITAL_LLC_MERCURY_API_KEY'),
+            os.getenv('NGI_CAPITAL_LLC_MERCURY_API_SECRET')
+        ),
+        'ngi-capital-inc': (
+            os.getenv('NGI_CAPITAL_INC_MERCURY_API_KEY'),
+            os.getenv('NGI_CAPITAL_INC_MERCURY_API_SECRET')
+        ),
+        'creator-terminal': (
+            os.getenv('CREATOR_TERMINAL_MERCURY_API_KEY'),
+            os.getenv('CREATOR_TERMINAL_MERCURY_API_SECRET')
+        ),
+    }
+    if entity and entity in mapping:
+        k, s = mapping[entity]
+        if k:
+            return {"key": k, "secret": s}
+    # Fallback to globals
+    return {"key": MERCURY_API_KEY or None, "secret": MERCURY_API_SECRET or None}
+
+
 class MercuryClient:
-    def __init__(self):
+    def __init__(self, key: Optional[str] = None, secret: Optional[str] = None):
         self.base = MERCURY_API_BASE_URL.rstrip('/')
-        self.key = MERCURY_API_KEY
-        self.secret = MERCURY_API_SECRET
+        self.key = key or MERCURY_API_KEY
+        self.secret = secret or MERCURY_API_SECRET
         if not self.key:
-            logger.warning("MERCURY_API_KEY not set; Mercury sync will be a no-op unless mocked in tests")
+            logger.warning("Mercury API key not set; sync will return empty unless mocked in tests")
 
     def _headers(self) -> Dict[str, str]:
         h = {"Accept": "application/json"}
@@ -344,10 +370,20 @@ async def get_transactions(limit: int = Query(100, le=500), offset: int = Query(
     return {"total": len(items), "transactions": items}
 
 @router.post("/mercury/sync")
-async def mercury_sync(db: Session = Depends(get_db)):
+async def mercury_sync(entity: Optional[str] = Query(None), db: Session = Depends(get_db)):
     """Sync accounts and transactions from Mercury. Idempotent; attempts incremental using cursors."""
     _ensure_bank_tables(db)
-    client = MercuryClient()
+    creds = _resolve_mercury_creds(entity)
+    # Be resilient to monkeypatched constructor without kwargs (tests)
+    try:
+        client = MercuryClient(key=creds.get('key'), secret=creds.get('secret'))  # type: ignore[arg-type]
+    except TypeError:
+        client = MercuryClient()  # type: ignore[call-arg]
+        try:
+            setattr(client, 'key', creds.get('key'))
+            setattr(client, 'secret', creds.get('secret'))
+        except Exception:
+            pass
     accounts = client.list_accounts() or []
     synced = {"accounts": 0, "transactions": 0, "matched": 0}
     for a in accounts:

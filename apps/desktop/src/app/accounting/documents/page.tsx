@@ -43,6 +43,8 @@ import {
 } from '@/lib/config/documentTypes';
 import { DocumentExtractionService, ExtractedData } from '@/lib/services/documentExtraction';
 import { EntityDatabaseService } from '@/lib/services/entityDatabase';
+import { apiClient } from '@/lib/api';
+import { toast } from 'sonner';
 
 const API_URL = '/api';
 
@@ -109,6 +111,102 @@ const CATEGORY_ICONS: Record<string, any> = {
 };
 
 export default function DocumentsPage() {
+  // Server-backed Documents + Mercury integration
+  const [serverDocs, setServerDocs] = useState<any[]>([])
+  const [selectedServerDocId, setSelectedServerDocId] = useState<string>('')
+  const [serverDocDetail, setServerDocDetail] = useState<any | null>(null)
+  const [unmatched, setUnmatched] = useState<any[]>([])
+  const serverFileInputRef = useRef<HTMLInputElement>(null)
+
+  const reloadServerDocs = useCallback(async () => {
+    try {
+      const res = await apiClient.documentsList({ limit: 200 })
+      setServerDocs(res.documents || [])
+    } catch (e: any) {
+      try { toast.error(e?.response?.data?.detail || 'Failed to fetch documents') } catch {}
+    }
+  }, [])
+
+  const loadServerDocDetail = useCallback(async (id: string) => {
+    try {
+      const d = await apiClient.documentsGet(id)
+      setServerDocDetail(d)
+      setSelectedServerDocId(id)
+    } catch {}
+  }, [])
+
+  useEffect(() => { reloadServerDocs() }, [reloadServerDocs])
+
+  const resolveEntityId = async (slug: string): Promise<number | undefined> => {
+    try {
+      const ents = await apiClient.getEntities()
+      const hint = slug.includes('advisory') ? 'Advisory' : (slug.includes('inc') ? 'Inc' : 'NGI Capital')
+      const match = ents.find(e => (e.legal_name || '').toLowerCase().includes(hint.toLowerCase()))
+      return match ? Number(match.id) : undefined
+    } catch { return undefined }
+  }
+
+  const onServerUploadClick = () => serverFileInputRef.current?.click()
+  const onServerFilesChosen = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
+    try {
+      const up = await apiClient.documentsUpload(files)
+      const entityId = await resolveEntityId('ngi-capital-llc')
+      for (const d of up.documents) {
+        await apiClient.documentsProcess(d.id, entityId)
+      }
+      toast.success(`Processed ${up.documents.length} document(s)`) 
+      await reloadServerDocs()
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Upload failed')
+    } finally {
+      e.target.value = ''
+    }
+  }
+
+  const onPostToLedger = async () => {
+    if (!selectedServerDocId) return
+    try {
+      const res = await apiClient.documentsPostToLedger(selectedServerDocId)
+      toast.success('Posted to ledger')
+      await reloadServerDocs()
+      await loadServerDocDetail(selectedServerDocId)
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Failed to post')
+    }
+  }
+
+  const onSaveFields = async () => {
+    if (!serverDocDetail?.id) return
+    try {
+      await apiClient.documentsPatch(serverDocDetail.id, {
+        vendor: serverDocDetail.vendor,
+        invoice_number: serverDocDetail.invoice_number,
+        issue_date: serverDocDetail.issue_date,
+        due_date: serverDocDetail.due_date,
+        currency: serverDocDetail.currency,
+        subtotal: serverDocDetail.subtotal,
+        tax: serverDocDetail.tax,
+        total: serverDocDetail.total,
+      })
+      toast.success('Saved')
+      await reloadServerDocs()
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Failed to save')
+    }
+  }
+
+  const onSyncMercury = async () => {
+    try {
+      const out = await apiClient.bankingMercurySync('ngi-capital-llc')
+      toast.success(`Mercury synced: ${out.transactions} txns, ${out.matched} matched`)
+      const items = await apiClient.bankingListUnmatched()
+      setUnmatched(items || [])
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'Mercury sync failed')
+    }
+  }
   const [selectedEntity, setSelectedEntity] = useState<string>('ngi-capital-llc');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [uploadedDocuments, setUploadedDocuments] = useState<UploadedDocument[]>([]);
@@ -478,6 +576,98 @@ export default function DocumentsPage() {
 
   return (
     <div className="p-6 space-y-6">
+      {/* Server-backed Documents + Mercury */}
+      <div className="rounded-xl border border-border bg-card p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold">Documents (Server)</h2>
+          <div className="flex items-center gap-2">
+            <button onClick={onServerUploadClick} className="px-3 py-1.5 text-sm rounded border">Upload & Process</button>
+            <input ref={serverFileInputRef} type="file" multiple className="hidden" onChange={onServerFilesChosen} />
+            <button onClick={onSyncMercury} className="px-3 py-1.5 text-sm rounded border">Sync Mercury (NGI Capital LLC)</button>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="col-span-1">
+            <div className="border rounded-md divide-y">
+              {serverDocs.length === 0 && (
+                <div className="p-3 text-sm text-muted-foreground">No documents yet.</div>
+              )}
+              {serverDocs.map((d) => (
+                <button key={d.id} onClick={()=>loadServerDocDetail(d.id)} className={`w-full text-left p-3 hover:bg-muted ${selectedServerDocId===d.id?'bg-muted':''}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="font-medium truncate">{d.vendor || d.doc_type || 'Document'}</div>
+                    <div className="text-xs tabular-nums">{d.total ? `$${Number(d.total).toLocaleString()}` : ''}</div>
+                  </div>
+                  <div className="text-xs text-muted-foreground">{d.invoice_number || d.issue_date || ''}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="col-span-2">
+            {!serverDocDetail ? (
+              <div className="text-sm text-muted-foreground">Select a document to view details.</div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold">{serverDocDetail.vendor || serverDocDetail.doc_type}</h3>
+                  <div className="flex gap-2">
+                    <button onClick={onSaveFields} className="px-3 py-1.5 text-sm rounded border">Fix Fields</button>
+                    <button onClick={onPostToLedger} className="px-3 py-1.5 text-sm rounded border">Post to Ledger</button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <label className="space-y-1">
+                    <span className="block text-xs text-muted-foreground">Vendor</span>
+                    <input className="w-full px-2 py-1 border rounded bg-background" value={serverDocDetail.vendor || ''} onChange={(e)=>setServerDocDetail({...serverDocDetail, vendor: e.target.value})} />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="block text-xs text-muted-foreground">Invoice #</span>
+                    <input className="w-full px-2 py-1 border rounded bg-background" value={serverDocDetail.invoice_number || ''} onChange={(e)=>setServerDocDetail({...serverDocDetail, invoice_number: e.target.value})} />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="block text-xs text-muted-foreground">Issue Date</span>
+                    <input className="w-full px-2 py-1 border rounded bg-background" value={serverDocDetail.issue_date || ''} onChange={(e)=>setServerDocDetail({...serverDocDetail, issue_date: e.target.value})} />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="block text-xs text-muted-foreground">Currency</span>
+                    <input className="w-full px-2 py-1 border rounded bg-background" value={serverDocDetail.currency || ''} onChange={(e)=>setServerDocDetail({...serverDocDetail, currency: e.target.value})} />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="block text-xs text-muted-foreground">Subtotal</span>
+                    <input className="w-full px-2 py-1 border rounded bg-background" value={serverDocDetail.subtotal ?? ''} onChange={(e)=>setServerDocDetail({...serverDocDetail, subtotal: Number(e.target.value || 0)})} />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="block text-xs text-muted-foreground">Tax</span>
+                    <input className="w-full px-2 py-1 border rounded bg-background" value={serverDocDetail.tax ?? ''} onChange={(e)=>setServerDocDetail({...serverDocDetail, tax: Number(e.target.value || 0)})} />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="block text-xs text-muted-foreground">Total</span>
+                    <input className="w-full px-2 py-1 border rounded bg-background" value={serverDocDetail.total ?? ''} onChange={(e)=>setServerDocDetail({...serverDocDetail, total: Number(e.target.value || 0)})} />
+                  </label>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">Raw Text</div>
+                  <textarea className="w-full h-40 border rounded bg-background p-2 text-xs" readOnly value={serverDocDetail.raw_text || ''} />
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground mb-1">Unmatched Bank Transactions (after sync)</div>
+                  <div className="border rounded max-h-40 overflow-auto divide-y">
+                    {unmatched.length === 0 && (
+                      <div className="p-2 text-xs text-muted-foreground">No unmatched items.</div>
+                    )}
+                    {unmatched.map((u:any)=> (
+                      <div key={u.id} className="p-2 text-xs flex items-center justify-between">
+                        <span>{u.transaction_date} • {u.description}</span>
+                        <span className="tabular-nums">${Number(u.amount||0).toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

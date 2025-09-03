@@ -601,6 +601,44 @@ class ApiClient {
     await this.client.post(`/transactions/${id}/reject`, { reason })
   }
 
+  // Documents API
+  async documentsUpload(files: File[]): Promise<{ documents: { id: string; filename: string }[] }> {
+    const form = new FormData()
+    for (const f of files) form.append('files', f)
+    const res = await this.client.post('/documents/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+    return { documents: (res.data?.documents || []).map((d: any) => ({ id: d.id, filename: d.filename || d.original_name })) }
+  }
+  async documentsProcess(id: string, entityId?: number): Promise<any> {
+    const res = await this.client.post(`/documents/${id}/process`, undefined, { params: { entity_id: entityId } })
+    return res.data
+  }
+  async documentsList(opts?: { doc_type?: string; limit?: number }): Promise<{ documents: any[]; total: number }> {
+    const res = await this.client.get('/documents', { params: opts })
+    return res.data
+  }
+  async documentsGet(id: string): Promise<any> {
+    const res = await this.client.get(`/documents/${id}`)
+    return res.data
+  }
+  async documentsPatch(id: string, patch: Partial<{ vendor: string; invoice_number: string; issue_date: string; due_date: string; currency: string; subtotal: number; tax: number; total: number }>): Promise<{ message: string }>{
+    const res = await this.client.patch(`/documents/${id}/metadata`, patch)
+    return res.data
+  }
+  async documentsPostToLedger(id: string): Promise<{ message: string; journal_entry_id: number }>{
+    const res = await this.client.post(`/documents/${id}/post-to-ledger`)
+    return res.data
+  }
+
+  // Banking/Mercury
+  async bankingMercurySync(entitySlug?: string): Promise<{ accounts: number; transactions: number; matched: number }>{
+    const res = await this.client.post('/banking/mercury/sync', undefined, { params: { entity: entitySlug } })
+    return res.data
+  }
+  async bankingListUnmatched(): Promise<any[]> {
+    const res = await this.client.get('/banking/reconciliation/unmatched')
+    return res.data
+  }
+
   // Generic request method for custom endpoints
   async request<T = any>(
     method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
