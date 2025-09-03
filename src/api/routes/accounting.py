@@ -29,6 +29,8 @@ from ..config import SECRET_KEY, ALGORITHM
 from jose import jwt, JWTError
 from fastapi.responses import StreamingResponse, PlainTextResponse
 import os
+import io
+import zipfile
 
 router = APIRouter(prefix="/api/accounting", tags=["accounting"])
 security = HTTPBearer()
@@ -1389,6 +1391,171 @@ async def export_balance_sheet(entity_id: int, as_of_date: str, partner=Depends(
             lines.append([section, r['account_code'], r['account_name'], f"{r['amount']:.2f}"])
     add('Assets', bsd['asset_lines']); add('Liabilities', bsd['liability_lines']); add('Equity', bsd['equity_lines'])
     return PlainTextResponse(_csv(lines), media_type="text/csv")
+
+
+@router.get("/exports/close-packet")
+async def export_close_packet(entity_id: int, year: int, month: int, partner=Depends(_noop), db: Session = Depends(get_db)):
+    period_end = _period_ends(year, month)
+    # Build CSV contents
+    tb = await trial_balance(entity_id=entity_id, as_of_date=date.fromisoformat(period_end), current_user=None, db=db)  # type: ignore
+    isd = await income_statement(entity_id=entity_id, start_date=date.fromisoformat(f"{year:04d}-{month:02d}-01"), end_date=date.fromisoformat(period_end), current_user=None, db=db)  # type: ignore
+    bsd = await balance_sheet(entity_id=entity_id, as_of_date=date.fromisoformat(period_end), current_user=None, db=db)  # type: ignore
+    # CF
+    cfd = await cash_flow(entity_id=entity_id, start_date=date.fromisoformat(f"{year:04d}-{month:02d}-01"), end_date=date.fromisoformat(period_end), current_user=None, db=db)  # type: ignore
+    # Equity lines from BS
+    eq_lines = [["Account Code","Account Name","Amount"]]
+    for r in bsd['equity_lines']:
+        eq_lines.append([r['account_code'], r['account_name'], f"{r['amount']:.2f}"])
+    # Checklist
+    chk = await close_preview(entity_id, year, month, partner, db)
+
+    mem = io.BytesIO()
+    with zipfile.ZipFile(mem, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
+        # TB
+        lines = [["Account Code","Account Name","Debit","Credit"]]
+        for l in tb['lines']:
+            lines.append([l['account_code'], l['account_name'], f"{l['debit']:.2f}", f"{l['credit']:.2f}"])
+        zf.writestr('trial_balance.csv', _csv(lines))
+        # IS
+        lines = [["Account Code","Account Name","Amount"]]
+        for l in isd['revenue_lines'] + isd['expense_lines']:
+            lines.append([l['account_code'], l['account_name'], f"{l['amount']:.2f}"])
+        lines.append(["","Net Income", f"{isd['net_income']:.2f}"])
+        zf.writestr('income_statement.csv', _csv(lines))
+        # BS
+        lines = [["Section","Account Code","Account Name","Amount"]]
+        for r in bsd['asset_lines']:
+            lines.append(["Assets", r['account_code'], r['account_name'], f"{r['amount']:.2f}"])
+        for r in bsd['liability_lines']:
+            lines.append(["Liabilities", r['account_code'], r['account_name'], f"{r['amount']:.2f}"])
+        for r in bsd['equity_lines']:
+            lines.append(["Equity", r['account_code'], r['account_name'], f"{r['amount']:.2f}"])
+        zf.writestr('balance_sheet.csv', _csv(lines))
+        # CF
+        lines = [["Account Code","Account Name","Amount"]]
+        for l in cfd['cash_lines']:
+            lines.append([l['account_code'], l['account_name'], f"{l['amount']:.2f}"])
+        lines.append(["","Net Change in Cash", f"{cfd['net_change_in_cash']:.2f}"])
+        zf.writestr('cash_flow.csv', _csv(lines))
+        # Equity
+        zf.writestr('equity.csv', _csv(eq_lines))
+        # Checklist JSON
+        zf.writestr('checklist.json', json.dumps(chk, indent=2))
+    mem.seek(0)
+    fname = f"close_packet_{entity_id}_{year:04d}{month:02d}.zip"
+    return StreamingResponse(mem, media_type='application/zip', headers={'Content-Disposition': f'attachment; filename="{fname}"'})
+
+
+# --- Approvals queue ---
+@router.get("/approvals/pending")
+async def approvals_pending(partner=Depends(_noop), db: Session = Depends(get_db)):
+    from sqlalchemy import text as _text
+    rows = db.execute(_text("SELECT id, entry_number, entity_id, approval_status FROM journal_entries WHERE approval_status = 'pending'"), {}).fetchall()
+    out = []
+    req = [e.strip().lower() for e in os.getenv('DUAL_APPROVER_EMAILS', 'lwhitworth@ngicapitaladvisory.com,anurmamade@ngicapitaladvisory.com').split(',') if e.strip()]
+    for rid, eno, eid, st in rows:
+        try:
+            have_rows = db.execute(_text("SELECT lower(approver_email) FROM approvals WHERE entity_type = 'journal_entry' AND record_id = :rid"), {"rid": rid}).fetchall()
+            have = list({ (r[0] or '').strip().lower() for r in have_rows })
+        except Exception:
+            have = []
+        out.append({"id": rid, "entry_number": eno, "entity_id": eid, "status": st, "required": req, "approvals": have})
+    return out
+
+
+# --- Accrual/Prepaid/Deferral/Depreciation templates ---
+@router.post("/templates/accrual")
+async def create_accrual(payload: Dict[str, Any], partner=Depends(_noop), db: Session = Depends(get_db)):
+    eid = int(payload.get('entity_id') or 0)
+    acc_exp = int(payload.get('expense_account_id') or 0)
+    acc_accr = int(payload.get('accrual_account_id') or 0)
+    amt = float(payload.get('amount') or 0)
+    ed = (payload.get('date') or datetime.utcnow().date().isoformat())
+    if not (eid and acc_exp and acc_accr and amt):
+        raise HTTPException(status_code=422, detail="entity_id, expense_account_id, accrual_account_id, amount required")
+    from sqlalchemy import text as _text
+    db.execute(_text("INSERT INTO journal_entries (entity_id, entry_number, entry_date, description, total_debit, total_credit, approval_status, is_posted) VALUES (:e,:no,:dt,:ds,:td,:tc,'pending',0)"), {
+        "e": eid, "no": f"ACC-{eid:03d}-{int(datetime.utcnow().timestamp())}", "dt": ed, "ds": "Accrual", "td": amt, "tc": amt
+    })
+    jeid = int(db.execute(_text("SELECT last_insert_rowid()")).fetchone()[0])
+    db.execute(_text("INSERT INTO journal_entry_lines (journal_entry_id, account_id, line_number, description, debit_amount, credit_amount) VALUES (:je,:a,1,'Expense',:d,0)"), {"je": jeid, "a": acc_exp, "d": amt})
+    db.execute(_text("INSERT INTO journal_entry_lines (journal_entry_id, account_id, line_number, description, debit_amount, credit_amount) VALUES (:je,:a,2,'Accrual',0,:c)"), {"je": jeid, "a": acc_accr, "c": amt})
+    db.commit(); return {"id": jeid}
+
+
+@router.post("/templates/prepaid")
+async def create_prepaid(payload: Dict[str, Any], partner=Depends(_noop), db: Session = Depends(get_db)):
+    eid = int(payload.get('entity_id') or 0)
+    acc_prepaid = int(payload.get('prepaid_account_id') or 0)
+    acc_cash = int(payload.get('cash_account_id') or 0)
+    amt = float(payload.get('amount') or 0)
+    ed = (payload.get('date') or datetime.utcnow().date().isoformat())
+    if not (eid and acc_prepaid and acc_cash and amt):
+        raise HTTPException(status_code=422, detail="entity_id, prepaid_account_id, cash_account_id, amount required")
+    from sqlalchemy import text as _text
+    db.execute(_text("INSERT INTO journal_entries (entity_id, entry_number, entry_date, description, total_debit, total_credit, approval_status, is_posted) VALUES (:e,:no,:dt,:ds,:td,:tc,'pending',0)"), {
+        "e": eid, "no": f"PRE-{eid:03d}-{int(datetime.utcnow().timestamp())}", "dt": ed, "ds": "Prepaid", "td": amt, "tc": amt
+    })
+    jeid = int(db.execute(_text("SELECT last_insert_rowid()")).fetchone()[0])
+    db.execute(_text("INSERT INTO journal_entry_lines (journal_entry_id, account_id, line_number, description, debit_amount, credit_amount) VALUES (:je,:a,1,'Prepaid',:d,0)"), {"je": jeid, "a": acc_prepaid, "d": amt})
+    db.execute(_text("INSERT INTO journal_entry_lines (journal_entry_id, account_id, line_number, description, debit_amount, credit_amount) VALUES (:je,:a,2,'Cash',0,:c)"), {"je": jeid, "a": acc_cash, "c": amt})
+    db.commit(); return {"id": jeid}
+
+
+@router.post("/templates/deferral-revenue")
+async def create_deferral_revenue(payload: Dict[str, Any], partner=Depends(_noop), db: Session = Depends(get_db)):
+    eid = int(payload.get('entity_id') or 0)
+    acc_def = int(payload.get('deferred_revenue_account_id') or 0)
+    acc_rev = int(payload.get('revenue_account_id') or 0)
+    amt = float(payload.get('amount') or 0)
+    start = (payload.get('start_date') or datetime.utcnow().date().isoformat())
+    months = int(payload.get('months') or 1)
+    if not (eid and acc_def and acc_rev and amt and months):
+        raise HTTPException(status_code=422, detail="entity_id, deferred_revenue_account_id, revenue_account_id, amount, months required")
+    from sqlalchemy import text as _text
+    per = round(amt / months, 2)
+    # Create monthly recognition entries starting the start month
+    d = date.fromisoformat(start)
+    for i in range(months):
+        ds = d.isoformat()
+        db.execute(_text("INSERT INTO journal_entries (entity_id, entry_number, entry_date, description, total_debit, total_credit, approval_status, is_posted) VALUES (:e,:no,:dt,:ds,:td,:tc,'pending',0)"), {
+            "e": eid, "no": f"DEFREV-{eid:03d}-{int(datetime.utcnow().timestamp())}-{i+1}", "dt": ds, "ds": "Revenue recognition", "td": per, "tc": per
+        })
+        jeid = int(db.execute(_text("SELECT last_insert_rowid()")).fetchone()[0])
+        db.execute(_text("INSERT INTO journal_entry_lines (journal_entry_id, account_id, line_number, description, debit_amount, credit_amount) VALUES (:je,:a,1,'Deferred Revenue',:d,0)"), {"je": jeid, "a": acc_def, "d": per})
+        db.execute(_text("INSERT INTO journal_entry_lines (journal_entry_id, account_id, line_number, description, debit_amount, credit_amount) VALUES (:je,:a,2,'Revenue',0,:c)"), {"je": jeid, "a": acc_rev, "c": per})
+        # next month
+        mn = d.month + 1; yr = d.year + (1 if mn > 12 else 0); mn = (mn - 12) if mn > 12 else mn
+        d = date(yr, mn, 1)
+    db.commit(); return {"created": months}
+
+
+@router.post("/templates/depreciation/straight-line")
+async def create_depreciation(payload: Dict[str, Any], partner=Depends(_noop), db: Session = Depends(get_db)):
+    eid = int(payload.get('entity_id') or 0)
+    acc_asset = int(payload.get('asset_account_id') or 0)
+    acc_accum = int(payload.get('accum_depr_account_id') or 0)
+    acc_exp = int(payload.get('expense_account_id') or 0)
+    amt = float(payload.get('amount') or 0)
+    start = (payload.get('start_date') or datetime.utcnow().date().isoformat())
+    months = int(payload.get('useful_life_months') or 1)
+    if not (eid and acc_asset and acc_accum and acc_exp and amt and months):
+        raise HTTPException(status_code=422, detail="entity_id, asset_account_id, accum_depr_account_id, expense_account_id, amount, useful_life_months required")
+    per = round(amt / months, 2)
+    from sqlalchemy import text as _text
+    d = date.fromisoformat(start)
+    for i in range(months):
+        ds = d.isoformat()
+        db.execute(_text("INSERT INTO journal_entries (entity_id, entry_number, entry_date, description, total_debit, total_credit, approval_status, is_posted) VALUES (:e,:no,:dt,:ds,:td,:tc,'pending',0)"), {
+            "e": eid, "no": f"DEPR-{eid:03d}-{int(datetime.utcnow().timestamp())}-{i+1}", "dt": ds, "ds": "Depreciation", "td": per, "tc": per
+        })
+        jeid = int(db.execute(_text("SELECT last_insert_rowid()")).fetchone()[0])
+        db.execute(_text("INSERT INTO journal_entry_lines (journal_entry_id, account_id, line_number, description, debit_amount, credit_amount) VALUES (:je,:a,1,'Depreciation Expense',:d,0)"), {"je": jeid, "a": acc_exp, "d": per})
+        db.execute(_text("INSERT INTO journal_entry_lines (journal_entry_id, account_id, line_number, description, debit_amount, credit_amount) VALUES (:je,:a,2,'Accumulated Depreciation',0,:c)"), {"je": jeid, "a": acc_accum, "c": per})
+        # next month
+        mn = d.month + 1; yr = d.year + (1 if mn > 12 else 0); mn = (mn - 12) if mn > 12 else mn
+        d = date(yr, mn, 1)
+    db.commit(); return {"created": months}
 
 
 @router.post("/journal-entries/{entry_id}/adjust")

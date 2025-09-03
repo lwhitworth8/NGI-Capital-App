@@ -11,6 +11,7 @@ export default function BankReconciliationPage(){
   const [txns, setTxns] = useState<any[]>([])
   const [unmatched, setUnmatched] = useState<any[]>([])
   const [matchForm, setMatchForm] = useState<{ txnId?: number; jeId?: number }>({})
+  const [createForm, setCreateForm] = useState<{ txnId?: number; entityId?: number; dr?: number; cr?: number; desc?: string }>({})
 
   const load = async () => {
     try {
@@ -67,7 +68,7 @@ export default function BankReconciliationPage(){
             <h2 className="font-semibold mb-2">Unmatched</h2>
             <div className="border rounded max-h-64 overflow-auto divide-y">
               {unmatched.map(u => (
-                <button key={u.id} className="p-2 text-sm w-full text-left hover:bg-muted" onClick={()=>setMatchForm({ txnId: u.id, jeId: undefined })}>
+                <button key={u.id} className="p-2 text-sm w-full text-left hover:bg-muted" onClick={()=>{ setMatchForm({ txnId: u.id, jeId: undefined }); setCreateForm({ txnId: u.id, entityId: undefined, dr: undefined, cr: undefined, desc: u.description }) }}>
                   <div className="flex items-center justify-between">
                     <div>{u.transaction_date} • {u.description}</div>
                     <div className="tabular-nums">${Number(u.amount||0).toLocaleString()}</div>
@@ -84,10 +85,19 @@ export default function BankReconciliationPage(){
               </label>
               <Button variant="primary" onClick={onMatch}>Match</Button>
             </div>
+            <div className="mt-4 p-3 border rounded space-y-2">
+              <div className="font-medium text-sm">Create JE from selected</div>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <label>Entity ID<input className="ml-2 px-2 py-1 border rounded bg-background w-28" value={createForm.entityId ?? ''} onChange={e=>setCreateForm({...createForm, entityId: Number(e.target.value||0)})} /></label>
+                <label>Debit Account<input className="ml-2 px-2 py-1 border rounded bg-background w-28" value={createForm.dr ?? ''} onChange={e=>setCreateForm({...createForm, dr: Number(e.target.value||0)})} /></label>
+                <label>Credit Account<input className="ml-2 px-2 py-1 border rounded bg-background w-28" value={createForm.cr ?? ''} onChange={e=>setCreateForm({...createForm, cr: Number(e.target.value||0)})} /></label>
+                <label className="col-span-2">Description<input className="ml-2 px-2 py-1 border rounded bg-background w-full" value={createForm.desc ?? ''} onChange={e=>setCreateForm({...createForm, desc: e.target.value})} /></label>
+              </div>
+              <Button variant="secondary" onClick={async ()=>{ try { if (!createForm.txnId || !createForm.entityId || !createForm.dr || !createForm.cr) return; await apiClient.bankingCreateJEFromTxn({ txn_id: createForm.txnId, entity_id: createForm.entityId, debit_account_id: createForm.dr, credit_account_id: createForm.cr, description: createForm.desc }); toast.success('JE created'); await load() } catch (e:any){ toast.error(e?.response?.data?.detail || 'Create JE failed') } }}>Create JE</Button>
+            </div>
           </div>
         </div>
       </div>
     </div>
   )
 }
-

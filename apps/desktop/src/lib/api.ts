@@ -642,6 +642,10 @@ class ApiClient {
     const res = await this.client.post('/banking/reconciliation/match', { txn_id: txnId, journal_entry_id: journalEntryId })
     return res.data
   }
+  async bankingCreateJEFromTxn(data: { txn_id: number; entity_id: number; debit_account_id: number; credit_account_id: number; description?: string }): Promise<{ id: number }>{
+    const res = await this.client.post('/banking/reconciliation/create-je', data)
+    return res.data
+  }
 
   // Accounting conversion + close
   async accountingConversionPreview(data: { effective_date: string; source_entity_id: number; target_entity_id: number; par_value: number; total_shares: number }): Promise<any> {
@@ -658,6 +662,18 @@ class ApiClient {
   }
   async accountingCloseRun(entityId: number, year: number, month: number): Promise<any> {
     const res = await this.client.post('/accounting/close/run', { entity_id: entityId, year, month })
+    return res.data
+  }
+  async accountingApprovalsPending(): Promise<any[]> {
+    const res = await this.client.get('/accounting/approvals/pending')
+    return res.data
+  }
+  async accountingApproveJE(entryId: number): Promise<any> {
+    const res = await this.client.post(`/accounting/journal-entries/${entryId}/approve`, { approve: true })
+    return res.data
+  }
+  async accountingExportClosePacket(entityId: number, year: number, month: number): Promise<Blob> {
+    const res = await this.client.get('/accounting/exports/close-packet', { params: { entity_id: entityId, year, month }, responseType: 'blob' })
     return res.data
   }
 

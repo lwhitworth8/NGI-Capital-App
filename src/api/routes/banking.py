@@ -485,6 +485,41 @@ async def split_transaction(payload: Dict[str, Any], db: Session = Depends(get_d
     return {"message": "split", "parts": len(splits)}
 
 
+@router.post("/reconciliation/create-je")
+async def create_je_from_txn(payload: Dict[str, Any], db: Session = Depends(get_db)):
+    """Create a journal entry from an unmatched bank transaction.
+    Payload: { txn_id, entity_id, debit_account_id, credit_account_id, description? }
+    """
+    tid = int(payload.get('txn_id') or 0)
+    eid = int(payload.get('entity_id') or 0)
+    acc_dr = int(payload.get('debit_account_id') or 0)
+    acc_cr = int(payload.get('credit_account_id') or 0)
+    if not (tid and eid and acc_dr and acc_cr):
+        raise HTTPException(status_code=422, detail="txn_id, entity_id, debit_account_id, credit_account_id required")
+    row = db.execute(sa_text("SELECT amount, description, transaction_date FROM bank_transactions WHERE id = :id"), {"id": tid}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    amt, desc, tdate = row
+    amt = abs(float(amt or 0))
+    from sqlalchemy import text as _text
+    db.execute(_text("INSERT INTO journal_entries (entity_id, entry_number, entry_date, description, total_debit, total_credit, approval_status, is_posted) VALUES (:e,:no,:dt,:ds,:td,:tc,'pending',0)"), {
+        "e": eid, "no": f"BANK-{eid:03d}-{int(datetime.utcnow().timestamp())}", "dt": tdate or datetime.utcnow().date().isoformat(), "ds": payload.get('description') or (desc or 'Bank reconciliation'), "td": amt, "tc": amt
+    })
+    jeid = int(db.execute(_text("SELECT last_insert_rowid()")).fetchone()[0])
+    db.execute(_text("INSERT INTO journal_entry_lines (journal_entry_id, account_id, line_number, description, debit_amount, credit_amount) VALUES (:je,:a,1,'Bank JE',:d,0)"), {"je": jeid, "a": acc_dr, "d": amt})
+    db.execute(_text("INSERT INTO journal_entry_lines (journal_entry_id, account_id, line_number, description, debit_amount, credit_amount) VALUES (:je,:a,2,'Bank JE',0,:c)"), {"je": jeid, "a": acc_cr, "c": amt})
+    # Mark txn reconciled
+    try:
+        cols = [r[0] for r in db.execute(sa_text("SELECT name FROM pragma_table_info('bank_transactions')")).fetchall()]
+        if 'reconciled_transaction_id' in cols:
+            db.execute(sa_text("UPDATE bank_transactions SET is_reconciled = 1, reconciled_transaction_id = :je WHERE id = :id"), {"je": jeid, "id": tid})
+        else:
+            db.execute(sa_text("UPDATE bank_transactions SET is_reconciled = 1 WHERE id = :id"), {"id": tid})
+    except Exception:
+        pass
+    db.commit(); return {"id": jeid, "message": "created"}
+
+
 @router.get("/reconciliation/stats")
 async def reconciliation_stats(db: Session = Depends(get_db)):
     """Return cleared percentage per account."""
