@@ -646,6 +646,14 @@ class ApiClient {
     const res = await this.client.post('/banking/reconciliation/create-je', data)
     return res.data
   }
+  async bankingSplitTxn(data: { txn_id: number; splits: { amount: number; description?: string }[] }): Promise<{ message: string; parts: number }>{
+    const res = await this.client.post('/banking/reconciliation/split', data)
+    return res.data
+  }
+  async bankingReconciliationStats(): Promise<{ bank_account_id: number; account_name: string; cleared: number; total: number; percent: number }[]> {
+    const res = await this.client.get('/banking/reconciliation/stats')
+    return res.data
+  }
 
   // Accounting conversion + close
   async accountingConversionPreview(data: { effective_date: string; source_entity_id: number; target_entity_id: number; par_value: number; total_shares: number }): Promise<any> {
@@ -674,6 +682,23 @@ class ApiClient {
   }
   async accountingExportClosePacket(entityId: number, year: number, month: number): Promise<Blob> {
     const res = await this.client.get('/accounting/exports/close-packet', { params: { entity_id: entityId, year, month }, responseType: 'blob' })
+    return res.data
+  }
+  // Templates
+  async accountingTemplateAccrual(data: { entity_id: number; expense_account_id: number; accrual_account_id: number; amount: number; date?: string }): Promise<{ id: number }>{
+    const res = await this.client.post('/accounting/templates/accrual', data)
+    return res.data
+  }
+  async accountingTemplatePrepaid(data: { entity_id: number; prepaid_account_id: number; cash_account_id: number; amount: number; date?: string }): Promise<{ id: number }>{
+    const res = await this.client.post('/accounting/templates/prepaid', data)
+    return res.data
+  }
+  async accountingTemplateDeferralRevenue(data: { entity_id: number; deferred_revenue_account_id: number; revenue_account_id: number; amount: number; start_date: string; months: number }): Promise<{ created: number }>{
+    const res = await this.client.post('/accounting/templates/deferral-revenue', data)
+    return res.data
+  }
+  async accountingTemplateDepreciation(data: { entity_id: number; asset_account_id: number; accum_depr_account_id: number; expense_account_id: number; amount: number; start_date: string; useful_life_months: number }): Promise<{ created: number }>{
+    const res = await this.client.post('/accounting/templates/depreciation/straight-line', data)
     return res.data
   }
 
