@@ -638,6 +638,28 @@ class ApiClient {
     const res = await this.client.get('/banking/reconciliation/unmatched')
     return res.data
   }
+  async bankingManualMatch(txnId: number, journalEntryId: number): Promise<{ message: string }>{
+    const res = await this.client.post('/banking/reconciliation/match', { txn_id: txnId, journal_entry_id: journalEntryId })
+    return res.data
+  }
+
+  // Accounting conversion + close
+  async accountingConversionPreview(data: { effective_date: string; source_entity_id: number; target_entity_id: number; par_value: number; total_shares: number }): Promise<any> {
+    const res = await this.client.post('/accounting/conversion/preview', data)
+    return res.data
+  }
+  async accountingConversionExecute(data: { effective_date: string; source_entity_id: number; target_entity_id: number; par_value: number; total_shares: number }): Promise<any> {
+    const res = await this.client.post('/accounting/conversion/execute', data)
+    return res.data
+  }
+  async accountingClosePreview(entityId: number, year: number, month: number): Promise<any> {
+    const res = await this.client.get('/accounting/close/preview', { params: { entity_id: entityId, year, month } })
+    return res.data
+  }
+  async accountingCloseRun(entityId: number, year: number, month: number): Promise<any> {
+    const res = await this.client.post('/accounting/close/run', { entity_id: entityId, year, month })
+    return res.data
+  }
 
   // Generic request method for custom endpoints
   async request<T = any>(

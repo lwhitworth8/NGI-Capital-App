@@ -435,6 +435,27 @@ async def list_unmatched(limit: int = 100, db: Session = Depends(get_db)):
         for r in rows
     ]
 
+
+@router.post("/reconciliation/match")
+async def manual_match(payload: Dict[str, Any], db: Session = Depends(get_db)):
+    """Manually match a bank transaction to a journal entry. Payload: { txn_id, journal_entry_id }"""
+    tid = int(payload.get('txn_id') or 0)
+    je = int(payload.get('journal_entry_id') or 0)
+    if not tid or not je:
+        raise HTTPException(status_code=422, detail="txn_id and journal_entry_id required")
+    cols = []
+    try:
+        for c in db.execute(sa_text("SELECT name FROM pragma_table_info('bank_transactions')")):
+            cols.append(c[0])
+    except Exception:
+        pass
+    if 'reconciled_transaction_id' in cols:
+        db.execute(sa_text("UPDATE bank_transactions SET is_reconciled = 1, reconciled_transaction_id = :je WHERE id = :id"), {"je": je, "id": tid})
+    else:
+        db.execute(sa_text("UPDATE bank_transactions SET is_reconciled = 1 WHERE id = :id"), {"id": tid})
+    db.commit()
+    return {"message": "matched"}
+
 @router.get("/pending-approvals")
 async def get_pending_approvals(db: Session = Depends(get_db)):
     # Integrate with accounting transactions table if present

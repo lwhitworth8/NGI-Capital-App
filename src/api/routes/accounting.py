@@ -27,6 +27,7 @@ from ..models import (
 from ..database import get_db
 from ..config import SECRET_KEY, ALGORITHM
 from jose import jwt, JWTError
+from fastapi.responses import StreamingResponse, PlainTextResponse
 
 router = APIRouter(prefix="/api/accounting", tags=["accounting"])
 security = HTTPBearer()
@@ -1326,6 +1327,48 @@ async def close_run(payload: Dict[str, Any], partner=Depends(_noop), db: Session
     # Lock period
     _set_locked_through(db, entity_id, period_end)
     return {"message": "period locked", "period_end": period_end, "net_income": net_income}
+
+
+# --- Exports (CSV) ---
+def _csv(lines: list[list[str]]) -> str:
+    import csv
+    from io import StringIO
+    s = StringIO()
+    w = csv.writer(s)
+    for row in lines:
+        w.writerow(row)
+    return s.getvalue()
+
+
+@router.get("/exports/trial-balance")
+async def export_trial_balance(entity_id: int, as_of_date: str, partner=Depends(_noop), db: Session = Depends(get_db)):
+    tb = await trial_balance(entity_id=entity_id, as_of_date=date.fromisoformat(as_of_date), current_user=None, db=db)  # type: ignore
+    lines = [["Account Code","Account Name","Debit","Credit"]]
+    for l in tb['lines']:
+        lines.append([l['account_code'], l['account_name'], f"{l['debit']:.2f}", f"{l['credit']:.2f}"])
+    csv_str = _csv(lines)
+    return PlainTextResponse(csv_str, media_type="text/csv")
+
+
+@router.get("/exports/income-statement")
+async def export_income_statement(entity_id: int, start_date: str, end_date: str, partner=Depends(_noop), db: Session = Depends(get_db)):
+    isd = await income_statement(entity_id=entity_id, start_date=date.fromisoformat(start_date), end_date=date.fromisoformat(end_date), current_user=None, db=db)  # type: ignore
+    lines = [["Account Code","Account Name","Amount"]]
+    for l in isd['revenue_lines'] + isd['expense_lines']:
+        lines.append([l['account_code'], l['account_name'], f"{l['amount']:.2f}"])
+    lines.append(["","Net Income", f"{isd['net_income']:.2f}"])
+    return PlainTextResponse(_csv(lines), media_type="text/csv")
+
+
+@router.get("/exports/balance-sheet")
+async def export_balance_sheet(entity_id: int, as_of_date: str, partner=Depends(_noop), db: Session = Depends(get_db)):
+    bsd = await balance_sheet(entity_id=entity_id, as_of_date=date.fromisoformat(as_of_date), current_user=None, db=db)  # type: ignore
+    lines = [["Section","Account Code","Account Name","Amount"]]
+    def add(section, rows):
+        for r in rows:
+            lines.append([section, r['account_code'], r['account_name'], f"{r['amount']:.2f}"])
+    add('Assets', bsd['asset_lines']); add('Liabilities', bsd['liability_lines']); add('Equity', bsd['equity_lines'])
+    return PlainTextResponse(_csv(lines), media_type="text/csv")
 
 
 @router.post("/journal-entries/{entry_id}/adjust")
