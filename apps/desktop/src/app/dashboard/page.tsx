@@ -7,6 +7,7 @@ import { MVV } from "@/components/home/MVV";
 import { Goals } from "@/components/home/Goals";
 import { ProductsBoard } from "@/components/home/ProductsBoard";
 import { RightRail } from "@/components/home/RightRail";
+import { ComplianceSummary } from "@/components/home/ComplianceSummary";
 
 export default function DashboardPage() {
   return (
@@ -16,6 +17,7 @@ export default function DashboardPage() {
         <section className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
           <div className="lg:col-span-2 space-y-6">
             <EntityOverview />
+            <ComplianceSummary />
             <ImportantModules />
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <MVV />

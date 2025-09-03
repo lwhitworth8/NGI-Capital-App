@@ -46,6 +46,10 @@ const navigation: NavItem[] = [
       { name: 'Journal Entries', href: '/accounting/journal-entries', icon: FileText },
       { name: 'Documents', href: '/accounting/documents', icon: FileText },
       { name: 'Internal Controls', href: '/accounting/internal-controls', icon: Shield },
+      { name: 'Approvals', href: '/accounting/approvals', icon: Shield },
+      { name: 'Close', href: '/accounting/close', icon: FileSpreadsheet },
+      { name: 'Bank Reconciliation', href: '/accounting/bank-reconciliation', icon: Wallet },
+      { name: 'Settings', href: '/accounting/settings', icon: Settings },
     ],
   },
   // 4. Finance

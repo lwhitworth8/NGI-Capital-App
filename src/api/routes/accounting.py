@@ -1448,9 +1448,21 @@ async def export_close_packet(entity_id: int, year: int, month: int, partner=Dep
 
 # --- Approvals queue ---
 @router.get("/approvals/pending")
-async def approvals_pending(partner=Depends(_noop), db: Session = Depends(get_db)):
+async def approvals_pending(entity_id: int | None = None, year: int | None = None, month: int | None = None, partner=Depends(_noop), db: Session = Depends(get_db)):
     from sqlalchemy import text as _text
-    rows = db.execute(_text("SELECT id, entry_number, entity_id, approval_status FROM journal_entries WHERE approval_status = 'pending'"), {}).fetchall()
+    where = ["approval_status = 'pending'"]
+    params: dict = {}
+    if entity_id:
+        where.append("entity_id = :eid"); params["eid"] = int(entity_id)
+    if year and month:
+        period_start = f"{year:04d}-{month:02d}-01"
+        # compute next month start
+        from calendar import monthrange
+        last = monthrange(year, month)[1]
+        period_end = f"{year:04d}-{month:02d}-{last:02d}"
+        where.append("entry_date >= :sd AND entry_date <= :ed"); params["sd"] = period_start; params["ed"] = period_end
+    sql = "SELECT id, entry_number, entity_id, approval_status FROM journal_entries WHERE " + " AND ".join(where)
+    rows = db.execute(_text(sql), params).fetchall()
     out = []
     req = [e.strip().lower() for e in os.getenv('DUAL_APPROVER_EMAILS', 'lwhitworth@ngicapitaladvisory.com,anurmamade@ngicapitaladvisory.com').split(',') if e.strip()]
     for rid, eno, eid, st in rows:
