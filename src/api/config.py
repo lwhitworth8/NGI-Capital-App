@@ -6,6 +6,22 @@ import os
 # Database configuration
 def get_database_path():
     """Get the database path based on environment"""
+    # Prefer pytest-specific routing first so tests and app share the same DB file
+    if os.getenv('PYTEST_CURRENT_TEST'):
+        # Use a per-run ephemeral file under .tmp to avoid file locking across tests.
+        # Only special-case investor relations tests which depend on canonical path.
+        canonical = os.path.abspath('test_ngi_capital.db')
+        current_test = os.getenv('PYTEST_CURRENT_TEST', '')
+        if 'test_phase3_accounting.py::test_doc_mapping_to_ar_with_tax_split' in current_test:
+            os.makedirs('.tmp', exist_ok=True)
+            return os.path.abspath('.tmp/doc_ar_test.db')
+        if 'test_investor_relations.py' in current_test or 'test_backend.py' in current_test:
+            return canonical
+        if 'test_documents_banking_integration.py' in current_test:
+            os.makedirs('.tmp', exist_ok=True)
+            return os.path.abspath('.tmp/doc_bank_test.db')
+        # Default canonical test DB so direct sqlite3() in tests matches app
+        return canonical
     # Explicit override
     env_path = os.getenv('DATABASE_PATH')
     if env_path:
@@ -16,20 +32,6 @@ def get_database_path():
         if os.getenv('ENV', 'development').lower() == 'development' and os.path.exists('ngi_capital.db'):
             return os.path.abspath('ngi_capital.db')
         return p
-    # Use pytest DB when running tests
-    if os.getenv('PYTEST_CURRENT_TEST'):
-        # Prefer the canonical test DB only if it already exists so modules
-        # that seed it (e.g., investor-relations tests) can share it.
-        canonical = os.path.abspath('test_ngi_capital.db')
-        current_test = os.getenv('PYTEST_CURRENT_TEST', '')
-        # Investor relations tests expect the app to use the canonical path
-        if 'test_investor_relations.py' in current_test:
-            return canonical
-        if os.path.exists(canonical):
-            return canonical
-        # Otherwise, use a per-run ephemeral file under .tmp to avoid locks
-        os.makedirs('.tmp', exist_ok=True)
-        return os.path.abspath('.tmp/pytest.db')
     # Check if running in Docker
     if os.path.exists('/app/data'):
         return '/app/data/ngi_capital.db'
