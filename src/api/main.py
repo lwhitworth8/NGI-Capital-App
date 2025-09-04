@@ -34,6 +34,7 @@ import string
 
 # Import route modules - using absolute imports for Docker
 from src.api.routes import entities, reports, banking, documents, financial_reporting, employees, investor_relations, accounting
+from src.api.routes import advisory as advisory_routes
 from src.api.routes import coa as coa_routes
 from src.api.routes import mappings as mappings_routes
 from src.api.routes import aging as aging_routes
@@ -1166,6 +1167,8 @@ app.include_router(finance_routes.router, dependencies=[Depends(require_full_acc
 app.include_router(tax_routes.router)
 # Expose metrics read-only endpoints publicly (overlay charts) - no auth required
 app.include_router(metrics_routes.router)
+# NGI Advisory admin-only router
+app.include_router(advisory_routes.router, prefix="/api/advisory", tags=["advisory"])  # type: ignore
 app.include_router(coa_routes.router, dependencies=[Depends(require_full_access())])
 app.include_router(mappings_routes.router, dependencies=[Depends(require_full_access())])
 app.include_router(aging_routes.router, dependencies=[Depends(require_full_access())])
@@ -1331,3 +1334,10 @@ if __name__ == "__main__":
         log_level="info",
         access_log=True
     )
+
+
+
+
+
+
+
