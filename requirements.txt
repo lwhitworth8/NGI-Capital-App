@@ -31,6 +31,10 @@ invoice2data==0.4.5
 pytesseract>=0.3.10
 pillow>=10.4.0
 
+# Reports/Exports
+weasyprint>=61.2
+XlsxWriter>=3.2.0
+
 # (Optional analytics libs moved to requirements.optional.txt)
 
 # API Documentation

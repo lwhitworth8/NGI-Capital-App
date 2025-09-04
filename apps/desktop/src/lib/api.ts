@@ -824,6 +824,99 @@ export async function hrCreateEmployeeTodo(data: { entity_id: number; employee_i
 export async function hrPatchEmployeeTodo(id: number, patch: { title?: string; notes?: string; due_at?: string; status?: string; employee_id?: number }): Promise<{ message: string }> {
   return apiClient.request('PATCH', `/employee-todos/${id}`, patch)
 }
+// ===================== NGI Advisory API =====================
+import type { AdvisoryProject, AdvisoryStudent, AdvisoryApplication, AdvisoryCoffeeChat } from '@/types'
+
+export async function advisoryListProjects(params?: { entity_id?: number; status?: string; mode?: 'remote'|'in_person'|'hybrid'; q?: string }): Promise<AdvisoryProject[]> {
+  const res = await apiClient.request<AdvisoryProject[]>('GET', '/advisory/projects', undefined, { params })
+  return res
+}
+
+export async function advisoryCreateProject(data: Partial<AdvisoryProject>): Promise<{ id: number }> {
+  // Backend requires: project_name, client_name, summary
+  return apiClient.request('POST', '/advisory/projects', data)
+}
+
+export async function advisoryUpdateProject(id: number, patch: Partial<AdvisoryProject>): Promise<{ id: number }> {
+  return apiClient.request('PUT', `/advisory/projects/${id}`, patch)
+}
+
+export async function advisoryListStudents(params?: { entity_id?: number; q?: string }): Promise<AdvisoryStudent[]> {
+  return apiClient.request('GET', '/advisory/students', undefined, { params })
+}
+
+export async function advisoryCreateStudent(data: Partial<AdvisoryStudent>): Promise<{ id: number }> {
+  // Backend requires: email (unique)
+  return apiClient.request('POST', '/advisory/students', data)
+}
+
+export async function advisoryUpdateStudent(id: number, patch: Partial<AdvisoryStudent>): Promise<{ id: number }> {
+  return apiClient.request('PUT', `/advisory/students/${id}`, patch)
+}
+
+export async function advisoryDeleteStudent(id: number): Promise<{ id: number; deleted: boolean }> {
+  return apiClient.request('DELETE', `/advisory/students/${id}`)
+}
+
+export async function advisoryListApplications(params?: { entity_id?: number; status?: string; project_id?: number; q?: string }): Promise<AdvisoryApplication[]> {
+  return apiClient.request('GET', '/advisory/applications', undefined, { params })
+}
+
+export async function advisoryCreateApplication(data: Partial<AdvisoryApplication>): Promise<{ id: number }> {
+  return apiClient.request('POST', '/advisory/applications', data)
+}
+
+export async function advisoryUpdateApplication(id: number, patch: Partial<AdvisoryApplication>): Promise<{ id: number }> {
+  return apiClient.request('PUT', `/advisory/applications/${id}`, patch)
+}
+
+export async function advisoryListCoffeechats(params?: { entity_id?: number }): Promise<AdvisoryCoffeeChat[]> {
+  return apiClient.request('GET', '/advisory/coffeechats', undefined, { params })
+}
+
+export async function advisorySyncCoffeechats(): Promise<{ synced: number }> {
+  return apiClient.request('POST', '/advisory/coffeechats/sync')
+}
+
+export async function advisoryGetProject(id: number): Promise<import('@/types').AdvisoryProject & { assignments?: any[] }> {
+  return apiClient.request('GET', `/advisory/projects/${id}`)
+}
+
+export async function advisoryAddAssignment(projectId: number, data: { student_id: number; role?: string; hours_planned?: number }): Promise<{ id: number }> {
+  return apiClient.request('POST', `/advisory/projects/${projectId}/assignments`, data)
+}
+
+export async function advisoryUpdateAssignment(id: number, patch: { role?: string; hours_planned?: number; active?: boolean | number }): Promise<{ id: number }> {
+  return apiClient.request('PUT', `/advisory/assignments/${id}`, patch)
+}
+
+export async function advisoryDeleteAssignment(id: number): Promise<{ id: number; active: number }> {
+  return apiClient.request('DELETE', `/advisory/assignments/${id}`)
+}
+
+export async function advisoryListOnboardingTemplates(): Promise<{ id: number; name: string; description?: string }[]> {
+  return apiClient.request('GET', '/advisory/onboarding/templates')
+}
+
+export async function advisoryCreateOnboardingTemplate(data: { name: string; description?: string; steps?: { step_key: string; title: string; provider?: string; config?: any }[] }): Promise<{ id: number }> {
+  return apiClient.request('POST', '/advisory/onboarding/templates', data)
+}
+
+export async function advisoryUpdateOnboardingTemplate(id: number, patch: any): Promise<{ id: number }> {
+  return apiClient.request('PUT', `/advisory/onboarding/templates/${id}`, patch)
+}
+
+export async function advisoryCreateOnboardingInstance(data: { student_id: number; template_id: number; project_id?: number }): Promise<{ id: number }> {
+  return apiClient.request('POST', '/advisory/onboarding/instances', data)
+}
+
+export async function advisoryListOnboardingInstances(params?: { student_id?: number; project_id?: number }): Promise<any[]> {
+  return apiClient.request('GET', '/advisory/onboarding/instances', undefined, { params })
+}
+
+export async function advisoryMarkOnboardingStep(iid: number, stepKey: string, data: { status: 'pending' | 'sent' | 'completed' | 'failed'; evidence_url?: string; external_id?: string }): Promise<{ id: number; step_key: string; status: string }> {
+  return apiClient.request('POST', `/advisory/onboarding/instances/${iid}/steps/${encodeURIComponent(stepKey)}/mark`, data)
+}
 // Accounting: Unposted entries and batch post
 export async function accountingGetUnpostedEntries(entityId: number): Promise<{ id: number; entry_number: string; entry_date: string; description: string }[]> {
   const data = await apiClient.request<{ entries?: any[] }>('GET', '/accounting/journal-entries/unposted', undefined, { params: { entity_id: entityId } })

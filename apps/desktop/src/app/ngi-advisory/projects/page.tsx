@@ -1,0 +1,270 @@
+"use client"
+
+import { useEffect, useMemo, useState } from 'react'
+import { useApp } from '@/lib/context/AppContext'
+import { useAuth } from '@/lib/auth'
+import { advisoryListProjects, advisoryCreateProject, advisoryUpdateProject, apiClient } from '@/lib/api'
+import type { AdvisoryProject } from '@/types'
+import EntitySelectorInline from '@/components/finance/EntitySelectorInline'
+
+const BASE_ALLOWED = new Set([
+  'lwhitworth@ngicapitaladvisory.com',
+  'anurmamade@ngicapitaladvisory.com',
+])
+
+export default function AdvisoryProjectsPage() {
+  const { state } = useApp()
+  const { user, loading } = useAuth()
+  const entityId = useMemo(() => Number(state.currentEntity?.id || 0), [state.currentEntity])
+  const entityName = state.currentEntity?.legal_name || ''
+  const [listLoading, setListLoading] = useState(false)
+  const [projects, setProjects] = useState<AdvisoryProject[]>([])
+  const [showDesigner, setShowDesigner] = useState(false)
+  const [editing, setEditing] = useState<AdvisoryProject | null>(null)
+  const [form, setForm] = useState<Partial<AdvisoryProject>>({
+    project_name: '', client_name: '', summary: '', status: 'draft', mode: 'remote',
+  })
+
+  const [authCheckLoading, setAuthCheckLoading] = useState(true)
+  const [serverEmail, setServerEmail] = useState('')
+  const allowed = (() => {
+    const allowAll = (process.env.NEXT_PUBLIC_ADVISORY_ALLOW_ALL || '').toLowerCase() === '1'
+    const devAllow = process.env.NODE_ENV !== 'production' && (process.env.NEXT_PUBLIC_ADVISORY_DEV_OPEN || '1') === '1'
+    const extra = (process.env.NEXT_PUBLIC_ADVISORY_ADMINS || '').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean)
+    const allowedSet = new Set<string>([...Array.from(BASE_ALLOWED), ...extra])
+    let email = String(user?.email || '')
+    if (!email && typeof window !== 'undefined') {
+      const anyWin: any = window as any
+      email = anyWin?.Clerk?.user?.primaryEmailAddress?.emailAddress
+        || anyWin?.Clerk?.user?.emailAddresses?.[0]?.emailAddress
+        || ''
+      if (!email) {
+        try { const u = JSON.parse(localStorage.getItem('user') || 'null'); if (u?.email) email = u.email } catch {}
+      }
+    }
+    const emailLower = (email || '').toLowerCase()
+    const serverLower = (serverEmail || '').toLowerCase()
+    return allowAll || devAllow || (!!emailLower && allowedSet.has(emailLower)) || (!!serverLower && allowedSet.has(serverLower))
+  })()
+
+  useEffect(() => {
+    let mounted = true
+    const check = async () => {
+      try {
+        const anyWin: any = typeof window !== 'undefined' ? (window as any) : {}
+        const localEmail = String(
+          user?.email
+          || anyWin?.Clerk?.user?.primaryEmailAddress?.emailAddress
+          || anyWin?.Clerk?.user?.emailAddresses?.[0]?.emailAddress
+          || (JSON.parse((typeof window !== 'undefined' ? localStorage.getItem('user') || 'null' : 'null')) || {}).email
+          || ''
+        ).toLowerCase()
+        if (!localEmail && !serverEmail) {
+          try {
+            const me = await apiClient.getProfile()
+            if (mounted) setServerEmail(me?.email || '')
+          } catch {}
+        }
+      } finally {
+        if (mounted) setAuthCheckLoading(false)
+      }
+    }
+    check()
+    return () => { mounted = false }
+  }, [user?.email, serverEmail])
+
+  useEffect(() => {
+    const load = async () => {
+      if (!entityId || !allowed) return
+      setListLoading(true)
+      try { setProjects(await advisoryListProjects({ entity_id: entityId })) }
+      finally { setListLoading(false) }
+    }
+    load()
+  }, [entityId, allowed])
+
+  const openNew = () => {
+    setEditing(null)
+    setForm({ entity_id: entityId as any, project_name: '', client_name: '', summary: '', status: 'draft', mode: 'remote' })
+    setShowDesigner(true)
+  }
+  const openEdit = (p: AdvisoryProject) => { setEditing(p); setForm(p); setShowDesigner(true) }
+  const closeDesigner = () => setShowDesigner(false)
+
+  const onSave = async (publish = false) => {
+    if (!form.project_name || !form.client_name || !form.summary) return
+    const payload: any = { ...form }
+    payload.entity_id = entityId
+    if (publish) payload.status = 'active'
+    if (editing) {
+      await advisoryUpdateProject(editing.id, payload)
+    } else {
+      await advisoryCreateProject(payload)
+    }
+    setShowDesigner(false)
+    setProjects(await advisoryListProjects({ entity_id: entityId }))
+  }
+
+  if (loading || authCheckLoading) {
+    return (<div className="p-6">Loading…</div>)
+  }
+  if (!allowed) {
+    return (
+      <div className="p-6">
+        <h1 className="text-2xl font-semibold">NGI Capital Advisory</h1>
+        <p className="text-sm text-muted-foreground mt-2">Access restricted.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">Advisory Projects</h1>
+          <p className="text-sm text-muted-foreground mt-1">{entityName}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <EntitySelectorInline />
+          <button className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700" onClick={openNew}>+ New Project</button>
+        </div>
+      </div>
+
+      {/* List */}
+      {listLoading ? (
+        <div className="text-sm text-muted-foreground">Loading projects…</div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {projects.map(p => (
+            <ProjectCard key={p.id} p={p} onEdit={() => openEdit(p)} />
+          ))}
+          {projects.length === 0 && (
+            <div className="text-sm text-muted-foreground">No projects yet.</div>
+          )}
+        </div>
+      )}
+
+      {/* Designer Drawer (simple panel) */}
+      {showDesigner && (
+        <div className="fixed inset-0 bg-black/20 z-40" onClick={closeDesigner}>
+          <div className="absolute right-0 top-0 bottom-0 w-full max-w-5xl bg-background border-l border-border shadow-xl" onClick={e=>e.stopPropagation()}>
+            <div className="grid grid-cols-1 lg:grid-cols-2 h-full">
+              {/* Form */}
+              <div className="p-6 space-y-3 overflow-auto">
+                <h2 className="text-xl font-semibold mb-2">{editing ? 'Edit Project' : 'New Project'}</h2>
+                <div className="grid grid-cols-1 gap-3">
+                  <input className="w-full px-3 py-2 border rounded-md bg-background" placeholder="Project name" value={form.project_name || ''} onChange={e=>setForm(f=>({ ...f, project_name: e.target.value }))} />
+                  <input className="w-full px-3 py-2 border rounded-md bg-background" placeholder="Client name" value={form.client_name || ''} onChange={e=>setForm(f=>({ ...f, client_name: e.target.value }))} />
+                  <input className="w-full px-3 py-2 border rounded-md bg-background" placeholder="Summary" value={form.summary || ''} onChange={e=>setForm(f=>({ ...f, summary: e.target.value }))} />
+                  <textarea className="w-full px-3 py-2 border rounded-md bg-background" placeholder="Description" value={form.description || ''} onChange={e=>setForm(f=>({ ...f, description: e.target.value }))} />
+                  <div className="grid grid-cols-2 gap-2">
+                    <select className="px-3 py-2 border rounded-md bg-background" value={form.mode || 'remote'} onChange={e=>setForm(f=>({ ...f, mode: e.target.value as any }))}>
+                      <option value="remote">Remote</option>
+                      <option value="in_person">In person</option>
+                      <option value="hybrid">Hybrid</option>
+                    </select>
+                    <select className="px-3 py-2 border rounded-md bg-background" value={form.status || 'draft'} onChange={e=>setForm(f=>({ ...f, status: e.target.value as any }))}>
+                      <option value="draft">Draft</option>
+                      <option value="active">Active</option>
+                      <option value="paused">Paused</option>
+                      <option value="delivered">Delivered</option>
+                      <option value="closed">Closed</option>
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="date" className="px-3 py-2 border rounded-md bg-background" value={form.start_date || ''} onChange={e=>setForm(f=>({ ...f, start_date: e.target.value }))} />
+                    <input type="date" className="px-3 py-2 border rounded-md bg-background" value={form.end_date || ''} onChange={e=>setForm(f=>({ ...f, end_date: e.target.value }))} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input type="number" className="px-3 py-2 border rounded-md bg-background" placeholder="Duration (weeks)" value={form.duration_weeks || '' as any} onChange={e=>setForm(f=>({ ...f, duration_weeks: Number(e.target.value||0) }))} />
+                    <input type="number" className="px-3 py-2 border rounded-md bg-background" placeholder="Hours/week" value={form.commitment_hours_per_week || '' as any} onChange={e=>setForm(f=>({ ...f, commitment_hours_per_week: Number(e.target.value||0) }))} />
+                  </div>
+                  <input className="w-full px-3 py-2 border rounded-md bg-background" placeholder="Project code (auto ok)" value={form.project_code || ''} onChange={e=>setForm(f=>({ ...f, project_code: e.target.value }))} />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input className="px-3 py-2 border rounded-md bg-background" placeholder="Project lead" value={form.project_lead || ''} onChange={e=>setForm(f=>({ ...f, project_lead: e.target.value }))} />
+                    <input className="px-3 py-2 border rounded-md bg-background" placeholder="Contact email" value={form.contact_email || ''} onChange={e=>setForm(f=>({ ...f, contact_email: e.target.value }))} />
+                  </div>
+                  <input className="w-full px-3 py-2 border rounded-md bg-background" placeholder="Hero image URL" value={form.hero_image_url || ''} onChange={e=>setForm(f=>({ ...f, hero_image_url: e.target.value }))} />
+                  <input className="w-full px-3 py-2 border rounded-md bg-background" placeholder="Apply URL" value={form.apply_url || ''} onChange={e=>setForm(f=>({ ...f, apply_url: e.target.value }))} />
+                  <input className="w-full px-3 py-2 border rounded-md bg-background" placeholder="Apply CTA text" value={form.apply_cta_text || ''} onChange={e=>setForm(f=>({ ...f, apply_cta_text: e.target.value }))} />
+                  <textarea className="w-full px-3 py-2 border rounded-md bg-background" placeholder="Eligibility notes" value={form.eligibility_notes || ''} onChange={e=>setForm(f=>({ ...f, eligibility_notes: e.target.value }))} />
+                  <textarea className="w-full px-3 py-2 border rounded-md bg-background" placeholder="Internal notes (hidden)" value={form.notes_internal || ''} onChange={e=>setForm(f=>({ ...f, notes_internal: e.target.value }))} />
+                </div>
+                <div className="flex items-center gap-2 mt-4">
+                  <button className="px-4 py-2 rounded-md border" onClick={closeDesigner}>Cancel</button>
+                  <button className="px-4 py-2 rounded-md bg-gray-100 hover:bg-gray-200" onClick={()=>onSave(false)}>{editing ? 'Save' : 'Save Draft'}</button>
+                  <button className="px-4 py-2 rounded-md bg-green-600 text-white hover:bg-green-700" onClick={()=>onSave(true)}>{editing ? 'Update' : 'Publish'}</button>
+                </div>
+              </div>
+              {/* Live Preview */}
+              <div className="p-6 bg-muted/40 overflow-auto">
+                <h2 className="text-sm font-medium text-muted-foreground mb-2">Live Preview</h2>
+                <ProjectCard p={{
+                  id: editing?.id || 0,
+                  entity_id: entityId,
+                  client_name: form.client_name || '',
+                  project_name: form.project_name || '',
+                  summary: form.summary || '',
+                  description: form.description,
+                  status: (form.status as any) || 'draft',
+                  mode: (form.mode as any) || 'remote',
+                  location_text: form.location_text,
+                  start_date: form.start_date,
+                  end_date: form.end_date,
+                  duration_weeks: form.duration_weeks,
+                  commitment_hours_per_week: form.commitment_hours_per_week,
+                  project_code: form.project_code,
+                  project_lead: form.project_lead,
+                  contact_email: form.contact_email,
+                  partner_badges: form.partner_badges || [],
+                  backer_badges: form.backer_badges || [],
+                  tags: form.tags || [],
+                  hero_image_url: form.hero_image_url,
+                  gallery_urls: form.gallery_urls || [],
+                  apply_cta_text: form.apply_cta_text,
+                  apply_url: form.apply_url,
+                  eligibility_notes: form.eligibility_notes,
+                  notes_internal: form.notes_internal,
+                }} onEdit={()=>{}} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ProjectCard({ p, onEdit }: { p: AdvisoryProject; onEdit: () => void }) {
+  const badges = [...(p.partner_badges||[]), ...(p.backer_badges||[])]
+  return (
+    <div className="rounded-xl border border-border bg-card overflow-hidden flex flex-col">
+      {p.hero_image_url ? (
+        <img src={p.hero_image_url} alt="" className="h-36 w-full object-cover" />
+      ) : (
+        <div className="h-12 w-full bg-muted" />
+      )}
+      <div className="p-4 space-y-2 flex-1">
+        <div className="text-xs uppercase text-muted-foreground">{p.client_name}</div>
+        <div className="text-lg font-semibold flex items-center gap-2">
+          {p.project_name}
+          <span className="text-xs px-2 py-0.5 rounded-full border ml-auto">{p.status}</span>
+        </div>
+        <div className="text-sm text-muted-foreground line-clamp-2">{p.summary}</div>
+        <div className="flex flex-wrap gap-1 mt-1">
+          {badges.slice(0,3).map((b,i)=> (
+            <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-muted">{b}</span>
+          ))}
+        </div>
+      </div>
+      <div className="p-4 border-t border-border flex items-center gap-2">
+        <button className="px-3 py-1.5 text-sm rounded-md border" onClick={onEdit}>Edit</button>
+        <button className="px-3 py-1.5 text-sm rounded-md border">Deactivate</button>
+        <a className="ml-auto text-sm text-blue-600 hover:underline" href={p.apply_url || '#'} target="_blank">Student View</a>
+      </div>
+    </div>
+  )
+}
+
+

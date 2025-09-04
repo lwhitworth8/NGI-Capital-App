@@ -11,16 +11,25 @@ from sqlalchemy import text as sa_text
 from datetime import datetime
 
 from src.api.database import get_db
-from src.api.main import require_partner_access  # reuse existing auth dep
+from src.api.auth import require_partner_access  # reuse existing auth dep without circular import
 
 router = APIRouter()
 
 
 def require_ngiadvisory_admin():
+    import os as _os
     allowed = {
         "lwhitworth@ngicapitaladvisory.com",
         "anurmamade@ngicapitaladvisory.com",
     }
+    # Allow override/extension via env
+    try:
+        extra = _os.getenv('ALLOWED_ADVISORY_ADMINS', '')
+        for e in (extra or '').split(','):
+            if e and e.strip():
+                allowed.add(e.strip().lower())
+    except Exception:
+        pass
 
     async def _dep(partner=Depends(require_partner_access())):
         email = (partner or {}).get("email") or ""
@@ -121,6 +130,68 @@ def _ensure_tables(db: Session):
             status TEXT CHECK(status IN ('scheduled','completed','canceled')) DEFAULT 'scheduled',
             raw_payload TEXT,
             created_at TEXT DEFAULT (datetime('now'))
+        )
+        """
+    ))
+    # Project Assignments
+    db.execute(sa_text(
+        """
+        CREATE TABLE IF NOT EXISTS advisory_project_assignments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER,
+            student_id INTEGER,
+            role TEXT,
+            hours_planned INTEGER,
+            active INTEGER DEFAULT 1,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+        """
+    ))
+    # Onboarding: templates and steps
+    db.execute(sa_text(
+        """
+        CREATE TABLE IF NOT EXISTS advisory_onboarding_templates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            description TEXT
+        )
+        """
+    ))
+    db.execute(sa_text(
+        """
+        CREATE TABLE IF NOT EXISTS advisory_onboarding_template_steps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            template_id INTEGER,
+            step_key TEXT,
+            title TEXT,
+            provider TEXT CHECK(provider IN ('internal','docusign','drive_upload','microsoft_teams','custom_url')) DEFAULT 'internal',
+            config TEXT
+        )
+        """
+    ))
+    # Onboarding: instances and events
+    db.execute(sa_text(
+        """
+        CREATE TABLE IF NOT EXISTS advisory_onboarding_instances (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id INTEGER,
+            project_id INTEGER,
+            template_id INTEGER,
+            status TEXT CHECK(status IN ('in_progress','completed','canceled')) DEFAULT 'in_progress',
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+        """
+    ))
+    db.execute(sa_text(
+        """
+        CREATE TABLE IF NOT EXISTS advisory_onboarding_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            instance_id INTEGER,
+            step_key TEXT,
+            status TEXT CHECK(status IN ('pending','sent','completed','failed')) DEFAULT 'pending',
+            evidence_url TEXT,
+            external_id TEXT,
+            ts TEXT DEFAULT (datetime('now'))
         )
         """
     ))
@@ -237,11 +308,41 @@ async def create_project(payload: Dict[str, Any], admin=Depends(require_ngiadvis
 @router.get("/projects/{pid}")
 async def get_project(pid: int, admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
     _ensure_tables(db)
-    row = db.execute(sa_text("SELECT * FROM advisory_projects WHERE id = :id"), {"id": pid}).fetchone()
-    if not row:
+    r = db.execute(sa_text("""
+        SELECT id, entity_id, client_name, project_name, summary, description, status, mode, location_text, start_date, end_date, duration_weeks, commitment_hours_per_week, project_code, project_lead, contact_email, partner_badges, backer_badges, tags, hero_image_url, gallery_urls, apply_cta_text, apply_url, eligibility_notes, notes_internal
+        FROM advisory_projects WHERE id = :id
+    """), {"id": pid}).fetchone()
+    if not r:
         raise HTTPException(status_code=404, detail="Not found")
-    cols = [c[1] for c in db.execute(sa_text("PRAGMA table_info('advisory_projects')")).fetchall()]
-    return {k: row[i] for i, k in enumerate(cols)}
+    import json as _json
+    def _json_load(s):
+        try:
+            return _json.loads(s) if s else []
+        except Exception:
+            return []
+    proj = {
+        "id": r[0], "entity_id": r[1], "client_name": r[2], "project_name": r[3],
+        "summary": r[4], "description": r[5], "status": r[6], "mode": r[7],
+        "location_text": r[8], "start_date": r[9], "end_date": r[10],
+        "duration_weeks": r[11], "commitment_hours_per_week": r[12],
+        "project_code": r[13], "project_lead": r[14], "contact_email": r[15],
+        "partner_badges": _json_load(r[16]), "backer_badges": _json_load(r[17]),
+        "tags": _json_load(r[18]), "hero_image_url": r[19], "gallery_urls": _json_load(r[20]),
+        "apply_cta_text": r[21], "apply_url": r[22], "eligibility_notes": r[23], "notes_internal": r[24],
+    }
+    # Load assignments
+    rows_a = db.execute(sa_text("""
+        SELECT a.id, a.student_id, s.first_name, s.last_name, a.role, a.hours_planned, a.active
+        FROM advisory_project_assignments a
+        LEFT JOIN advisory_students s ON s.id = a.student_id
+        WHERE a.project_id = :pid
+        ORDER BY a.id DESC
+    """), {"pid": pid}).fetchall()
+    proj["assignments"] = [
+        {"id": ra[0], "student_id": ra[1], "name": ((ra[2] or '') + ' ' + (ra[3] or '')).strip() or None, "role": ra[4], "hours_planned": ra[5], "active": bool(ra[6])}
+        for ra in rows_a
+    ]
+    return proj
 
 
 @router.put("/projects/{pid}")
@@ -324,13 +425,58 @@ async def create_student(payload: Dict[str, Any], admin=Depends(require_ngiadvis
     rid = db.execute(sa_text("SELECT last_insert_rowid()")).scalar(); return {"id": int(rid or 0)}
 
 
+@router.get("/students/{sid}")
+async def get_student(sid: int, admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
+    _ensure_tables(db)
+    row = db.execute(sa_text("SELECT id, entity_id, first_name, last_name, email, school, program, grad_year, skills, status, created_at, updated_at FROM advisory_students WHERE id = :id"), {"id": sid}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Not found")
+    import json as _json
+    return {
+        "id": row[0], "entity_id": row[1], "first_name": row[2], "last_name": row[3], "email": row[4],
+        "school": row[5], "program": row[6], "grad_year": row[7], "skills": (_json.loads(row[8]) if row[8] else {}),
+        "status": row[9], "created_at": row[10], "updated_at": row[11],
+    }
+
+
+@router.put("/students/{sid}")
+async def update_student(sid: int, payload: Dict[str, Any], admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
+    _ensure_tables(db)
+    sets = []
+    params: Dict[str, Any] = {"id": sid}
+    for k in ("entity_id","first_name","last_name","email","school","program","grad_year","status"):
+        if k in payload:
+            sets.append(f"{k} = :{k}"); params[k] = payload[k]
+    import json as _json
+    if "skills" in payload:
+        try:
+            params["skills"] = _json.dumps(payload["skills"]) if not isinstance(payload["skills"], str) else payload["skills"]
+        except Exception:
+            params["skills"] = None
+        sets.append("skills = :skills")
+    sets.append("updated_at = :ua"); params["ua"] = datetime.utcnow().isoformat()
+    if sets:
+        db.execute(sa_text("UPDATE advisory_students SET " + ", ".join(sets) + " WHERE id = :id"), params); db.commit()
+    return {"id": sid}
+
+
+@router.delete("/students/{sid}")
+async def delete_student(sid: int, admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
+    _ensure_tables(db)
+    db.execute(sa_text("DELETE FROM advisory_students WHERE id = :id"), {"id": sid}); db.commit()
+    return {"id": sid, "deleted": True}
+
+
 # ---------------- Applications -----------------
 @router.get("/applications")
-async def list_applications(entity_id: Optional[int] = None, status: Optional[str] = None, admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
+async def list_applications(entity_id: Optional[int] = None, status: Optional[str] = None, project_id: Optional[int] = None, q: Optional[str] = None, admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
     _ensure_tables(db)
     where = []; params: Dict[str, Any] = {}
     if entity_id: where.append("entity_id = :e"); params["e"] = int(entity_id)
     if status: where.append("lower(status) = :s"); params["s"] = status.strip().lower()
+    if project_id: where.append("target_project_id = :p"); params["p"] = int(project_id)
+    if q:
+        where.append("(lower(first_name) LIKE :q OR lower(last_name) LIKE :q OR lower(email) LIKE :q OR lower(program) LIKE :q OR lower(school) LIKE :q)"); params["q"] = f"%{q.strip().lower()}%"
     sql = "SELECT id, entity_id, first_name, last_name, email, school, program, target_project_id, status, created_at FROM advisory_applications"
     if where: sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY datetime(created_at) DESC"
@@ -356,15 +502,192 @@ async def create_application(payload: Dict[str, Any], admin=Depends(require_ngia
     db.commit(); rid = db.execute(sa_text("SELECT last_insert_rowid()")).scalar(); return {"id": int(rid or 0)}
 
 
+@router.put("/applications/{aid}")
+async def update_application(aid: int, payload: Dict[str, Any], admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
+    _ensure_tables(db)
+    sets = []
+    params: Dict[str, Any] = {"id": aid}
+    for k in ("status","target_project_id","notes","resume_url","source"):
+        if k in payload:
+            sets.append(f"{k} = :{k}"); params[k] = payload[k]
+    if not sets:
+        return {"id": aid}
+    db.execute(sa_text("UPDATE advisory_applications SET " + ", ".join(sets) + " WHERE id = :id"), params)
+    db.commit(); return {"id": aid}
+
+
 # ---------------- Coffee Chats -----------------
 @router.get("/coffeechats")
-async def list_coffeechats(entity_id: Optional[int] = None, admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
+async def list_coffeechats(entity_id: Optional[int] = None, status: Optional[str] = None, provider: Optional[str] = None, admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
     _ensure_tables(db)
     where = []; params: Dict[str, Any] = {}
     if entity_id: where.append("entity_id = :e"); params["e"] = int(entity_id)
+    if status: where.append("lower(status) = :st"); params["st"] = status.strip().lower()
+    if provider: where.append("lower(provider) = :pr"); params["pr"] = provider.strip().lower()
     sql = "SELECT id, provider, external_id, invitee_name, invitee_email, scheduled_start, scheduled_end, status, topic FROM advisory_coffeechats"
     if where: sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY datetime(scheduled_start) DESC, id DESC"
     rows = db.execute(sa_text(sql), params).fetchall()
     return [{"id": r[0], "provider": r[1], "external_id": r[2], "invitee_name": r[3], "invitee_email": r[4], "scheduled_start": r[5], "scheduled_end": r[6], "status": r[7], "topic": r[8]} for r in rows]
 
+
+@router.post("/coffeechats/sync")
+async def sync_coffeechats(admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
+    _ensure_tables(db)
+    # Placeholder: In real impl, use provider tokens from env and sync
+    # Here, no-op and return count 0
+    return {"synced": 0}
+
+
+@router.post("/integrations/calendly/webhook")
+async def calendly_webhook(payload: Dict[str, Any], db: Session = Depends(get_db)):
+    # Webhook is typically unauthenticated but should validate secret; for MVP, accept and upsert
+    _ensure_tables(db)
+    import json as _json
+    try:
+        evt = payload.get("event") or {}
+        invitee = payload.get("payload", {}).get("invitee", {}) or payload.get("invitee", {}) or {}
+        scheduled_start = (payload.get("payload", {}).get("event", {}) or {}).get("start_time") or payload.get("scheduled_start")
+        scheduled_end = (payload.get("payload", {}).get("event", {}) or {}).get("end_time") or payload.get("scheduled_end")
+        external_id = payload.get("payload", {}).get("event", {}).get("uuid") or payload.get("external_id")
+        topic = payload.get("payload", {}).get("event", {}).get("name") or payload.get("topic")
+        invitee_email = invitee.get("email") or payload.get("invitee_email")
+        invitee_name = invitee.get("name") or payload.get("invitee_name")
+    except Exception:
+        evt = {}; invitee = {}; scheduled_start = None; scheduled_end = None; external_id = None; topic = None; invitee_email = None; invitee_name = None
+    db.execute(sa_text(
+        "INSERT INTO advisory_coffeechats (entity_id, provider, external_id, scheduled_start, scheduled_end, invitee_email, invitee_name, topic, status, raw_payload) "
+        "VALUES (NULL, 'calendly', :ext, :ss, :se, :em, :nm, :tp, :st, :raw)"
+    ), {"ext": external_id, "ss": scheduled_start, "se": scheduled_end, "em": invitee_email, "nm": invitee_name, "tp": topic, "st": 'scheduled', "raw": _json.dumps(payload)})
+    db.commit()
+    return {"received": True}
+
+
+# ---------------- Assignments -----------------
+@router.post("/projects/{project_id}/assignments")
+async def add_assignment(project_id: int, payload: Dict[str, Any], admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
+    _ensure_tables(db)
+    db.execute(sa_text(
+        "INSERT INTO advisory_project_assignments (project_id, student_id, role, hours_planned, created_at) VALUES (:p,:s,:r,:h,:ts)"
+    ), {"p": project_id, "s": payload.get("student_id"), "r": payload.get("role"), "h": payload.get("hours_planned"), "ts": datetime.utcnow().isoformat()})
+    db.commit(); rid = db.execute(sa_text("SELECT last_insert_rowid()")).scalar(); return {"id": int(rid or 0)}
+
+
+@router.put("/assignments/{aid}")
+async def update_assignment(aid: int, payload: Dict[str, Any], admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
+    _ensure_tables(db)
+    sets = []
+    params: Dict[str, Any] = {"id": aid}
+    for k in ("role","hours_planned","active"):
+        if k in payload:
+            sets.append(f"{k} = :{k}"); params[k] = payload[k]
+    if not sets:
+        return {"id": aid}
+    db.execute(sa_text("UPDATE advisory_project_assignments SET " + ", ".join(sets) + " WHERE id = :id"), params)
+    db.commit(); return {"id": aid}
+
+
+@router.delete("/assignments/{aid}")
+async def delete_assignment(aid: int, admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
+    _ensure_tables(db)
+    db.execute(sa_text("UPDATE advisory_project_assignments SET active = 0 WHERE id = :id"), {"id": aid}); db.commit(); return {"id": aid, "active": 0}
+
+
+# ---------------- Onboarding -----------------
+@router.get("/onboarding/templates")
+async def list_onboarding_templates(admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
+    _ensure_tables(db)
+    rows = db.execute(sa_text("SELECT id, name, description FROM advisory_onboarding_templates ORDER BY id DESC")).fetchall()
+    return [{"id": r[0], "name": r[1], "description": r[2]} for r in rows]
+
+
+@router.post("/onboarding/templates")
+async def create_onboarding_template(payload: Dict[str, Any], admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
+    _ensure_tables(db)
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="name required")
+    desc = payload.get("description")
+    db.execute(sa_text("INSERT INTO advisory_onboarding_templates (name, description) VALUES (:n,:d)"), {"n": name, "d": desc})
+    tid = int(db.execute(sa_text("SELECT last_insert_rowid()")).scalar() or 0)
+    steps = payload.get("steps") or []
+    for s in steps:
+        db.execute(sa_text("INSERT INTO advisory_onboarding_template_steps (template_id, step_key, title, provider, config) VALUES (:t,:k,:ti,:p,:c)"), {
+            "t": tid, "k": s.get("step_key"), "ti": s.get("title"), "p": (s.get("provider") or 'internal'), "c": (None if s.get("config") is None else __import__('json').dumps(s.get("config")))
+        })
+    db.commit(); return {"id": tid}
+
+
+@router.put("/onboarding/templates/{tid}")
+async def update_onboarding_template(tid: int, payload: Dict[str, Any], admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
+    _ensure_tables(db)
+    sets = []
+    params: Dict[str, Any] = {"id": tid}
+    for k in ("name","description"):
+        if k in payload:
+            sets.append(f"{k} = :{k}"); params[k] = payload[k]
+    if sets:
+        db.execute(sa_text("UPDATE advisory_onboarding_templates SET " + ", ".join(sets) + " WHERE id = :id"), params)
+    # Optional steps full-replace
+    if isinstance(payload.get("steps"), list):
+        db.execute(sa_text("DELETE FROM advisory_onboarding_template_steps WHERE template_id = :id"), {"id": tid})
+        for s in (payload.get("steps") or []):
+            db.execute(sa_text("INSERT INTO advisory_onboarding_template_steps (template_id, step_key, title, provider, config) VALUES (:t,:k,:ti,:p,:c)"), {
+                "t": tid, "k": s.get("step_key"), "ti": s.get("title"), "p": (s.get("provider") or 'internal'), "c": (None if s.get("config") is None else __import__('json').dumps(s.get("config")))
+            })
+    db.commit(); return {"id": tid}
+
+
+@router.post("/onboarding/instances")
+async def create_onboarding_instance(payload: Dict[str, Any], admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
+    _ensure_tables(db)
+    sid = payload.get("student_id"); tid = payload.get("template_id")
+    if not sid or not tid:
+        raise HTTPException(status_code=422, detail="student_id and template_id required")
+    db.execute(sa_text("INSERT INTO advisory_onboarding_instances (student_id, project_id, template_id, status, created_at) VALUES (:s,:p,:t,'in_progress',:ts)"), {"s": sid, "p": payload.get("project_id"), "t": tid, "ts": datetime.utcnow().isoformat()})
+    iid = int(db.execute(sa_text("SELECT last_insert_rowid()")).scalar() or 0)
+    # Seed events from template steps
+    steps = db.execute(sa_text("SELECT step_key FROM advisory_onboarding_template_steps WHERE template_id = :t"), {"t": tid}).fetchall()
+    for (sk,) in steps:
+        db.execute(sa_text("INSERT INTO advisory_onboarding_events (instance_id, step_key, status, ts) VALUES (:i,:k,'pending',:ts)"), {"i": iid, "k": sk, "ts": datetime.utcnow().isoformat()})
+    db.commit(); return {"id": iid}
+
+
+@router.get("/onboarding/instances")
+async def list_onboarding_instances(student_id: Optional[int] = None, project_id: Optional[int] = None, admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
+    _ensure_tables(db)
+    where = []; params: Dict[str, Any] = {}
+    if student_id: where.append("student_id = :s"); params["s"] = int(student_id)
+    if project_id: where.append("project_id = :p"); params["p"] = int(project_id)
+    sql = "SELECT id, student_id, project_id, template_id, status, created_at FROM advisory_onboarding_instances"
+    if where: sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY datetime(created_at) DESC, id DESC"
+    rows = db.execute(sa_text(sql), params).fetchall()
+    out = []
+    for r in rows:
+        iid = r[0]
+        steps = db.execute(sa_text("SELECT step_key, status, evidence_url FROM advisory_onboarding_events WHERE instance_id = :i ORDER BY id"), {"i": iid}).fetchall()
+        out.append({
+            "id": iid, "student_id": r[1], "project_id": r[2], "template_id": r[3], "status": r[4], "created_at": r[5],
+            "steps": [{"step_key": s[0], "status": s[1], "evidence_url": s[2]} for s in steps]
+        })
+    return out
+
+
+@router.post("/onboarding/instances/{iid}/steps/{step_key}/mark")
+async def mark_onboarding_step(iid: int, step_key: str, payload: Dict[str, Any], admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
+    _ensure_tables(db)
+    status = (payload.get("status") or '').strip().lower()
+    if status not in {"pending","sent","completed","failed"}:
+        raise HTTPException(status_code=422, detail="invalid status")
+    db.execute(sa_text("UPDATE advisory_onboarding_events SET status = :st, evidence_url = :eu, external_id = :ex, ts = :ts WHERE instance_id = :i AND step_key = :k"), {
+        "st": status, "eu": payload.get("evidence_url"), "ex": payload.get("external_id"), "ts": datetime.utcnow().isoformat(), "i": iid, "k": step_key
+    })
+    # If all steps completed, update instance status
+    try:
+        rows = db.execute(sa_text("SELECT COUNT(*) FROM advisory_onboarding_events WHERE instance_id = :i AND status != 'completed'"), {"i": iid}).fetchone()
+        if rows and int(rows[0] or 0) == 0:
+            db.execute(sa_text("UPDATE advisory_onboarding_instances SET status = 'completed' WHERE id = :i"), {"i": iid})
+    except Exception:
+        pass
+    db.commit(); return {"id": iid, "step_key": step_key, "status": status}

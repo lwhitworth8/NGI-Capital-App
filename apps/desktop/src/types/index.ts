@@ -159,3 +159,73 @@ export interface LoadingState {
   isLoading: boolean;
   error?: AppError | null;
 }
+
+// NGI Advisory Types
+export type AdvisoryProject = {
+  id: number;
+  entity_id: number;
+  client_name: string;
+  project_name: string;
+  summary: string;
+  description?: string;
+  status: 'draft' | 'active' | 'paused' | 'delivered' | 'closed';
+  mode: 'remote' | 'in_person' | 'hybrid';
+  location_text?: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  duration_weeks?: number | null;
+  commitment_hours_per_week?: number | null;
+  project_code?: string;
+  project_lead?: string;
+  contact_email?: string;
+  partner_badges?: string[];
+  backer_badges?: string[];
+  tags?: string[];
+  hero_image_url?: string;
+  gallery_urls?: string[];
+  apply_cta_text?: string;
+  apply_url?: string;
+  eligibility_notes?: string;
+  notes_internal?: string;
+}
+
+export type AdvisoryStudent = {
+  id: number;
+  entity_id: number;
+  first_name: string;
+  last_name: string;
+  email: string;
+  school?: string;
+  program?: string;
+  grad_year?: number;
+  skills?: Record<string, any> | string[];
+  status: 'prospect' | 'active' | 'paused' | 'alumni';
+}
+
+export type AdvisoryApplication = {
+  id: number;
+  entity_id: number;
+  source: 'form' | 'referral' | 'other';
+  target_project_id?: number;
+  first_name: string;
+  last_name: string;
+  email: string;
+  school?: string;
+  program?: string;
+  resume_url?: string;
+  notes?: string;
+  status: 'new' | 'reviewing' | 'interview' | 'offer' | 'rejected' | 'withdrawn';
+  created_at: string;
+}
+
+export type AdvisoryCoffeeChat = {
+  id: number;
+  provider: 'calendly' | 'manual' | 'other';
+  external_id?: string;
+  invitee_email?: string;
+  invitee_name?: string;
+  scheduled_start?: string;
+  scheduled_end?: string;
+  status: 'scheduled' | 'completed' | 'canceled';
+  topic?: string;
+}

@@ -65,7 +65,16 @@ const navigation: NavItem[] = [
   // 7. Investor Management (renamed from Investor Relations)
   { name: 'Investor Management', href: '/investor-relations', icon: TrendingUp },
   // 8. NGI Capital Advisory (renamed)
-  { name: 'NGI Capital Advisory', href: '/ngi-advisory', icon: Briefcase },
+  {
+    name: 'NGI Capital Advisory', href: '/ngi-advisory', icon: Briefcase,
+    children: [
+      { name: 'Projects', href: '/ngi-advisory/projects' },
+      { name: 'Students', href: '/ngi-advisory/students' },
+      { name: 'Applications', href: '/ngi-advisory/applications' },
+      { name: 'Coffee Chats', href: '/ngi-advisory/coffeechats' },
+      { name: 'Onboarding', href: '/ngi-advisory/onboarding' },
+    ]
+  },
 ];
 
 export default function Sidebar() {
