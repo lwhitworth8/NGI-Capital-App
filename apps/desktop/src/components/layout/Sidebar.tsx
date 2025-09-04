@@ -20,7 +20,10 @@ import {
   DollarSign,
   TrendingDown,
   Wallet,
-  FileSpreadsheet
+  FileSpreadsheet,
+  ClipboardList,
+  BadgeCheck,
+  Archive
 } from 'lucide-react';
 
 interface NavItem {
@@ -43,10 +46,10 @@ const navigation: NavItem[] = [
     children: [
       // Workflow order
       { name: 'Documents', href: '/accounting/documents', icon: FileText },
-      { name: 'Journal Entries', href: '/accounting/journal-entries', icon: FileText },
-      { name: 'Approvals', href: '/accounting/approvals', icon: Shield },
+      { name: 'Journal Entries', href: '/accounting/journal-entries', icon: ClipboardList },
+      { name: 'Approvals', href: '/accounting/approvals', icon: BadgeCheck },
       { name: 'Bank Reconciliation', href: '/accounting/bank-reconciliation', icon: Wallet },
-      { name: 'Close', href: '/accounting/close', icon: FileSpreadsheet },
+      { name: 'Close', href: '/accounting/close', icon: Archive },
       { name: 'Financial Reporting', href: '/accounting/financial-reporting', icon: FileBarChart },
       { name: 'Chart of Accounts', href: '/accounting/chart-of-accounts', icon: PieChart },
       { name: 'Internal Controls', href: '/accounting/internal-controls', icon: Shield },
@@ -55,8 +58,8 @@ const navigation: NavItem[] = [
   },
   // 4. Finance
   { name: 'Finance', href: '/finance', icon: DollarSign },
-  // 5. Tax
-  { name: 'Tax', href: '/tax', icon: FileSpreadsheet },
+  // 5. Taxes
+  { name: 'Taxes', href: '/tax', icon: FileSpreadsheet },
   // 6. Employees
   { name: 'Employees', href: '/employees', icon: Users },
   // 7. Investor Management (renamed from Investor Relations)
