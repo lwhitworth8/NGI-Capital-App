@@ -37,6 +37,18 @@ const TestComponent = () => {
 };
 
 describe('Authentication', () => {
+  const origError = console.error
+  beforeAll(() => {
+    jest.spyOn(console, 'error').mockImplementation((...args: any[]) => {
+      const msg = args?.[0]?.toString?.() || ''
+      if (msg.includes('wrapped in act')) return
+      // @ts-ignore
+      origError.apply(console, args)
+    })
+  })
+  afterAll(() => {
+    ;(console.error as any).mockRestore?.()
+  })
   let queryClient: QueryClient;
 
   beforeEach(() => {

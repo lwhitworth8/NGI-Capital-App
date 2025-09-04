@@ -3,6 +3,18 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import RevRecPage from '@/app/accounting/revrec/page'
 
 describe('RevRecPage', () => {
+  const origError = console.error
+  beforeAll(() => {
+    jest.spyOn(console, 'error').mockImplementation((...args: any[]) => {
+      const msg = args?.[0]?.toString?.() || ''
+      if (msg.includes('wrapped in act')) return
+      // @ts-ignore
+      origError.apply(console, args)
+    })
+  })
+  afterAll(() => {
+    ;(console.error as any).mockRestore?.()
+  })
   beforeEach(() => {
     // @ts-ignore
     global.fetch = jest.fn((url: string, opts?: any) => {
@@ -23,4 +35,3 @@ describe('RevRecPage', () => {
     expect((global.fetch as any).mock.calls.some((c: any[]) => (c[0] as string).includes('/post-period'))).toBe(true)
   })
 })
-

@@ -14,10 +14,10 @@ jest.mock('next/navigation', () => ({
 }))
 
 describe('Sidebar navigation', () => {
-  it('renders Finance and Tax nav entries', () => {
+  it('renders Finance and Taxes nav entries', () => {
     render(<Sidebar />)
     expect(screen.getByText('Finance')).toBeInTheDocument()
-    expect(screen.getByText('Tax')).toBeInTheDocument()
+    expect(screen.getByText('Taxes')).toBeInTheDocument()
   })
 
   it('navigates to /finance when clicking Finance', () => {

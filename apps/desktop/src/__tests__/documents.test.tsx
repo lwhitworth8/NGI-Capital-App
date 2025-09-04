@@ -22,7 +22,8 @@ describe('DocumentsPage', () => {
     render(<DocumentsPage />)
     expect(await screen.findByText('Documents')).toBeInTheDocument()
     expect(await screen.findByText('Formation')).toBeInTheDocument()
-    expect(await screen.findByText('Invoice')).toBeInTheDocument()
+    // Verify table header and one row cell
+    expect(await screen.findByRole('columnheader', { name: 'Invoice' })).toBeInTheDocument()
+    expect(await screen.findByText('I-1')).toBeInTheDocument()
   })
 })
-

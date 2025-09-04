@@ -1,12 +1,14 @@
 import { spFetch } from '@/lib/api'
+export const dynamic = 'force-dynamic'
 
-async function getMine(): Promise<{ id:number; target_project_id?:number; status:string; created_at:string }[]> {
+type MyApplication = { id:number; target_project_id?:number; status:string; created_at:string }
+async function getMine(): Promise<MyApplication[]> {
   // For MVP, relies on server extracting email from header or query param
-  return spFetch('/api/public/applications/mine')
+  return spFetch<MyApplication[]>('/api/public/applications/mine')
 }
 
 export default async function ApplicationsPage() {
-  const items = await getMine().catch(()=>[])
+  const items: MyApplication[] = await getMine().catch(()=>[] as MyApplication[])
   return (
     <div style={{ padding: 24 }}>
       <h1 style={{ fontSize: 24, fontWeight: 700 }}>My Applications</h1>
@@ -22,4 +24,3 @@ export default async function ApplicationsPage() {
     </div>
   )
 }
-

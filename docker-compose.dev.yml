@@ -37,8 +37,9 @@ services:
     command: >
       sh -c "npm install &&
              npm run dev"
-    ports:
-      - "3001:3001"
+    # No host port; reached via nginx on the bridge network
+    expose:
+      - "3001"
     volumes:
       - ./apps/desktop:/app
       - /app/node_modules
@@ -55,6 +56,51 @@ services:
       - CLERK_SIGN_UP_URL=/sign-up
     depends_on:
       - backend
+    networks:
+      - ngi-network
+
+  student:
+    image: node:18-alpine
+    container_name: ngi-student
+    working_dir: /app
+    command: >
+      sh -c "npm install &&
+             npm run dev"
+    # No host port; reached via nginx on the bridge network
+    expose:
+      - "3002"
+    volumes:
+      - ./apps/student:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NODE_ENV=development
+      - BACKEND_ORIGIN=http://backend:8001
+      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-pk_test_replace_me}
+      - CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-pk_test_replace_me}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY:-sk_test_replace_me}
+      - CLERK_ISSUER=${CLERK_ISSUER:-https://YOUR-CLERK-SUBDOMAIN.clerk.accounts.dev}
+      - CLERK_JWKS_URL=${CLERK_JWKS_URL:-https://YOUR-CLERK-SUBDOMAIN.clerk.accounts.dev/.well-known/jwks.json}
+      - USE_MOCK_AUTH=${USE_MOCK_AUTH:-true}
+      - NEXT_PUBLIC_MOCK_STUDENT_EMAIL=${NEXT_PUBLIC_MOCK_STUDENT_EMAIL:-student@berkeley.edu}
+      - ALLOWED_EMAIL_DOMAINS=${ALLOWED_EMAIL_DOMAINS:-berkeley.edu,ngicapitaladvisory.com}
+      - WATCHPACK_POLLING=true
+    depends_on:
+      - backend
+    networks:
+      - ngi-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: ngi-nginx-dev
+    ports:
+      - "3001:80"
+    volumes:
+      - ./nginx/nginx.dev.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - backend
+      - student
     networks:
       - ngi-network
 

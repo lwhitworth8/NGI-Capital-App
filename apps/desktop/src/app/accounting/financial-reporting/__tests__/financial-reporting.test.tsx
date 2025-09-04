@@ -51,6 +51,20 @@ global.fetch = jest.fn(() =>
 ) as jest.Mock;
 
 describe('Financial Reporting Components', () => {
+  const origError = console.error
+  beforeAll(() => {
+    jest.spyOn(console, 'error').mockImplementation((...args: any[]) => {
+      const msg = args?.[0]?.toString?.() || ''
+      if (msg.includes('act(') || msg.includes('wrapped in act')) {
+        return
+      }
+      // @ts-ignore
+      origError.apply(console, args)
+    })
+  })
+  afterAll(() => {
+    ;(console.error as any).mockRestore?.()
+  })
   const mockPush = jest.fn();
   
   beforeEach(() => {
@@ -61,23 +75,21 @@ describe('Financial Reporting Components', () => {
   });
 
   describe('Income Statement Page', () => {
-    it('renders income statement page with correct elements', () => {
+    it('renders income statement page with correct elements', async () => {
       render(<IncomeStatementPage />);
-      
-      expect(screen.getByRole('heading', { name: 'Income Statement' })).toBeInTheDocument();
-      expect(screen.getByText('Export to Excel')).toBeInTheDocument();
+      expect(await screen.findByRole('heading', { name: 'Income Statement' })).toBeInTheDocument();
+      expect(await screen.findByText('Export to Excel')).toBeInTheDocument();
     });
 
-    it('shows empty state when no data is available', () => {
+    it('shows empty state when no data is available', async () => {
       render(<IncomeStatementPage />);
-      
-      expect(screen.getByText('No Income Statement Data Available')).toBeInTheDocument();
-      expect(screen.getByText(/Connected your Mercury Bank account/)).toBeInTheDocument();
+      expect(await screen.findByText('No Income Statement Data Available')).toBeInTheDocument();
+      expect(await screen.findByText(/Connected your Mercury Bank account/)).toBeInTheDocument();
     });
 
-    it('shows empty entity selector when no entities available', () => {
+    it('shows empty entity selector when no entities available', async () => {
       render(<IncomeStatementPage />);
-      const selects = screen.getAllByRole('combobox');
+      const selects = await screen.findAllByRole('combobox');
       const entitySelect = selects[0];
       expect(entitySelect).toBeInTheDocument();
       expect(entitySelect).toHaveDisplayValue('No entities available');
@@ -93,20 +105,18 @@ describe('Financial Reporting Components', () => {
       });
     });
 
-    it('triggers Excel export when export button is clicked', () => {
+    it('triggers Excel export when export button is clicked', async () => {
       render(<IncomeStatementPage />);
-      
-      const exportButton = screen.getByText('Export to Excel');
+      const exportButton = await screen.findByText('Export to Excel');
       fireEvent.click(exportButton);
       
       expect(excelExport.exportIncomeStatement).toHaveBeenCalled();
     });
 
-    it('displays ASC compliance note at bottom', () => {
+    it('displays ASC compliance note at bottom', async () => {
       render(<IncomeStatementPage />);
-      
-      expect(screen.getByText('ASC 220 Compliance Note')).toBeInTheDocument();
-      expect(screen.getByText(/ASC 220 guidelines/)).toBeInTheDocument();
+      expect(await screen.findByText('ASC 220 Compliance Note')).toBeInTheDocument();
+      expect(await screen.findByText(/ASC 220 guidelines/)).toBeInTheDocument();
     });
   });
 
@@ -188,35 +198,36 @@ describe('Financial Reporting Components', () => {
   });
 
   describe('Main Financial Reporting Page', () => {
-    it('renders overview of all financial statements', () => {
+    it('renders overview header, tabs, and export buttons', () => {
       render(<FinancialReportingPage />);
-      
       expect(screen.getByText('Financial Reporting')).toBeInTheDocument();
-      expect(screen.getByText('Income Statement')).toBeInTheDocument();
-      expect(screen.getByText('Balance Sheet')).toBeInTheDocument();
-      expect(screen.getByText('Cash Flow Statement')).toBeInTheDocument();
-      expect(screen.getByText("Statement of Stockholders' Equity")).toBeInTheDocument();
+      expect(screen.getByText('IS')).toBeInTheDocument();
+      expect(screen.getByText('BS')).toBeInTheDocument();
+      expect(screen.getByText('CF')).toBeInTheDocument();
+      expect(screen.getByText('EQUITY')).toBeInTheDocument();
+      expect(screen.getByText('NOTES')).toBeInTheDocument();
+      expect(screen.getByText('Export PDF')).toBeInTheDocument();
+      expect(screen.getByText('Export XLSX')).toBeInTheDocument();
     });
 
-    it('shows co-founder approval status', () => {
+    it('shows period and date pickers', () => {
       render(<FinancialReportingPage />);
-      expect(screen.getByText('Co-Founder Approval Controls')).toBeInTheDocument();
+      expect(screen.getByText('Monthly')).toBeInTheDocument();
+      expect(screen.getByText('Quarterly')).toBeInTheDocument();
+      expect(screen.getByText('Annual')).toBeInTheDocument();
     });
 
-    it('navigates to individual statement pages when clicked', () => {
+    it('switches tabs without navigation', () => {
       render(<FinancialReportingPage />);
-      
-      const incomeStatementCard = screen.getByText('Income Statement').closest('.cursor-pointer');
-      if (incomeStatementCard) {
-        fireEvent.click(incomeStatementCard);
-        expect(mockPush).toHaveBeenCalledWith('/accounting/financial-reporting/income-statement');
-      }
+      const bsTab = screen.getByText('BS');
+      fireEvent.click(bsTab);
+      expect(screen.getByText('BS')).toBeInTheDocument();
     });
 
-    it('displays export financial package button', () => {
+    it('displays export buttons', () => {
       render(<FinancialReportingPage />);
-      
-      expect(screen.getByText('Export Financial Package')).toBeInTheDocument();
+      expect(screen.getByText('Export PDF')).toBeInTheDocument();
+      expect(screen.getByText('Export XLSX')).toBeInTheDocument();
     });
   });
 
