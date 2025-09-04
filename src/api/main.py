@@ -35,6 +35,7 @@ import string
 # Import route modules - using absolute imports for Docker
 from src.api.routes import entities, reports, banking, documents, financial_reporting, employees, investor_relations, accounting
 from src.api.routes import advisory as advisory_routes
+from src.api.routes import advisory_public as advisory_public_routes
 from src.api.routes import coa as coa_routes
 from src.api.routes import mappings as mappings_routes
 from src.api.routes import aging as aging_routes
@@ -1169,6 +1170,8 @@ app.include_router(tax_routes.router)
 app.include_router(metrics_routes.router)
 # NGI Advisory admin-only router
 app.include_router(advisory_routes.router, prefix="/api/advisory", tags=["advisory"])  # type: ignore
+# Public read-only API for student portal (does not require partner access)
+app.include_router(advisory_public_routes.router, prefix="/api/public", tags=["advisory-public"])  # type: ignore
 app.include_router(coa_routes.router, dependencies=[Depends(require_full_access())])
 app.include_router(mappings_routes.router, dependencies=[Depends(require_full_access())])
 app.include_router(aging_routes.router, dependencies=[Depends(require_full_access())])

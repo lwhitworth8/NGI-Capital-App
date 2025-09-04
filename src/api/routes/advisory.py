@@ -75,6 +75,19 @@ def _ensure_tables(db: Session):
         )
         """
     ))
+    # Add publish fields if missing
+    try:
+        db.execute(sa_text("ALTER TABLE advisory_projects ADD COLUMN is_public INTEGER DEFAULT 1"))
+    except Exception:
+        pass
+    try:
+        db.execute(sa_text("ALTER TABLE advisory_projects ADD COLUMN allow_applications INTEGER DEFAULT 1"))
+    except Exception:
+        pass
+    try:
+        db.execute(sa_text("ALTER TABLE advisory_projects ADD COLUMN coffeechat_calendly TEXT"))
+    except Exception:
+        pass
     # Students
     db.execute(sa_text(
         """
@@ -219,14 +232,14 @@ async def list_projects(
         where.append("lower(mode) = :m"); params["m"] = mode.strip().lower()
     if q:
         where.append("(lower(project_name) LIKE :q OR lower(client_name) LIKE :q OR lower(summary) LIKE :q)"); params["q"] = f"%{q.strip().lower()}%"
-    sql = "SELECT id, entity_id, client_name, project_name, summary, description, status, mode, location_text, start_date, end_date, duration_weeks, commitment_hours_per_week, project_code, project_lead, contact_email, partner_badges, backer_badges, tags, hero_image_url, gallery_urls, apply_cta_text, apply_url, eligibility_notes, notes_internal FROM advisory_projects"
+    sql = "SELECT id, entity_id, client_name, project_name, summary, description, status, mode, location_text, start_date, end_date, duration_weeks, commitment_hours_per_week, project_code, project_lead, contact_email, partner_badges, backer_badges, tags, hero_image_url, gallery_urls, apply_cta_text, apply_url, eligibility_notes, notes_internal, is_public, allow_applications, coffeechat_calendly FROM advisory_projects"
     if where:
         sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY datetime(created_at) DESC, id DESC"
     rows = db.execute(sa_text(sql), params).fetchall()
     items = []
     for r in rows:
-        (pid, eid, client_name, project_name, summary, description, status, mode, location_text, start_date, end_date, duration_weeks, chpw, pcode, plead, cemail, pbadges, bbadges, tags, hero, gallery, cta, aurl, elig, notes) = r
+        (pid, eid, client_name, project_name, summary, description, status, mode, location_text, start_date, end_date, duration_weeks, chpw, pcode, plead, cemail, pbadges, bbadges, tags, hero, gallery, cta, aurl, elig, notes, is_public, allow_app, calendly) = r
         def _json(s):
             import json
             try:
@@ -242,6 +255,7 @@ async def list_projects(
             "partner_badges": _json(pbadges), "backer_badges": _json(bbadges), "tags": _json(tags),
             "hero_image_url": hero, "gallery_urls": _json(gallery), "apply_cta_text": cta,
             "apply_url": aurl, "eligibility_notes": elig, "notes_internal": notes,
+            "is_public": int(is_public or 0), "allow_applications": int(allow_app or 0), "coffeechat_calendly": calendly,
         })
     return items
 
@@ -265,11 +279,11 @@ async def create_project(payload: Dict[str, Any], admin=Depends(require_ngiadvis
             entity_id, client_name, project_name, summary, description, status, mode,
             location_text, start_date, end_date, duration_weeks, commitment_hours_per_week,
             project_code, project_lead, contact_email, partner_badges, backer_badges, tags,
-            hero_image_url, gallery_urls, apply_cta_text, apply_url, eligibility_notes, notes_internal, created_at, updated_at
+            hero_image_url, gallery_urls, apply_cta_text, apply_url, eligibility_notes, notes_internal, is_public, allow_applications, coffeechat_calendly, created_at, updated_at
         ) VALUES (
             :eid, :client, :pname, :sum, :desc, :status, :mode,
             :loc, :sd, :ed, :dw, :hpw, :pcode, :lead, :email, :pb, :bb, :tags,
-            :hero, :gal, :cta, :aurl, :elig, :notes, :ca, :ua
+            :hero, :gal, :cta, :aurl, :elig, :notes, :isp, :allowapp, :cal, :ca, :ua
         )
         """
     ), {
@@ -297,6 +311,9 @@ async def create_project(payload: Dict[str, Any], admin=Depends(require_ngiadvis
         "aurl": payload.get("apply_url"),
         "elig": payload.get("eligibility_notes"),
         "notes": payload.get("notes_internal"),
+        "isp": 1 if (payload.get("is_public") in (True, 1, "1", "true")) else 0,
+        "allowapp": 1 if (payload.get("allow_applications") in (True, 1, "1", "true")) else 0,
+        "cal": payload.get("coffeechat_calendly"),
         "ca": datetime.utcnow().isoformat(),
         "ua": datetime.utcnow().isoformat(),
     })
@@ -351,9 +368,13 @@ async def update_project(pid: int, payload: Dict[str, Any], admin=Depends(requir
     # build dynamic update
     sets = []
     params: Dict[str, Any] = {"id": pid}
-    for k in ("client_name","project_name","summary","description","status","mode","location_text","start_date","end_date","duration_weeks","commitment_hours_per_week","project_code","project_lead","contact_email","hero_image_url","apply_cta_text","apply_url","eligibility_notes","notes_internal"):
+    for k in ("client_name","project_name","summary","description","status","mode","location_text","start_date","end_date","duration_weeks","commitment_hours_per_week","project_code","project_lead","contact_email","hero_image_url","apply_cta_text","apply_url","eligibility_notes","notes_internal","coffeechat_calendly"):
         if k in payload:
             sets.append(f"{k} = :{k}"); params[k] = payload[k]
+    if "is_public" in payload:
+        sets.append("is_public = :isp"); params["isp"] = 1 if (payload.get("is_public") in (True,1,"1","true")) else 0
+    if "allow_applications" in payload:
+        sets.append("allow_applications = :alla"); params["alla"] = 1 if (payload.get("allow_applications") in (True,1,"1","true")) else 0
     import json as _json
     for jk, col in (("partner_badges","partner_badges"),("backer_badges","backer_badges"),("tags","tags"),("gallery_urls","gallery_urls")):
         if jk in payload:
