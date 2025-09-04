@@ -1,72 +1,68 @@
-"use client"
+"use client";
+import React, { useEffect, useState } from "react";
+import { PageHeader } from "@/components/common/PageHeader";
+import { DataTable } from "@/components/common/DataTable";
+import { SidePanel } from "@/components/common/SidePanel";
+import { notify } from "@/components/common/Toast";
 
-import { useEffect, useState } from 'react'
-import { apiClient } from '@/lib/api'
-import { Button } from '@/components/ui/Button'
-import { toast } from 'sonner'
-import { useApp } from '@/lib/context/AppContext'
-import EntitySelectorInline from '@/components/finance/EntitySelectorInline'
+type Row = { id: number; type: string; refId: string; amount: number; createdAt: string; requestedBy?: string; requiredApprovers: string[]; approvals: {email:string;at:string}[]; status: string; summary?: string };
 
 export default function ApprovalsPage(){
-  const { state } = useApp()
-  const [items, setItems] = useState<any[]>([])
-  const [entities, setEntities] = useState<any[]>([])
-  const [entityId, setEntityId] = useState<number|undefined>(undefined)
-  const [year, setYear] = useState<number>(new Date().getFullYear())
-  const [month, setMonth] = useState<number>(new Date().getMonth()+1)
-  const [detailsId, setDetailsId] = useState<number|undefined>(undefined)
-  const [details, setDetails] = useState<any|null>(null)
-  const load = async ()=>{ try { setItems(await apiClient.request('GET','/accounting/approvals/pending', undefined, { params: { entity_id: entityId, year, month } })) } catch {} }
-  useEffect(()=>{ (async()=>{ try { setEntities(await apiClient.getEntities()) } catch {} })() }, [])
-  useEffect(()=>{ load() }, [entityId, year, month])
-  const approve = async (id: number)=>{ try { await apiClient.accountingApproveJE(id); toast.success('Approval recorded'); await load(); if (detailsId===id) { try { setDetails(await apiClient.getJournalEntryDetails(id)) } catch {} } } catch (e:any){ toast.error(e?.response?.data?.detail || 'Approve failed') } }
-  const view = async (id: number)=>{ setDetailsId(id); try { setDetails(await apiClient.getJournalEntryDetails(id)) } catch {} }
+  const [entityId, setEntityId] = useState<number>(6);
+  const [tab, setTab] = useState<'pending'|'approved'|'rejected'>('pending');
+  const [rows, setRows] = useState<Row[]>([]);
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<Row | null>(null);
+  const [comment, setComment] = useState<string>("");
+  async function load(){ const r = await fetch(`/api/accounting/approvals?entity_id=${entityId}&status=${tab}`); setRows(await r.json()); }
+  useEffect(()=>{ load() }, [entityId, tab]);
+  const approve = async (r: Row, approve: boolean) => {
+    try {
+      await fetch(`/api/accounting/journal-entries/${r.id}/approve`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ approve, approval_notes: comment }) });
+      notify.success(approve?'Approved':'Rejected'); load();
+    } catch (err) { notify.error('Action failed'); }
+  };
   return (
     <div className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Approvals Queue</h1>
-          <div className="flex items-center gap-2 mt-2 text-sm">
-            <label>Entity
-              <select className="ml-2 px-2 py-1 border rounded bg-background" value={entityId ?? ''} onChange={e=>setEntityId(e.target.value? Number(e.target.value): undefined)}>
-                <option value="">All</option>
-                {entities.map(e=> (<option key={e.id} value={e.id}>{e.legal_name}</option>))}
-              </select>
-            </label>
-            <label>Year<input className="ml-2 w-24 px-2 py-1 border rounded bg-background" value={year} onChange={e=>setYear(Number(e.target.value||0))} /></label>
-            <label>Month<input className="ml-2 w-24 px-2 py-1 border rounded bg-background" value={month} onChange={e=>setMonth(Number(e.target.value||0))} /></label>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={load}>Refresh</Button>
-          <Button variant="secondary" onClick={async ()=>{ try { const blob = await apiClient.accountingExportClosePacket(entityId || 0, year, month); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href=url; a.download=`close_packet_${entityId||'all'}_${year}${String(month).padStart(2,'0')}.zip`; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url) } catch (e:any){ toast.error(e?.response?.data?.detail || 'Download failed') } }}>Download Close Packet</Button>
-        </div>
-      </div>
-      <div className="border rounded divide-y">
-        {items.length===0 && (<div className="p-3 text-sm text-muted-foreground">No pending approvals</div>)}
-        {items.map(it => (
-          <div key={it.id} className="p-3 space-y-2">
-            <div>
-              <div className="font-medium">{it.entry_number} • Entity {it.entity_id}</div>
-              <div className="text-xs text-muted-foreground">Required: {Array.isArray(it.required)? it.required.join(', ') : ''} • Approvals: {Array.isArray(it.approvals)? it.approvals.join(', '): ''}</div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Button variant="secondary" onClick={()=>view(it.id)}>View</Button>
-              <Button variant="primary" onClick={()=>approve(it.id)} disabled={Array.isArray(it.approvals) && it.approvals.includes((state.user?.email||'').toLowerCase())}>Approve</Button>
-            </div>
-            {details && detailsId===it.id && (
-              <div className="mt-2 p-2 border rounded text-sm">
-                <div className="mb-1 font-medium">Journal Entry Lines</div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-1">
-                  {details.lines?.map((ln:any)=> (
-                    <div key={ln.id} className="flex items-center justify-between"><span>{ln.account_code} • {ln.account_name}</span><span className="tabular-nums">D {Number(ln.debit_amount||0).toLocaleString()} / C {Number(ln.credit_amount||0).toLocaleString()}</span></div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
+      <PageHeader title="Approvals" rightSlot={<input className="border px-2 py-1 rounded w-24" type="number" value={entityId} onChange={e=>setEntityId(parseInt(e.target.value||"0"))} />} />
+      <div className="flex gap-2">
+        {(['pending','approved','rejected'] as const).map(s => (
+          <button key={s} className={`px-3 py-1 rounded border ${tab===s?'bg-primary text-primary-foreground':''}`} onClick={()=>setTab(s)}>{s[0].toUpperCase()+s.slice(1)}</button>
         ))}
       </div>
+      <DataTable<Row>
+        columns={[
+          { key: 'type', header: 'Type' },
+          { key: 'refId', header: 'Ref' },
+          { key: 'amount', header: 'Amount', render: (r)=> Number(r.amount||0).toLocaleString(undefined,{style:'currency',currency:'USD'}), className: 'text-right' },
+          { key: 'createdAt', header: 'Date' },
+          { key: 'status', header: 'Status' },
+          { key: 'actions', header: 'Actions', render: (r)=> (
+            <div className="flex gap-2 text-sm">
+              <button className="px-2 py-1 border rounded" onClick={()=>{ setSelected(r); setOpen(true); }}>Open</button>
+              {tab==='pending' && (<>
+                <button className="px-2 py-1 border rounded" onClick={()=>approve(r,true)}>Approve</button>
+                <button className="px-2 py-1 border rounded" onClick={()=>approve(r,false)}>Reject</button>
+              </>)}
+            </div>
+          )},
+        ]}
+        rows={rows}
+      />
+      <SidePanel open={open} onClose={()=>setOpen(false)} title={`Approval • ${selected?.refId || ''}`}>
+        {selected && (
+          <div className="text-sm space-y-2">
+            <div>Summary: {selected.summary || '—'}</div>
+            <div>Amount: <span className="tabular-nums">${selected.amount.toFixed(2)}</span></div>
+            <div>Required: {selected.requiredApprovers?.join(', ') || '—'}</div>
+            <div>Approvals: {selected.approvals?.map(a=>a.email).join(', ') || '—'}</div>
+            <div>
+              <div className="text-xs text-muted-foreground">Comment</div>
+              <textarea className="mt-1 w-full border rounded p-2" rows={3} value={comment} onChange={e=>setComment(e.target.value)} placeholder="Add approval/rejection note" />
+            </div>
+          </div>
+        )}
+      </SidePanel>
     </div>
-  )
+  );
 }
