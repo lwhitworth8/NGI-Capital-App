@@ -1,13 +1,21 @@
 {
   "name": "ngi-capital-root",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
+    "e2e": "npx playwright test -c e2e/playwright.config.ts",
     "backfill:metrics": "node scripts/backfill_metrics.js"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.31.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.47.2",
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
     "@types/better-sqlite3": "^7.6.13",
     "better-sqlite3": "^9.4.3",
     "dotenv": "^16.4.5",

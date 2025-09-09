@@ -4,6 +4,10 @@ module.exports = {
   content: [
     './src/app/**/*.{ts,tsx}',
     './src/components/**/*.{ts,tsx}',
+    // Only scan local UI source, not entire node_modules
+    '../../packages/ui/src/**/*.{ts,tsx}',
+    // If using the published UI package, scope to its dist only
+    './node_modules/@ngi/ui/dist/**/*.{js,jsx,ts,tsx}'
   ],
   theme: {
     extend: {
@@ -39,5 +43,6 @@ module.exports = {
       },
     },
   },
+  presets: [require('@ngi/ui/tailwind-preset')],
   plugins: [],
 }

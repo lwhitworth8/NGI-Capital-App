@@ -4,10 +4,12 @@ Endpoints are read-only for projects and per-student for applications/membership
 Backed by the same SQLite advisory tables for MVP.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, Query, UploadFile, File
 from typing import Any, Dict, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import text as sa_text
+from pathlib import Path
+from datetime import datetime
 from jose import jwt as _jwt
 import os
 
@@ -56,17 +58,32 @@ def _check_domain(email: str) -> bool:
 
 # -------- Public Projects (no auth required) --------
 @router.get("/projects")
-async def public_projects(q: Optional[str] = None, db: Session = Depends(get_db)):
+async def public_projects(q: Optional[str] = None, tags: Optional[str] = None, sort: Optional[str] = None, db: Session = Depends(get_db)):
     _ensure_tables(db)
     where = ["COALESCE(is_public,1) = 1", "lower(status) = 'active'"]
     params: Dict[str, Any] = {}
     if q:
         where.append("(lower(project_name) LIKE :q OR lower(client_name) LIKE :q OR lower(summary) LIKE :q)")
         params["q"] = f"%{q.strip().lower()}%"
+    # Basic tags filter (string contains any of the provided tokens)
+    if tags:
+        tag_list = [t.strip().lower() for t in tags.split(',') if t.strip()]
+        if tag_list:
+            ors = []
+            for i, t in enumerate(tag_list):
+                key = f"tag{i}"
+                ors.append(f"lower(COALESCE(tags,'')) LIKE :{key}")
+                params[key] = f"%{t}%"
+            where.append("(" + " OR ".join(ors) + ")")
     sql = (
         "SELECT id, project_name, client_name, summary, hero_image_url, tags, partner_badges, backer_badges, start_date, allow_applications, coffeechat_calendly "
-        "FROM advisory_projects WHERE " + " AND ".join(where) + " ORDER BY datetime(start_date) DESC, id DESC"
+        "FROM advisory_projects WHERE " + " AND ".join(where)
     )
+    # Sorting: name | newest (default)
+    if (sort or '').strip().lower() == 'name':
+        sql += " ORDER BY lower(project_name) ASC, id ASC"
+    else:
+        sql += " ORDER BY datetime(start_date) DESC, id DESC"
     rows = db.execute(sa_text(sql), params).fetchall()
     import json as _json
     out = []
@@ -151,3 +168,108 @@ async def my_memberships(request: Request, db: Session = Depends(get_db)):
         "SELECT a.id, a.project_id, a.role, a.hours_planned, a.active FROM advisory_project_assignments a WHERE a.student_id = :sid"
     ), {"sid": sid}).fetchall()
     return [{"id": r[0], "project_id": r[1], "role": r[2], "hours_planned": r[3], "active": bool(r[4])} for r in rows]
+
+
+# -------- Student Profile (theme/resume) --------
+def _ensure_student_profile_cols(db: Session) -> None:
+    # Add resume_url and theme columns if missing
+    try:
+        db.execute(sa_text("ALTER TABLE advisory_students ADD COLUMN resume_url TEXT"))
+    except Exception:
+        pass
+    try:
+        db.execute(sa_text("ALTER TABLE advisory_students ADD COLUMN theme TEXT"))
+    except Exception:
+        pass
+    try:
+        db.execute(sa_text("ALTER TABLE advisory_students ADD COLUMN learning_notify INTEGER DEFAULT 0"))
+    except Exception:
+        pass
+    db.commit()
+
+
+@router.get("/profile")
+async def get_profile(request: Request, db: Session = Depends(get_db)):
+    _ensure_tables(db)
+    _ensure_student_profile_cols(db)
+    email = _extract_student_email(request)
+    if not email or not _check_domain(email):
+        raise HTTPException(status_code=403, detail="Student email with allowed domain required")
+    row = db.execute(sa_text(
+        "SELECT id, first_name, last_name, email, school, program, resume_url, theme, learning_notify, created_at, updated_at "
+        "FROM advisory_students WHERE lower(email) = :em"
+    ), {"em": email.lower()}).fetchone()
+    if not row:
+        # Create minimal record
+        db.execute(sa_text(
+            "INSERT INTO advisory_students (entity_id, first_name, last_name, email, status, created_at, updated_at) "
+            "VALUES (NULL, NULL, NULL, :em, 'prospect', datetime('now'), datetime('now'))"
+        ), {"em": email})
+        db.commit()
+        row = db.execute(sa_text(
+            "SELECT id, first_name, last_name, email, school, program, resume_url, theme, learning_notify, created_at, updated_at "
+            "FROM advisory_students WHERE lower(email) = :em"
+        ), {"em": email.lower()}).fetchone()
+    return {
+        "id": row[0],
+        "first_name": row[1],
+        "last_name": row[2],
+        "email": row[3],
+        "school": row[4],
+        "program": row[5],
+        "resume_url": row[6],
+        "theme": row[7],
+        "learning_notify": bool(row[8] or 0),
+        "created_at": row[9],
+        "updated_at": row[10],
+    }
+
+
+@router.patch("/profile")
+async def update_profile(payload: Dict[str, Any], request: Request, db: Session = Depends(get_db)):
+    _ensure_tables(db)
+    _ensure_student_profile_cols(db)
+    email = _extract_student_email(request) or (payload.get("email") if isinstance(payload.get("email"), str) else None)
+    if not email or not _check_domain(email):
+        raise HTTPException(status_code=403, detail="Student email with allowed domain required")
+    fields = []
+    params: Dict[str, Any] = {"em": email.lower()}
+    for key in ("first_name", "last_name", "school", "program", "theme"):
+        if key in payload:
+            fields.append(f"{key} = :{key}")
+            params[key] = payload[key]
+    if "learning_notify" in payload:
+        fields.append("learning_notify = :ln")
+        params["ln"] = 1 if (payload.get("learning_notify") in (True, 1, "1", "true")) else 0
+    if not fields:
+        return {"message": "no changes"}
+    fields.append("updated_at = datetime('now')")
+    db.execute(sa_text("UPDATE advisory_students SET " + ", ".join(fields) + " WHERE lower(email) = :em"), params)
+    db.commit()
+    return {"message": "updated"}
+
+
+@router.post("/profile/resume")
+async def upload_resume(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
+    _ensure_tables(db)
+    _ensure_student_profile_cols(db)
+    email = _extract_student_email(request)
+    if not email or not _check_domain(email):
+        raise HTTPException(status_code=403, detail="Student email with allowed domain required")
+    # Validate file
+    filename = (file.filename or "resume.pdf").lower()
+    if not filename.endswith(".pdf"):
+        raise HTTPException(status_code=415, detail="PDF only")
+    # Store under uploads/advisory-docs/users/{safe_email}/resume-YYYYMMDDHHMMSS.pdf
+    safe_email = email.replace("/", "_").replace("\\", "_").replace("@", "_at_")
+    base = Path("uploads") / "advisory-docs" / "users" / safe_email
+    base.mkdir(parents=True, exist_ok=True)
+    ts = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    out_path = base / f"resume-{ts}.pdf"
+    with out_path.open("wb") as out:
+        contents = await file.read()
+        out.write(contents)
+    rel_url = str(out_path.as_posix())
+    db.execute(sa_text("UPDATE advisory_students SET resume_url = :u, updated_at = datetime('now') WHERE lower(email) = :em"), {"u": rel_url, "em": email.lower()})
+    db.commit()
+    return {"resume_url": rel_url}

@@ -1,62 +1,46 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
-import { NextResponse, type NextRequest } from 'next/server'
-import { allowedDomains, isAllowedStudentDomain } from '@/lib/gating'
+import { NextResponse } from 'next/server'
 
-const publicRoutes = [
-  '/blocked',
-  '/sign-in(.*)',
-  '/sign-up(.*)',
-  '/projects(.*)',
-  '/learning(.*)'
-]
-const isPublicRoute = createRouteMatcher(publicRoutes)
+// Define public routes that don't require authentication
+const isPublicRoute = createRouteMatcher([
+  '/',              // Marketing homepage
+  '/sign-in(.*)',   // Sign in page
+  '/sign-up(.*)',   // Sign up page (if needed)
+  '/auth(.*)',      // Auth routes
+  '/blocked',       // Blocked page
+  '/_next(.*)',     // Next.js assets
+  '/favicon.ico',   // Favicon
+  '/assets(.*)',    // Static assets
+  '/api/webhooks(.*)', // Webhook endpoints
+])
 
-export default clerkMiddleware((authAny: any, req: NextRequest) => {
-  const auth = authAny as any
-  // Unauthenticated → sign in (unless public route)
-  if (!auth.userId) {
-    if (isPublicRoute(req)) return NextResponse.next()
-    const signIn = new URL('/sign-in', req.url)
-    // Avoid infinite nesting by using path+search (not full absolute URL)
-    const back = `${req.nextUrl.pathname}${req.nextUrl.search}`
-    signIn.searchParams.set('returnBackUrl', back || '/')
-    return NextResponse.redirect(signIn)
+export default clerkMiddleware(async (auth, req) => {
+  const url = new URL(req.url)
+  
+  // Check if it's a public route
+  if (isPublicRoute(req)) {
+    return NextResponse.next()
   }
 
-  // Enforce domain restriction when authenticated
-  try {
-    const claims: any = auth.sessionClaims as any
-    const raw = (claims?.email || claims?.email_address || claims?.primary_email_address || claims?.sub || '').toString()
-    const email = raw.toLowerCase()
-    const domain = email.includes('@') ? email.split('@')[1] : ''
+  // Get auth status
+  const { userId } = await auth()
+  
+  // If not authenticated, redirect to sign-in
+  if (!userId) {
+    const signInUrl = new URL('/sign-in', url.origin)
+    signInUrl.searchParams.set('redirect_url', url.pathname)
+    return NextResponse.redirect(signInUrl)
+  }
 
-    // Admin emails should use the Admin app (Desktop). Redirect to /admin/.
-    const adminEmails = new Set([
-      'lwhitworth@ngicapitaladvisory.com',
-      'anurmamade@ngicapitaladvisory.com',
-    ])
-    if (email && adminEmails.has(email)) {
-      const res = NextResponse.redirect(new URL('/admin/', req.url))
-      // Set a small hint cookie that Admin middleware can also read as fallback
-      res.cookies.set('student_email', email, { path: '/', sameSite: 'lax' })
-      return res
-    }
-    if (auth.userId && (!domain || !allowedDomains.includes(domain))) {
-      return NextResponse.redirect(new URL('/blocked', req.url))
-    }
-
-    // Surface email to app/backend via cookie for SSR+API calls
-    if (email) {
-      const res = NextResponse.next()
-      res.cookies.set('student_email', email, { path: '/', sameSite: 'lax' })
-      return res
-    }
-  } catch {}
+  // User is authenticated, continue to the page
   return NextResponse.next()
 })
 
 export const config = {
   matcher: [
-    '/((?!_next|api|favicon.ico).*)',
+    // Skip Next.js internals and all static files, unless found in search params
+    '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
+    // Always run for API routes
+    '/(api|trpc)(.*)',
   ],
 }

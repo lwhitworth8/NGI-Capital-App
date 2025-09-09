@@ -5,6 +5,9 @@ module.exports = {
     './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
     './src/components/**/*.{js,ts,jsx,tsx,mdx}',
     './src/app/**/*.{js,ts,jsx,tsx,mdx}',
+    '../../packages/ui/src/**/*.{ts,tsx}',
+    // If using published UI pkg, scope to its built output only
+    './node_modules/@ngi/ui/dist/**/*.{js,jsx,ts,tsx}'
   ],
   theme: {
     extend: {
@@ -120,5 +123,6 @@ module.exports = {
       },
     },
   },
+  presets: [require('@ngi/ui/tailwind-preset')],
   plugins: [],
 };

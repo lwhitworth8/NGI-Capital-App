@@ -36,7 +36,16 @@
       "Read(C:\\c\\Users\\Ochow\\Desktop\\NGI Capital App/**)",
       "Read(C:\\c\\Users\\Ochow\\Desktop\\NGI Capital App/**)",
       "Read(C:\\c\\Users\\Ochow\\Desktop\\NGI Capital App/**)",
-      "Read(C:\\c\\Users\\Ochow\\Desktop\\NGI Capital App/**)"
+      "Read(C:\\c\\Users\\Ochow\\Desktop\\NGI Capital App/**)",
+      "Bash(/dev/null)",
+      "Bash(node test-auth-flow.js)",
+      "Bash(docker ps:*)",
+      "WebSearch",
+      "Bash(node:*)",
+      "Read(//c/Users/Ochow/Downloads/**)",
+      "Bash(git add:*)",
+      "Bash(git reset:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []

@@ -4,6 +4,9 @@ const BACKEND_ORIGIN = process.env.BACKEND_ORIGIN || (process.env.NODE_ENV === '
   : 'http://localhost:8001')
 
 const nextConfig = {
+  basePath: '/admin',
+  transpilePackages: ['@ngi/ui'],
+  // Note: Next.js 14 does not support trustHostHeader; rely on nginx proxy headers
   typescript: {
     // Dangerously allow production builds to successfully complete even if
     // your project has type errors.
@@ -31,6 +34,11 @@ const nextConfig = {
   },
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || BACKEND_ORIGIN,
+    // Default admin base used by cross-app redirects (auth resolver, middleware)
+    NEXT_PUBLIC_ADMIN_BASE_URL: process.env.NEXT_PUBLIC_ADMIN_BASE_URL || 'http://localhost:3001/admin',
+  },
+  experimental: {
+    externalDir: true,
   },
 }
 

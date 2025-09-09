@@ -5,10 +5,20 @@ const BACKEND_ORIGIN = process.env.BACKEND_ORIGIN || (process.env.NODE_ENV === '
 
 const nextConfig = {
   output: 'standalone',
+  transpilePackages: ['@ngi/ui'],
+  // Note: Next.js 14 does not support trustHostHeader; rely on nginx proxy headers
   async rewrites() {
     return [
       { source: '/api/:path*', destination: `${BACKEND_ORIGIN}/api/:path*` },
     ]
+  },
+  env: {
+    // Ensure marketing + auth links always target the nginx origin (port 3001)
+    NEXT_PUBLIC_STUDENT_BASE_URL: process.env.NEXT_PUBLIC_STUDENT_BASE_URL || 'http://localhost:3001',
+    NEXT_PUBLIC_ADMIN_BASE_URL: process.env.NEXT_PUBLIC_ADMIN_BASE_URL || 'http://localhost:3001/admin',
+  },
+  experimental: {
+    externalDir: true,
   },
 }
 module.exports = nextConfig

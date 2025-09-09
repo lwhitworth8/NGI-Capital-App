@@ -1,38 +1,24 @@
 import './globals.css'
+import { ClerkProvider } from '@clerk/nextjs'
 import ClientRoot from '@/components/ClientRoot'
 
 export const metadata = {
-  title: 'NGI Capital Advisory - Student Portal',
+  title: 'NGI Capital',
   description: 'Opportunities and applications for students',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <style>{`
-          :root{--bg:#0b0b0c;--card:#111215;--text:#e6e7e9;--muted:#9aa0a6;--border:#22242a;--accent:#1f2937;--brand:#0ea5e9;--ok:#10b981}
-          .light{--bg:#ffffff;--card:#ffffff;--text:#0f172a;--muted:#6b7280;--border:#e5e7eb;--accent:#f3f4f6;--brand:#2563eb;--ok:#16a34a}
-          html,body{background:var(--bg);color:var(--text)}
-          a{color:inherit}
-          .sidebar{width:240px;border-right:1px solid var(--border);padding:16px;background:var(--card)}
-          .navlink{display:block;padding:8px 10px;border-radius:8px;color:var(--text);text-decoration:none}
-          .navlink:hover{background:var(--accent)}
-          .header{display:flex;align-items:center;justify-content:space-between}
-          .title{font-weight:700;font-size:24px}
-          .search{border:1px solid var(--border);background:var(--card);color:var(--text);padding:8px 12px;border-radius:10px;min-width:260px}
-          .card{display:flex;gap:12px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--card)}
-          .thumb{width:160px;height:90px;background:var(--accent);border-radius:10px;overflow:hidden}
-          .badge{font-size:10px;background:var(--accent);padding:2px 8px;border-radius:999px;margin-right:6px}
-          .chip{font-size:10px;background:var(--accent);padding:2px 6px;border-radius:6px;margin-right:6px}
-          .status{color:var(--ok);border:1px solid var(--ok);padding:1px 8px;border-radius:999px;font-size:12px}
-        `}</style>
-        <script dangerouslySetInnerHTML={{__html:`(function(){try{var t=localStorage.getItem('theme_preference')||'light';var e=document.documentElement;e.classList.remove('light','dark');e.classList.add(t==='dark'?'dark':'light');}catch(e){}})();`}} />
-        <script dangerouslySetInnerHTML={{__html:`(function(){try{var em='${process.env.NEXT_PUBLIC_MOCK_STUDENT_EMAIL||''}'; if(em){var has=document.cookie.match(/(?:^|; )student_email=/); if(!has){document.cookie='student_email='+encodeURIComponent(em)+'; path=/; SameSite=Lax';}}}catch(e){}})();`}} />
-      </head>
-      <body>
-        <ClientRoot>{children}</ClientRoot>
-      </body>
-    </html>
+    <ClerkProvider
+      publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+    >
+      <html lang="en" suppressHydrationWarning>
+        <body>
+          <ClientRoot>
+            {children}
+          </ClientRoot>
+        </body>
+      </html>
+    </ClerkProvider>
   )
 }

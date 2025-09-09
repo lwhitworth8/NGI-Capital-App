@@ -1,27 +1,27 @@
 "use client"
-
-import { ClerkProvider } from '@clerk/nextjs'
 import { ThemeProvider } from 'next-themes'
 import { usePathname } from 'next/navigation'
 import StudentSidebar from '@/components/StudentSidebar'
 
 export default function ClientRoot({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname()
-  const onAuth = /^\/(sign-in|sign-up)(\/|$)/.test(pathname || '')
+  const pathname = usePathname() || '/'
+  const onMarketing = pathname === '/'
+  const onAuth = pathname.startsWith('/sign-in') || pathname.startsWith('/auth/')
   return (
-    <ClerkProvider publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}>
-      <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} storageKey="theme_preference">
-        {onAuth ? (
-          <div className="min-h-screen grid place-items-center bg-background text-foreground">
-            <main className="w-full max-w-xl px-4">{children}</main>
-          </div>
-        ) : (
-          <div className="min-h-screen flex bg-background text-foreground">
-            <StudentSidebar />
-            <main className="flex-1">{children}</main>
-          </div>
-        )}
-      </ThemeProvider>
-    </ClerkProvider>
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="student_theme">
+      {onMarketing ? (
+        <div className="min-h-screen grid place-items-center bg-background text-foreground">
+          <main className="w-full max-w-xl px-4">{children}</main>
+        </div>
+      ) : onAuth ? (
+        // Allow auth pages (sign-in/up and resolver) to control their own layout
+        <div className="min-h-screen bg-background text-foreground">{children}</div>
+      ) : (
+        <div className="h-screen bg-background text-foreground">
+          <StudentSidebar />
+          <main className="ml-64 h-screen overflow-y-auto">{children}</main>
+        </div>
+      )}
+    </ThemeProvider>
   )
 }

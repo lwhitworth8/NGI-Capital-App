@@ -1,5 +1,187 @@
 # NGI Capital Advisory — UI Polish & Implementation Spec (Admin + Student, 2025 Standard)
 
+> **Hotfix addendum (auth & routing):** Fixes the bug where partner emails (e.g., `lwhitworth@ngicapitaladvisory.com`) get routed to the Student app, and enables **Email + Password** alongside Google sign‑in in Clerk. These instructions are additive to the spec below and should be implemented first.
+
+---
+
+## A) Critical Auth & Routing Fixes (apply before UI work)
+
+### A.1 Clerk configuration
+
+1. In **Clerk Dashboard → Authentication → Email, Phone, Username**:
+
+   * Enable **Email Address** as an identifier.
+   * Enable **Email + Password** sign‑in (in addition to OAuth).
+2. In **Clerk Dashboard → Social Connections**: keep **Google** enabled.
+3. In **Clerk Dashboard → Organization/Users**:
+
+   * Add `publicMetadata.role` default = `STUDENT` for new users (Clerk rule or set in webhook below).
+4. In **Clerk Dashboard → Redirect URLs**: add both
+
+   * `https://ngicapitaladvisory.com/*`
+   * `https://admin.ngicapitaladvisory.com/*`
+5. In **Clerk Dashboard → Webhooks**: point to the Admin endpoint `/api/webhooks/clerk` (see A.4). Ensure secret is set.
+
+### A.2 Role & partner resolution (source of truth)
+
+* **Partners list**: from env `PARTNER_EMAILS` (comma-separated). Example: `whitworth@ngicapitaladvisory.com,andres@ngicapitaladvisory.com`.
+* **Role assignment**:
+
+  * If email ∈ `PARTNER_EMAILS` → set `role = PARTNER_ADMIN`.
+  * Else → `role = STUDENT`.
+* Save role to both **Clerk `publicMetadata.role`** and **`advisory_db.User.roles`**.
+
+### A.3 Post sign‑in redirect (unified logic)
+
+Set Clerk components to use `afterSignInUrl="/auth/resolve"` and `afterSignUpUrl="/auth/resolve"` in **both apps**. Implement a shared resolver route that sends users to the correct app based on role.
+
+```ts
+// apps/*/src/app/auth/resolve/route.ts
+import { auth, currentUser } from '@clerk/nextjs';
+import { NextResponse } from 'next/server';
+
+export async function GET() {
+  const { userId } = auth();
+  if (!userId) return NextResponse.redirect('/sign-in');
+  const user = await currentUser();
+  const email = user?.primaryEmailAddress?.emailAddress?.toLowerCase() || '';
+  const role = (user?.publicMetadata?.role as string) || 'STUDENT';
+  const partners = (process.env.PARTNER_EMAILS||'').split(',').map(s=>s.trim().toLowerCase());
+  const isPartner = partners.includes(email) || role === 'PARTNER_ADMIN';
+
+  const adminUrl = process.env.NEXT_PUBLIC_ADMIN_BASE_URL || '/admin';
+  const studentUrl = process.env.NEXT_PUBLIC_STUDENT_BASE_URL || '/';
+
+  return NextResponse.redirect(isPartner ? adminUrl : studentUrl);
+}
+```
+
+> This guarantees both Email+Password and Google sign‑ins funnel to the right host.
+
+### A.4 Clerk webhook (role upsert)
+
+```ts
+// apps/admin/src/app/api/webhooks/clerk/route.ts
+import { headers } from 'next/headers';
+import { Webhook } from 'svix';
+import { advisoryDb } from '@ngi/db/clients';
+
+export async function POST(req: Request) {
+  const wh = new Webhook(process.env.CLERK_WEBHOOK_SECRET!);
+  const payload = await req.text();
+  const h = Object.fromEntries(headers());
+  const evt = wh.verify(payload, {
+    'svix-id': h['svix-id']!,
+    'svix-timestamp': h['svix-timestamp']!,
+    'svix-signature': h['svix-signature']!,
+  }) as any;
+
+  if (evt.type === 'user.created' || evt.type === 'user.updated') {
+    const email = evt.data.email_addresses?.[0]?.email_address?.toLowerCase();
+    const partners = (process.env.PARTNER_EMAILS||'').split(',').map((s:string)=>s.trim().toLowerCase());
+    const role = partners.includes(email) ? 'PARTNER_ADMIN' : 'STUDENT';
+
+    await advisoryDb.user.upsert({
+      where: { clerkId: evt.data.id },
+      create: { clerkId: evt.data.id, email, roles: [role], profile: { create: {} } },
+      update: { email, roles: [role] },
+    });
+  }
+  return new Response('ok');
+}
+```
+
+### A.5 Middleware fixes to prevent cross‑app leakage
+
+**Student app** — block partners from ever landing on Student host and reroute to Admin:
+
+```ts
+// apps/student/src/middleware.ts
+import { auth } from '@clerk/nextjs';
+import { NextResponse } from 'next/server';
+
+const allowed = (process.env.ALLOWED_EMAIL_DOMAINS||'').split(',').map(s=>s.trim().toLowerCase());
+const partners = (process.env.PARTNER_EMAILS||'').split(',').map(s=>s.trim().toLowerCase());
+
+export default function middleware(req: Request) {
+  const { userId, sessionClaims } = auth();
+  const url = new URL(req.url);
+  if (!userId) return NextResponse.redirect(new URL('/sign-in', url.origin));
+
+  const email = (sessionClaims?.email || sessionClaims?.primaryEmail || '').toLowerCase();
+  if (partners.includes(email)) {
+    // hard reroute partners to admin
+    return NextResponse.redirect(process.env.NEXT_PUBLIC_ADMIN_BASE_URL || 'https://admin.ngicapitaladvisory.com');
+  }
+  const domain = email.split('@')[1];
+  if (!allowed.includes(domain)) return NextResponse.redirect(new URL('/blocked', url.origin));
+  return NextResponse.next();
+}
+export const config = { matcher: ['/((?!_next|api/(public|webhooks)|favicon.ico).*)'] };
+```
+
+**Admin app** — enforce partners only; students hitting admin are pushed to Student host:
+
+```ts
+// apps/admin/src/middleware.ts
+import { auth } from '@clerk/nextjs';
+import { NextResponse } from 'next/server';
+
+const partners = (process.env.PARTNER_EMAILS||'').split(',').map(s=>s.trim().toLowerCase());
+
+export default function middleware(req: Request){
+  const { userId, sessionClaims } = auth();
+  const url = new URL(req.url);
+  if (!userId) return NextResponse.redirect(new URL('/sign-in', url.origin));
+  const email = (sessionClaims?.email || '').toLowerCase();
+  if (!partners.includes(email)) {
+    return NextResponse.redirect(process.env.NEXT_PUBLIC_STUDENT_BASE_URL || 'https://ngicapitaladvisory.com');
+  }
+  return NextResponse.next();
+}
+export const config = { matcher: ['/((?!_next|api/(public|webhooks)|favicon.ico).*)'] };
+```
+
+### A.6 Custom Sign‑in pages (support Google + Email/Password)
+
+Use Clerk’s `<SignIn />` but expose both strategies and set `afterSignInUrl` to `/auth/resolve`.
+
+```tsx
+// apps/student/src/app/sign-in/page.tsx (similar in admin)
+import { SignIn } from '@clerk/nextjs';
+export default function Page(){
+  return (
+    <div className="min-h-screen flex items-center justify-center p-6">
+      <SignIn
+        appearance={{ elements: { card: 'shadow-lg rounded-2xl' } }}
+        signUpUrl="/sign-up"
+        afterSignInUrl="/auth/resolve"
+        afterSignUpUrl="/auth/resolve"
+      />
+    </div>
+  );
+}
+```
+
+If you need a **fully custom form** for Email+Password (while keeping Google):
+
+* Use Clerk **Password** strategy APIs (`create sign in`, `attempt first factor`, `attempt second factor`).
+* Keep the Google button via `<SignInButton />`.
+
+### A.7 Dev‑only Auth Debug Banner
+
+Add a small banner in dev that shows `email`, `role`, and `host` to quickly spot misroutes. Hide in production.
+
+### A.8 Tests (must pass)
+
+* Sign in via **Google** with partner email → lands on **Admin**.
+* Sign in via **Email+Password** with partner email → lands on **Admin**.
+* Sign in via **Google** with UC email → lands on **Student**.
+* Sign in via **Email+Password** with UC email → lands on **Student**.
+* Visiting Student host as partner redirects to Admin; visiting Admin host as student redirects to Student.
+
+---
+
 This spec upgrades both **Student** and **Internal Admin** apps to a polished, deployment‑ready experience. It’s written for an LLM agent to implement directly. Keep the split‑DB + unified `.env` + Docker setup from earlier docs.
 
 ---
@@ -27,6 +209,121 @@ This spec upgrades both **Student** and **Internal Admin** apps to a polished, d
 * WCAG 2.2 AA: contrast ≥ 4.5:1.
 * Focus rings: `focus-visible:ring-2 ring-primary`.
 * Hit targets ≥ 44px, labels for inputs, `aria-live` toasts.
+
+---
+
+## 0.1 Critical Auth & Routing Fixes (Clerk + multi-app)
+
+> These changes fix the issues where **partner admin emails** (e.g., `lwhitworth@ngicapitaladvisory.com`) are being routed to the **Student** app and where **email/password sign in** fails.
+
+### A) Split access rules by app
+
+* **Student app** must only admit **UC domains**. Remove `ngicapitaladvisory.com` from the student allowlist to prevent partner/admin collisions.
+* **Admin app** admits only `PARTNER_EMAILS` (exact list). If staff need student-portal access, provision a separate student account or add a non-partner email.
+
+### B) Clerk configuration
+
+1. In **Clerk Dashboard → Authentication → Email, Phone, Username**:
+
+   * Enable **Email + Password**.
+   * Allow **Google OAuth**.
+   * Disable other providers.
+2. In **Clerk Dashboard → Redirect URLs** add both:
+
+   * `https://ngicapitaladvisory.com/*` (Student)
+   * `https://admin.ngicapitaladvisory.com/*` (Admin) or your admin domain.
+3. In **Clerk Dashboard → Webhooks**, point to Admin: `/api/webhooks/clerk` (already in spec).
+
+### C) Student app domain allowlist (middleware)
+
+```ts
+// apps/student/src/middleware.ts
+import { auth } from '@clerk/nextjs';
+import { NextResponse } from 'next/server';
+
+const allowed = (process.env.ALLOWED_EMAIL_DOMAINS || '')
+  .split(',')
+  .map(s=>s.trim().toLowerCase())
+  .filter(Boolean);
+
+export default function middleware(req: Request) {
+  const { userId, sessionClaims } = auth();
+  const url = new URL(req.url);
+  if (!userId) return NextResponse.redirect(new URL('/sign-in', url.origin));
+  const email = (sessionClaims?.email || sessionClaims?.primaryEmail || '').toLowerCase();
+  const domain = email.split('@')[1];
+  if (!domain || !allowed.includes(domain)) {
+    return NextResponse.redirect(new URL('/blocked', url.origin));
+  }
+  return NextResponse.next();
+}
+export const config = { matcher: ['/((?!_next|api/(public|webhooks)|favicon.ico).*)'] };
+```
+
+> **Update your `.env`**: `ALLOWED_EMAIL_DOMAINS` should include **only UC domains**.
+
+### D) Admin app partner allowlist (middleware)
+
+```ts
+// apps/admin/src/middleware.ts
+import { auth } from '@clerk/nextjs';
+import { NextResponse } from 'next/server';
+
+const partners = (process.env.PARTNER_EMAILS||'')
+  .split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+
+export default function middleware(req: Request){
+  const { userId, sessionClaims } = auth();
+  const url = new URL(req.url);
+  if (!userId) return NextResponse.redirect(new URL('/sign-in', url.origin));
+  const email = (sessionClaims?.email || '').toLowerCase();
+  if (!partners.includes(email)) return NextResponse.redirect(new URL('/', url.origin));
+  return NextResponse.next();
+}
+export const config = { matcher: ['/admin/:path*'] };
+```
+
+### E) Post-auth smart redirects (edge-safe)
+
+* Add a **shared util** to compute where a user belongs after sign-in:
+
+```ts
+// packages/ui/src/auth/redirects.ts
+export function getPostAuthUrl(email: string){
+  const partners = (process.env.PARTNER_EMAILS||'')
+    .split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+  const ucDomains = (process.env.ALLOWED_EMAIL_DOMAINS||'')
+    .split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+  const domain = email.split('@')[1];
+  if (partners.includes(email)) return process.env.NEXT_PUBLIC_ADMIN_BASE_URL || '/admin';
+  if (ucDomains.includes(domain)) return process.env.NEXT_PUBLIC_STUDENT_BASE_URL || '/';
+  return '/blocked';
+}
+```
+
+* Use it on sign-in pages for both apps via Clerk’s `afterSignInUrl`/`afterSignUpUrl`:
+
+```tsx
+// apps/student/src/app/sign-in/page.tsx (similar in admin)
+<SignIn
+  routing="path"
+  appearance={{ elements: { card: 'shadow-lg rounded-2xl' } }}
+  afterSignInUrl={(url, ctx) => getPostAuthUrl(ctx?.user?.primaryEmailAddress?.emailAddress ?? '')}
+  afterSignUpUrl={(url, ctx) => getPostAuthUrl(ctx?.user?.primaryEmailAddress?.emailAddress ?? '')}
+/>
+```
+
+### F) Email + Password sign-in reliability
+
+* Ensure **Email + Password** is enabled (see B1).
+* Add `ClerkProvider` at app root with `signInUrl` pointing to your custom `/sign-in` route.
+* Verify SMTP sender domain in Clerk (or use magic links temporarily if email sending is blocked in dev).
+* Add client‑side validation and clear error surfaces (invalid credentials, unverified email).
+
+### G) Guard against cross-app leakage
+
+* Student middleware should **redirect partner emails to `/blocked`** (or a message linking to Admin URL) to avoid being stuck on student routes.
+* Admin middleware blocks everyone except partners; no student can stumble into admin.
 
 ---
 

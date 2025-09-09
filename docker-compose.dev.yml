@@ -6,6 +6,7 @@ services:
     command: >
       sh -c "pip install --no-cache-dir -r requirements.txt &&
              uvicorn src.api.main:app --host 0.0.0.0 --port 8001 --reload --reload-exclude='tests/**' --reload-exclude='*.pyc' --reload-exclude='__pycache__/**'"
+    # Publish API on host 8001 and route via nginx on 3001
     ports:
       - "8001:8001"
     volumes:
@@ -22,10 +23,13 @@ services:
       - CLERK_AUDIENCE=backend
       - CLERK_ISSUER=${CLERK_ISSUER:-https://YOUR-CLERK-SUBDOMAIN.clerk.accounts.dev}
       - CLERK_JWKS_URL=${CLERK_JWKS_URL:-https://YOUR-CLERK-SUBDOMAIN.clerk.accounts.dev/.well-known/jwks.json}
+      - NEXT_PUBLIC_CLERK_ISSUER=${CLERK_ISSUER}
+      - ALLOWED_STUDENT_DOMAINS=${ALLOWED_EMAIL_DOMAINS}
     networks:
       - ngi-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/api/health"]
+      # Use python stdlib instead of curl (not installed in slim)
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/api/health').read()"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -42,16 +46,34 @@ services:
       - "3001"
     volumes:
       - ./apps/desktop:/app
+      - ./packages:/packages
       - /app/node_modules
       - /app/.next
     environment:
       - NODE_ENV=development
+      - NODE_PATH=/app/node_modules
       - NEXT_PUBLIC_API_URL=http://backend:8001
       - BACKEND_ORIGIN=http://backend:8001
+      # Ensure absolute bases resolve to nginx origin even if host env is unset
+      - NEXT_PUBLIC_STUDENT_BASE_URL=${NEXT_PUBLIC_STUDENT_BASE_URL:-http://localhost:3001}
+      - NEXT_PUBLIC_ADMIN_BASE_URL=${NEXT_PUBLIC_ADMIN_BASE_URL:-http://localhost:3001/admin}
+      # Expose issuer for client-side hosted fallback (Clerk hosted pages)
+      - NEXT_PUBLIC_CLERK_ISSUER=${CLERK_ISSUER}
+      # Also expose server-side Clerk vars for diagnostics
+      - CLERK_ISSUER=${CLERK_ISSUER}
+      - CLERK_JWKS_URL=${CLERK_JWKS_URL}
+      # Clerk config for Admin app
+      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      - CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
+      # ADMIN list for routing
+      - ADMIN_EMAILS=${ADMIN_EMAILS}
+      # No in-app sign-in/up pages; we use hosted Clerk sign-in
+      - PARTNER_EMAILS=${PARTNER_EMAILS}
+      - ALLOWED_EMAIL_DOMAINS=${ALLOWED_EMAIL_DOMAINS}
+      - NEXT_PUBLIC_FORCE_LOGOUT_ON_LOAD=${NEXT_PUBLIC_FORCE_LOGOUT_ON_LOAD}
       - WATCHPACK_POLLING=true
-      # Clerk publishable key and URLs
-      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-pk_test_replace_me}
-      - CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-pk_test_replace_me}
+      # Use student app's sign-in at root (handled by Nginx route / -> student app)
       - CLERK_SIGN_IN_URL=/sign-in
       - CLERK_SIGN_UP_URL=/sign-up
     depends_on:
@@ -71,19 +93,29 @@ services:
       - "3002"
     volumes:
       - ./apps/student:/app
+      - ./packages:/packages
       - /app/node_modules
       - /app/.next
     environment:
       - NODE_ENV=development
+      - NODE_PATH=/app/node_modules
       - BACKEND_ORIGIN=http://backend:8001
-      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-pk_test_replace_me}
-      - CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-pk_test_replace_me}
-      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY:-sk_test_replace_me}
-      - CLERK_ISSUER=${CLERK_ISSUER:-https://YOUR-CLERK-SUBDOMAIN.clerk.accounts.dev}
-      - CLERK_JWKS_URL=${CLERK_JWKS_URL:-https://YOUR-CLERK-SUBDOMAIN.clerk.accounts.dev/.well-known/jwks.json}
+      # Ensure absolute bases resolve to nginx origin even if host env is unset
+      - NEXT_PUBLIC_STUDENT_BASE_URL=${NEXT_PUBLIC_STUDENT_BASE_URL:-http://localhost:3001}
+      - NEXT_PUBLIC_ADMIN_BASE_URL=${NEXT_PUBLIC_ADMIN_BASE_URL:-http://localhost:3001/admin}
+      # Expose issuer for client-side hosted fallback (Clerk hosted pages)
+      - NEXT_PUBLIC_CLERK_ISSUER=${CLERK_ISSUER}
+      # Clerk config for Student app
+      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      - NEXT_PUBLIC_CLERK_ISSUER=${CLERK_ISSUER}
+      - CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
+      # ADMIN list for routing
+      - ADMIN_EMAILS=${ADMIN_EMAILS}
       - USE_MOCK_AUTH=${USE_MOCK_AUTH:-true}
       - NEXT_PUBLIC_MOCK_STUDENT_EMAIL=${NEXT_PUBLIC_MOCK_STUDENT_EMAIL:-student@berkeley.edu}
       - ALLOWED_EMAIL_DOMAINS=${ALLOWED_EMAIL_DOMAINS:-berkeley.edu,ngicapitaladvisory.com}
+      - NEXT_PUBLIC_FORCE_LOGOUT_ON_LOAD=${NEXT_PUBLIC_FORCE_LOGOUT_ON_LOAD}
       - WATCHPACK_POLLING=true
     depends_on:
       - backend

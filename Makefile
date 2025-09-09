@@ -17,12 +17,11 @@ help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "$(YELLOW)%-15s$(NC) %s\n", $$1, $$2}'
 
 # Development Commands
-dev: ## Start development environment (hot reload)
-	@echo "$(GREEN)Starting development environment (hot reload)...$(NC)"
-	$(DOCKER_COMPOSE) -f docker-compose.dev.yml up -d backend frontend
+dev: ## Start dev stack (single port via Nginx)
+	@echo "$(GREEN)Starting development environment (single port via Nginx)...$(NC)"
+	$(DOCKER_COMPOSE) -f docker-compose.dev.yml up -d backend frontend student nginx
 	@echo "$(GREEN)Development environment started!$(NC)"
-	@echo "API: http://localhost:8001"
-	@echo "Frontend: http://localhost:3001"
+	@echo "App (Nginx): http://localhost:3001"
 
 build: ## Build Docker images
 	@echo "$(GREEN)Building Docker images...$(NC)"
@@ -101,7 +100,7 @@ test: ## Run all tests
 
 test-api: ## Test API endpoints
 	@echo "$(GREEN)Testing API endpoints...$(NC)"
-	@curl -f http://localhost:8001/health || (echo "$(RED)API health check failed$(NC)" && exit 1)
+	@curl -f http://localhost:3001/api/health || (echo "$(RED)API health check failed$(NC)" && exit 1)
 	@echo "$(GREEN)API is healthy!$(NC)"
 
 # Monitoring

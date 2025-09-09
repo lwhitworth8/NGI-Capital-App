@@ -1,0 +1,62 @@
+import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
+import { NextResponse, type NextRequest } from 'next/server'
+
+const publicRoutes = [
+  '/',
+  '/sign-in(.*)',
+  '/sign-up(.*)',
+  '/auth(.*)',
+  '/clerk(.*)',
+  '/_next(.*)', '/assets(.*)', '/favicon.ico'
+]
+const isPublicRoute = createRouteMatcher(publicRoutes)
+
+export default clerkMiddleware((authAny: any, req: NextRequest) => {
+  const auth = authAny as any
+  // Allow known public paths without redirect to avoid loops
+  const pathname = req.nextUrl.pathname || '/'
+  const isPublicPath = /^(\/($|sign-in(\/|$)|sign-up(\/|$)|auth(\/|$)|clerk(\/|$)|_next|assets|favicon\.ico))/.test(pathname)
+
+  // Robust origin resolution that preserves dev port; falls back to env base if needed
+  const xfHost = req.headers.get('x-forwarded-host') || req.headers.get('host') || req.nextUrl.host
+  const xfProto = req.headers.get('x-forwarded-proto') || (req.nextUrl.protocol.replace(':','') || 'http')
+  const hasPort = /:\d+$/.test(xfHost || '')
+  const studentBase = (process.env.NEXT_PUBLIC_STUDENT_BASE_URL || '').replace(/\/$/, '')
+  const adminBase = (process.env.NEXT_PUBLIC_ADMIN_BASE_URL || '').replace(/\/$/, '')
+  const baseOrigin = hasPort ? `${xfProto}://${xfHost}` : (studentBase || `${xfProto}://${xfHost}`)
+
+  // Unauthenticated: allow public, else send to local Clerk sign-in page
+  if (!auth.userId) {
+    if (isPublicRoute(req) || isPublicPath) return NextResponse.next()
+    return NextResponse.redirect(`${baseOrigin}/sign-in`)
+  }
+
+  // Admin emails get redirected away from student-only sections
+  const claims: any = auth?.sessionClaims || {}
+  const email = (
+    claims.email || claims.email_address || claims.primary_email_address || ''
+  ).toString().toLowerCase()
+  const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean)
+  const isAdmin = !!email && adminEmails.includes(email)
+  if (isAdmin) {
+    const isStudentSection = /^(\/(applications|projects|my-projects|settings|learning)(\/|$))/.test(pathname)
+    if (isStudentSection) {
+      const target = (adminBase || `${baseOrigin}/admin`) + '/dashboard'.replace('//','/')
+      return NextResponse.redirect(target)
+    }
+  }
+
+  // Domain gating: block non-UC/non-advisory emails from student sections
+  const allowed = (process.env.ALLOWED_EMAIL_DOMAINS || '').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean)
+  const domain = (email.split('@')[1] || '').toLowerCase()
+  if (pathname.startsWith('/applications') || pathname.startsWith('/projects') || pathname.startsWith('/my-projects') || pathname.startsWith('/settings') || pathname.startsWith('/learning')) {
+    if (email && domain && allowed.length && !allowed.includes(domain)) {
+      return NextResponse.redirect(`${baseOrigin}/blocked`)
+    }
+  }
+
+  return NextResponse.next()
+})
+
+export const config = { matcher: ['/((?!api|clerk).*)'] }
+

@@ -28,6 +28,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 import uvicorn
 import secrets
 import string
@@ -138,6 +139,16 @@ app = FastAPI(
     },
     lifespan=lifespan
 )
+
+# Serve uploaded files (resumes, documents) under /uploads
+try:
+    import os as _os
+    _os.makedirs('uploads', exist_ok=True)
+    app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+except Exception:
+    pass
+
+# Attach Advisory routers are registered later with explicit tags
 
 # Root endpoint for basic status and compatibility with tests
 @app.get("/")
@@ -984,6 +995,50 @@ async def get_dashboard_metrics(partner=Depends(require_partner_access())):
         # If anything fails above, return safe defaults with 200
         pass
     return payload
+
+# Session bridge for setting HttpOnly cookie from a bearer token (for legacy flows/tests)
+@app.post("/api/auth/session", tags=["auth"])
+async def bridge_session(request: Request):
+    """
+    Accepts a bearer token and sets an HttpOnly cookie `auth_token` for downstream requests.
+    Used by tests and optional legacy clients.
+    """
+    # Extract token from Authorization header (Bearer <token>)
+    token = None
+    try:
+        authz = request.headers.get("authorization") or request.headers.get("Authorization")
+        if authz and authz.lower().startswith("bearer "):
+            token = authz.split(" ", 1)[1].strip()
+    except Exception:
+        token = None
+    # Fallback to body fields
+    if not token:
+        try:
+            body = await request.json()
+            if isinstance(body, dict):
+                token = (body.get("token") or body.get("auth_token") or body.get("access_token") or "").strip()
+        except Exception:
+            token = None
+    if not token:
+        # Last resort: form
+        try:
+            form = await request.form()
+            token = (form.get("token") or form.get("auth_token") or form.get("access_token") or "").strip()
+        except Exception:
+            token = None
+    if not token:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="missing token")
+
+    resp = JSONResponse({"status": "ok"})
+    # Set cookie (HttpOnly by default; Secure left off for local dev)
+    resp.set_cookie(
+        key="auth_token",
+        value=token,
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
+    return resp
 
 # Health endpoints
 @app.get("/health", tags=["health"]) 

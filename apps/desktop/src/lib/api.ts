@@ -239,11 +239,11 @@ class ApiClient {
 
   // Authentication endpoints
   async login(credentials: LoginRequest): Promise<LoginResponse> {
-    console.log('Attempting login with URL:', `${API_BASE_URL}/auth/sign-in`)
+    console.log('Attempting login with URL:', `${API_BASE_URL}/auth/login`)
     console.log('Credentials:', { email: credentials.email, password: '***' })
     
     try {
-      const response = await this.client.post('/auth/sign-in', credentials)
+      const response = await this.client.post('/auth/login', credentials)
       console.log('Login response received:', response.data)
       
       const data = response.data

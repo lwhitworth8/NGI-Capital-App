@@ -16,8 +16,8 @@ services:
     volumes:
       # Persist and/or bring your real DB into the container
       - ./ngi_capital.db:/app/data/ngi_capital.db
-    expose:
-      - "8001"
+    ports:
+      - "8001:8001"
     networks:
       - ngi
 
@@ -58,7 +58,7 @@ services:
       - NEXT_PUBLIC_MOCK_STUDENT_EMAIL=${NEXT_PUBLIC_MOCK_STUDENT_EMAIL}
       - USE_MOCK_AUTH=${USE_MOCK_AUTH}
       - ALLOWED_EMAIL_DOMAINS=${ALLOWED_EMAIL_DOMAINS}
-    command: sh -c "npm ci && npm run build && npm run start -p 3000"
+    command: sh -c "npm ci && npm run build && npx next start -p 3000"
     volumes:
       - ./apps/student:/app
     expose:
@@ -72,7 +72,7 @@ services:
     image: nginx:alpine
     container_name: ngi-nginx-prod
     ports:
-      - "80:80"
+      - "3001:80"
     volumes:
       - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
     depends_on:

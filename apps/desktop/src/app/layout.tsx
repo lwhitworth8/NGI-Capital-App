@@ -18,23 +18,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head>
-        {/* Apply saved theme early to avoid flash */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function(){
-                try {
-                  var t = localStorage.getItem('theme_preference') || 'light';
-                  var e = document.documentElement;
-                  e.classList.remove('light','dark');
-                  e.classList.add(t === 'dark' ? 'dark' : 'light');
-                } catch (e) {}
-              })();
-            `,
-          }}
-        />
-      </head>
+      <head></head>
       <body className={inter.className}>
         <Providers>
           {children}

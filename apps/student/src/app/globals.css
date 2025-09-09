@@ -1,53 +1,152 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --background: 0 0% 100%;
-  --foreground: 222 47% 11%;
-  --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  --primary: 211 100% 50%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 0 0% 96.1%;
-  --secondary-foreground: 222 47% 11%;
-  --muted: 215 16% 47%;
-  --muted-foreground: 215 16% 35%;
-  --accent: 210 20% 98%;
-  --accent-foreground: 222 47% 11%;
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
-  --ring: 211 100% 50%;
+/* NGI UI theme bridge for up/down semantic colors */
+@import url("../lib/ui/theme-bridge.css");
+
+@layer base {
+  :root {
+    /* Modern Apple-inspired Light Mode */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 211 100% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 211 100% 50%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 211 100% 50%;
+    --radius: 0.75rem;
+    
+    /* Success and Warning colors */
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+  }
+ 
+  .dark {
+    /* Modern Apple-inspired Dark Mode */
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 7%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 7%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 211 100% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 211 100% 50%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62.8% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 211 100% 50%;
+    
+    /* Success and Warning colors */
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+  }
 }
 
-.dark {
-  --background: 0 0% 3.9%;
-  --foreground: 0 0% 98%;
-  --card: 0 0% 7%;
-  --card-foreground: 0 0% 98%;
-  --primary: 211 100% 50%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 0 0% 14.9%;
-  --secondary-foreground: 0 0% 98%;
-  --muted: 0 0% 14.9%;
-  --muted-foreground: 0 0% 63.9%;
-  --accent: 211 100% 50%;
-  --accent-foreground: 0 0% 100%;
-  --border: 0 0% 14.9%;
-  --input: 0 0% 14.9%;
-  --ring: 211 100% 50%;
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    font-weight: 400;
+    line-height: 1.5;
+    letter-spacing: -0.006em;
+  }
+  
+  /* Typography System */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    line-height: 1.2;
+    @apply text-foreground;
+  }
+  
+  h1 {
+    font-size: 2.5rem;
+    font-weight: 800;
+    letter-spacing: -0.035em;
+  }
+  
+  h2 {
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+  }
+  
+  h3 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.025em;
+  }
+  
+  h4 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  
+  h5 {
+    font-size: 1.125rem;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+  }
 }
 
-html, body { height: 100%; }
-body { @apply bg-[hsl(var(--background))] text-[hsl(var(--foreground))]; }
+/* Buttons matching desktop */
+.btn-primary {
+  @apply bg-primary text-primary-foreground rounded-xl px-4 py-2.5;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-weight: 500;
+  font-size: 0.9375rem;
+  letter-spacing: -0.01em;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
 
-.container-app { @apply flex min-h-screen; }
-.sidebar { @apply w-64 border-r border-[hsl(var(--border))] p-4 bg-[hsl(var(--card))]; }
-.navlink { @apply block px-4 py-3 rounded-xl text-base hover:bg-muted; }
-.header { @apply flex items-center justify-between; }
-.title { @apply text-2xl font-semibold; }
-.search { @apply border border-[hsl(var(--border))] bg-[hsl(var(--card))] text-[hsl(var(--foreground))] rounded-xl px-3 py-2 min-w-[260px]; }
-.card { @apply flex gap-3 p-3 border border-[hsl(var(--border))] rounded-xl bg-[hsl(var(--card))]; }
-.thumb { @apply w-40 h-24 bg-[hsl(var(--accent))] rounded-lg overflow-hidden; }
-.status { @apply text-xs text-[hsl(var(--ok))] border border-[hsl(var(--ok))] rounded-full px-2 py-[2px]; }
-.chip { @apply text-[10px] bg-[hsl(var(--accent))] rounded px-2 py-[2px]; }
+.btn-gradient {
+  background-image: linear-gradient(135deg, hsl(211 100% 50%) 0%, hsl(211 100% 60%) 50%, hsl(211 100% 50%) 100%);
+}
+
+.btn-sm { @apply px-3 py-2 text-sm rounded-lg; }
+
+.btn-primary:hover { transform: translateY(-1px); }
+.btn-primary:active { transform: translateY(0); }
+.btn-secondary { @apply bg-secondary text-secondary-foreground rounded-xl px-4 py-2.5; }
+.card { @apply rounded-2xl border bg-card; }
+.input-modern { @apply w-full rounded-xl border bg-background px-4 py-2.5; }
+.input-sm { @apply w-full rounded-lg border bg-background px-3 py-2 text-sm; }

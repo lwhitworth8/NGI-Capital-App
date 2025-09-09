@@ -1,12 +1,8 @@
-"use client";
+import { redirect } from 'next/navigation'
 
-import { SignUp } from "@clerk/nextjs";
-
-export default function Page() {
-  return (
-    <div className="min-h-screen flex items-center justify-center p-6">
-      {/* Use hash routing to avoid path-based middleware issues */}
-      <SignUp routing="hash" signInUrl="/sign-in" />
-    </div>
-  );
+export default function AdminSignUpRedirect() {
+  // Admins don't self-register. Redirect to sign-in.
+  // Admin accounts must be created by existing admins.
+  redirect('/sign-in')
 }
+

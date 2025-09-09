@@ -1,12 +1,6 @@
-"use client";
+import { redirect } from 'next/navigation'
 
-import { SignIn } from "@clerk/nextjs";
-
-export default function Page() {
-  return (
-    <div className="min-h-screen flex items-center justify-center p-6">
-      {/* Use hash routing and post-auth redirect to '/' for partners */}
-      <SignIn routing="hash" signUpUrl="/sign-up" afterSignInUrl="/" />
-    </div>
-  );
+export default function AdminSignInRedirect() {
+  // All users sign in through the main portal
+  redirect(process.env.NEXT_PUBLIC_STUDENT_BASE_URL || 'http://localhost:3001/sign-in')
 }

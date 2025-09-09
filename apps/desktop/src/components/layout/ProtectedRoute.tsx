@@ -29,7 +29,7 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     if (typeof window !== 'undefined') {
       localStorage.setItem('redirect_after_login', pathname);
     }
-    router.replace('/sign-in');
+    router.replace('/');
     return null;
   }
 

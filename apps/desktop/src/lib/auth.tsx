@@ -86,14 +86,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try { localStorage.removeItem('user') } catch {}
     try { localStorage.removeItem('auth_token') } catch {}
     try { (globalThis as any).localStorage?.removeItem?.('auth_token') } catch {}
-    // Attempt Clerk sign-out and hard redirect to sign-in to avoid loops
+    // Attempt Clerk sign-out and hard redirect to marketing to avoid loops
     try {
       const anyWin: any = window as any
       if (anyWin?.Clerk?.signOut) {
-        await anyWin.Clerk.signOut({ redirectUrl: '/sign-in' })
+        await anyWin.Clerk.signOut({ redirectUrl: '/' })
       }
     } catch {}
-    try { router.replace('/sign-in') } catch {}
+    try { router.replace('/') } catch {}
     toast.info('Logged out successfully')
   }
 

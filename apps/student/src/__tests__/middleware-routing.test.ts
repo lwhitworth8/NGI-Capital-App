@@ -45,15 +45,43 @@ import middleware from '@/middleware'
 
 function makeReq(pathname: string): any {
   const origin = 'http://localhost:3001'
-  return { nextUrl: { pathname, search: '' }, url: `${origin}${pathname}` }
+  return {
+    nextUrl: { pathname, search: '', host: 'localhost:3001', protocol: 'http:' },
+    url: `${origin}${pathname}`,
+    headers: { get: (k: string) => {
+      const kk = (k || '').toLowerCase()
+      if (kk === 'x-forwarded-host' || kk === 'host') return 'localhost:3001'
+      if (kk === 'x-forwarded-proto') return 'http'
+      return null
+    } },
+  }
 }
 
 describe('Student middleware routing', () => {
-  it('redirects admin emails to /admin/', async () => {
+  const origPartners = process.env.PARTNER_EMAILS
+  const origAdminBase = process.env.NEXT_PUBLIC_ADMIN_BASE_URL
+  const origAllowed = process.env.ALLOWED_EMAIL_DOMAINS
+  beforeAll(() => {
+    process.env.PARTNER_EMAILS = 'lwhitworth@ngicapitaladvisory.com,anurmamade@ngicapitaladvisory.com'
+    process.env.NEXT_PUBLIC_ADMIN_BASE_URL = 'http://localhost:3001/admin'
+    process.env.ALLOWED_EMAIL_DOMAINS = 'berkeley.edu,ngicapitaladvisory.com'
+  })
+  afterAll(() => {
+    process.env.PARTNER_EMAILS = origPartners
+    process.env.NEXT_PUBLIC_ADMIN_BASE_URL = origAdminBase
+    process.env.ALLOWED_EMAIL_DOMAINS = origAllowed
+  })
+  it('redirects partner emails to admin base for student sections', async () => {
     setAuth({ userId: 'u1', sessionClaims: { email: 'lwhitworth@ngicapitaladvisory.com' } })
     const res: any = await (middleware as any)(makeReq('/projects'))
-    expect(res.headers.get('location')).toBe('http://localhost:3001/admin/')
+    expect(res.headers.get('location')).toBe('http://localhost:3001/admin/dashboard')
   })
+  it('redirects unauthenticated users to /sign-in on same origin', async () => {
+    setAuth({ userId: null, sessionClaims: {} })
+    const res: any = await (middleware as any)(makeReq('/projects'))
+    expect(res.headers.get('location')).toBe('http://localhost:3001/sign-in')
+  })
+  // Marketing root no longer forces logout to avoid loops
 
   it('allows UC student email to stay in student app', async () => {
     setAuth({ userId: 'u2', sessionClaims: { email: 'lwhitworth@berkeley.edu' } })
@@ -65,5 +93,11 @@ describe('Student middleware routing', () => {
     setAuth({ userId: 'u3', sessionClaims: { email: 'someone@gmail.com' } })
     const res: any = await (middleware as any)(makeReq('/applications'))
     expect(res.headers.get('location')).toBe('http://localhost:3001/blocked')
+  })
+
+  it('allows nested sign-in routes without redirect loops', async () => {
+    setAuth({ userId: null, sessionClaims: {} })
+    const res: any = await (middleware as any)(makeReq('/sign-in/verify'))
+    expect(res.headers.get('location')).toBeNull()
   })
 })
