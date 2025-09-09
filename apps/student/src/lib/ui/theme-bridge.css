@@ -1,0 +1,3 @@
+:root { --ngi-up: hsl(142 76% 36%); --ngi-down: hsl(0 72% 51%); }
+.ngi-up{color:var(--ngi-up)}
+.ngi-down{color:var(--ngi-down)}
