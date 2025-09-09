@@ -1,0 +1,1 @@
+The acocunting module acts as full US-Gaap private business entity accounting for NGI Capital inc and all subsidiaries operating within its umbrella. 

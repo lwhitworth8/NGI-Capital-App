@@ -10,6 +10,7 @@ import { AppProvider } from '@/lib/context/AppContext'
 import { useState, useEffect } from 'react'
 import { useTheme } from 'next-themes'
 import { useUser } from '@clerk/nextjs'
+import { apiClient } from '@/lib/api'
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -69,10 +70,29 @@ function ThemeHydrator() {
   const { user } = useUser()
   const { setTheme } = useTheme()
   useEffect(() => {
-    try {
-      const t = (user?.publicMetadata?.theme as string) || 'system'
-      setTheme(t)
-    } catch {}
+    (async () => {
+      try {
+        // 1) Honor explicit saved preference first (localStorage)
+        const ls = typeof window !== 'undefined' ? localStorage.getItem('theme_preference') : null
+        if (ls === 'light' || ls === 'dark' || ls === 'system') {
+          setTheme(ls as any)
+          return
+        }
+        // 2) Try backend partner preferences
+        try {
+          const prefs = await apiClient.getPreferences()
+          const t = (prefs?.theme as string) || 'system'
+          setTheme(t as any)
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('theme_preference', t as any)
+          }
+          return
+        } catch {}
+        // 3) Fallback to Clerk metadata if present
+        const t = (user?.publicMetadata?.theme as string) || 'system'
+        setTheme((['light','dark','system'] as string[]).includes(t) ? (t as any) : 'system')
+      } catch {}
+    })()
   }, [user, setTheme])
   return null
 }

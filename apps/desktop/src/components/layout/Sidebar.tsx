@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { 
@@ -23,8 +23,10 @@ import {
   FileSpreadsheet,
   ClipboardList,
   BadgeCheck,
-  Archive
+  Archive,
+  LogOut,
 } from 'lucide-react';
+import { useUser, useClerk } from '@clerk/nextjs';
 
 interface NavItem {
   name: string;
@@ -81,16 +83,11 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
-  const [userName, setUserName] = useState<string>('');
-  const [ownershipPct, setOwnershipPct] = useState<string>('');
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const { user } = useUser();
+  const { signOut } = useClerk();
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      setUserName(localStorage.getItem('user_name') || '');
-      setOwnershipPct(localStorage.getItem('ownership_percentage') || '');
-    }
-    
     // Auto-expand active parent items
     navigation.forEach(item => {
       if (item.children && item.children.some(child => pathname.startsWith(child.href))) {
@@ -107,14 +104,48 @@ export default function Sidebar() {
     );
   };
 
-  const isActive = (href: string) => pathname === href;
+  // Account for basePath '/admin' so matching works with child hrefs like '/ngi-advisory/projects'
+  const pathNoBase = pathname.replace(/^\/admin(?![\w-])/i, '') || '/'
+  const isActive = (href: string) => pathname === href || pathNoBase === href;
   const isParentActive = (item: NavItem) => {
-    if (pathname === item.href) return true;
+    if (isActive(item.href)) return true;
     if (item.children) {
-      return item.children.some(child => pathname.startsWith(child.href));
+      return item.children.some(child => pathname.startsWith(child.href) || pathNoBase.startsWith(child.href));
     }
     return false;
   };
+
+  // Compute display name matching student UI behavior (avoid middle names)
+  const { displayFirstName, displayLastName, userName, userInitials, profileImageUrl } = useMemo(() => {
+    const rawFirstName = user?.firstName || '';
+    const rawLastName = user?.lastName || '';
+    const fullName = user?.fullName || '';
+
+    let df = '';
+    let dl = '';
+    const firstNameParts = rawFirstName.trim().split(/\s+/);
+    if (firstNameParts.length > 1 && !rawLastName) {
+      df = firstNameParts[0];
+      dl = firstNameParts[firstNameParts.length - 1];
+    } else if (rawFirstName && rawLastName) {
+      df = firstNameParts[0];
+      dl = rawLastName.trim().split(/\s+/)[0];
+    } else if (fullName) {
+      const nameParts = fullName.trim().split(/\s+/);
+      if (nameParts.length >= 2) {
+        df = nameParts[0];
+        dl = nameParts[nameParts.length - 1];
+      } else if (nameParts.length === 1) {
+        df = nameParts[0];
+      }
+    } else {
+      df = firstNameParts[0] || '';
+      dl = rawLastName;
+    }
+    const computedName = (df && dl) ? `${df} ${dl}` : (df || user?.primaryEmailAddress?.emailAddress || 'User');
+    const initials = (df && dl) ? `${df[0]}${dl[0]}`.toUpperCase() : (df ? df[0].toUpperCase() : 'U');
+    return { displayFirstName: df, displayLastName: dl, userName: computedName, userInitials: initials, profileImageUrl: user?.profileImageUrl };
+  }, [user]);
 
   return (
     <div className="w-64 bg-card border-r border-border flex flex-col h-full">
@@ -188,7 +219,7 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* User Profile Section */}
+      {/* User Profile Section (mirrors student UI) */}
       <div className="border-t border-border p-4 relative">
         <button
           onClick={() => setShowProfileMenu((v) => !v)}
@@ -196,19 +227,16 @@ export default function Sidebar() {
           aria-haspopup="menu"
           aria-expanded={showProfileMenu}
         >
-          <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground text-sm font-semibold">
-              {(userName || 'User')
-                .split(' ')
-                .map(n => n && n[0])
-                .join('')
-                .toUpperCase()
-                .slice(0, 2)}
-            </span>
-          </div>
+          {profileImageUrl ? (
+            <img src={profileImageUrl} alt={userName} className="h-10 w-10 rounded-full object-cover flex-shrink-0" />
+          ) : (
+            <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
+              <span className="text-primary-foreground text-sm font-semibold">{userInitials}</span>
+            </div>
+          )}
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-foreground truncate">
-              {userName || 'User'}
+              {userName}
             </p>
           </div>
         </button>
@@ -223,6 +251,17 @@ export default function Sidebar() {
               >
                 <Settings className="h-4 w-4" />
                 Settings
+              </button>
+              <button
+                onClick={async () => {
+                  setShowProfileMenu(false);
+                  try { await signOut({ redirectUrl: '/' }); } catch {}
+                }}
+                className="w-full px-4 py-2 text-sm text-foreground hover:bg-muted text-left flex items-center gap-2"
+                role="menuitem"
+              >
+                <LogOut className="h-4 w-4" />
+                Sign Out
               </button>
             </div>
           </div>

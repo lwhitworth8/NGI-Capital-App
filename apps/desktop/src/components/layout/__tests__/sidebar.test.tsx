@@ -13,6 +13,12 @@ jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn() })
 }))
 
+// Mock Clerk hooks used in Sidebar (avoid ESM parse issues and provide test data)
+jest.mock('@clerk/nextjs', () => ({
+  useUser: () => ({ user: { firstName: 'Landon', lastName: 'Whitworth', fullName: 'Landon Whitworth', primaryEmailAddress: { emailAddress: 'lwhitworth@ngicapitaladvisory.com' }, profileImageUrl: '' } }),
+  useClerk: () => ({ signOut: jest.fn() }),
+}))
+
 describe('Sidebar navigation', () => {
   it('renders Finance and Taxes nav entries', () => {
     render(<Sidebar />)

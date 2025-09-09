@@ -58,11 +58,11 @@ describe('Desktop middleware admin gating', () => {
     return { nextUrl: { pathname }, url: `http://localhost${pathname}` }
   }
 
-  it('redirects non-admin email to Student portal /projects', async () => {
+  it('does not redirect non-admin email at middleware (routing handled elsewhere)', async () => {
     // Set non-admin email
     setAuth({ userId: 'user_2', sessionClaims: { email: 'lwhitworth@berkeley.edu' }, redirectToSignIn: jest.fn() })
     const res = await (middleware as any)(makeReq('/admin/ngi-advisory/projects'))
-    expect(res.headers.get('location')).toBe(`${studentBase}/projects`)
+    expect(res.headers.get('location')).toBeNull()
   })
 
   it('allows admin emails', async () => {
