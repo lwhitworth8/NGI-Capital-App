@@ -1,25 +1,81 @@
-import { spFetch } from '@/lib/api'
-export const dynamic = 'force-dynamic'
+"use client"
 
-type Membership = { id:number; project_id:number; role?:string; hours_planned?:number; active:boolean }
+import Link from 'next/link'
+import { useEffect, useMemo, useState } from 'react'
+import { useUser } from '@clerk/nextjs'
 
-async function getMine(): Promise<Membership[]> {
-  return spFetch<Membership[]>('/api/public/memberships/mine')
-}
+type MyProject = { id:number; project_code?:string; project_name:string; summary?:string; status:'active'|'past' }
 
-export default async function MyProjectsPage() {
-  const items: Membership[] = await getMine().catch(()=>[] as Membership[])
+export default function MyProjectsPage() {
+  const { user } = useUser()
+  const email = useMemo(() => user?.primaryEmailAddress?.emailAddress || process.env.NEXT_PUBLIC_MOCK_STUDENT_EMAIL || '', [user?.primaryEmailAddress?.emailAddress])
+  const [items, setItems] = useState<MyProject[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let ignore = false
+    const load = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await fetch('/api/public/my-projects', { headers: email ? { 'X-Student-Email': email } : undefined })
+        if (!res.ok) throw new Error(await res.text())
+        const data = await res.json()
+        if (!ignore) setItems(data)
+      } catch (e: any) {
+        if (!ignore) setError(e?.message || 'Failed to load')
+      } finally {
+        if (!ignore) setLoading(false)
+      }
+    }
+    if (email) load(); else { setLoading(false) }
+    return () => { ignore = true }
+  }, [email])
+
+  const active = items.filter(p => (p.status||'active') === 'active')
+  const past = items.filter(p => (p.status||'active') !== 'active')
+
   return (
-    <div style={{ padding: 24 }}>
-      <h1 style={{ fontSize: 24, fontWeight: 700 }}>My Projects</h1>
-      <div style={{ marginTop: 12 }}>
-        {items.map(m => (
-          <div key={m.id} style={{ border:'1px solid #e5e7eb', borderRadius:8, padding:12, marginBottom:8 }}>
-            <div style={{ fontSize:14 }}>Project #{m.project_id}</div>
-            <div style={{ fontSize:12, color:'#6b7280' }}>Role: {m.role || 'Member'} • Hours: {m.hours_planned || 0} • {m.active ? 'Active' : 'Inactive'}</div>
-          </div>
-        ))}
-        {items.length === 0 && <div style={{ color:'#6b7280', fontSize:14 }}>No assigned projects yet.</div>}
+    <div className="p-6">
+      <h1 className="text-2xl font-semibold">My Projects</h1>
+      {loading && <div className="text-sm text-muted-foreground mt-2">Loading…</div>}
+      {error && <div className="text-sm text-red-600 mt-2">{error}</div>}
+      <div className="mt-6">
+        <h2 className="text-lg font-medium">Active Projects</h2>
+        <div className="mt-2 grid md:grid-cols-2 gap-3">
+          {active.map(p => (
+            <div key={p.id} className="border rounded-xl p-4 bg-card">
+              <div className="text-sm text-muted-foreground">{p.project_code}</div>
+              <div className="text-base font-semibold">{p.project_name}</div>
+              <div className="text-sm text-muted-foreground mt-1">{p.summary || ''}</div>
+              <div className="mt-2">
+                <Link href={`/my-projects/${p.id}`} className="text-blue-600">Open</Link>
+              </div>
+            </div>
+          ))}
+          {!loading && active.length === 0 && (
+            <div className="text-sm text-muted-foreground">You have no active projects yet.</div>
+          )}
+        </div>
+      </div>
+      <div className="mt-8">
+        <h2 className="text-lg font-medium">Past Projects</h2>
+        <div className="mt-2 grid md:grid-cols-2 gap-3">
+          {past.map(p => (
+            <div key={p.id} className="border rounded-xl p-4 bg-card">
+              <div className="text-sm text-muted-foreground">{p.project_code}</div>
+              <div className="text-base font-semibold">{p.project_name}</div>
+              <div className="text-sm text-muted-foreground mt-1">{p.summary || ''}</div>
+              <div className="mt-2">
+                <Link href={`/my-projects/${p.id}`} className="text-blue-600">Open</Link>
+              </div>
+            </div>
+          ))}
+          {!loading && past.length === 0 && (
+            <div className="text-sm text-muted-foreground">No past projects.</div>
+          )}
+        </div>
       </div>
     </div>
   )

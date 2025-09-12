@@ -1,7 +1,7 @@
 export async function spFetch<T>(path: string, opts?: RequestInit): Promise<T> {
   // Attach dev header for student email when available
   let extraHeaders: Record<string, string> = { 'Content-Type': 'application/json' }
-  const mockEmail = process.env.NEXT_PUBLIC_MOCK_STUDENT_EMAIL
+  const mockEmail = process.env.NEXT_PUBLIC_MOCK_STUDENT_EMAIL as string | undefined
   if (mockEmail) {
     extraHeaders['X-Student-Email'] = mockEmail
   } else if (typeof window === 'undefined') {
@@ -9,6 +9,15 @@ export async function spFetch<T>(path: string, opts?: RequestInit): Promise<T> {
       const { cookies } = await import('next/headers')
       const c = cookies().get('student_email')?.value
       if (c) extraHeaders['X-Student-Email'] = c
+    } catch {}
+  } else {
+    // Client-side: try to read a non-httpOnly cookie set by app (dev) named student_email
+    try {
+      const cookie = document.cookie || ''
+      const m = cookie.match(/(?:^|;\s*)student_email=([^;]+)/)
+      if (m && m[1]) {
+        extraHeaders['X-Student-Email'] = decodeURIComponent(m[1])
+      }
     } catch {}
   }
 
@@ -86,4 +95,74 @@ export async function markApplicationSeen(id: number): Promise<{ id:number; seen
 
 export async function listMyArchivedApplications(): Promise<Array<{ id:number; archived_id:number; project_id?:number; status:string; archived_at:string; reason?:string }>>{
   return spFetch('/api/public/applications/archived')
+}
+
+// My Projects
+export type MyProject = { id:number; project_code?:string; project_name:string; summary?:string; status:'active'|'past' }
+export async function listMyProjects(): Promise<MyProject[]> {
+  return spFetch('/api/public/my-projects')
+}
+
+export type ProjectTask = { id:number; title:string; description?:string; priority?:string; status?:string; due_date?:string; planned_hours?:number }
+export async function listMyTasks(projectId: number): Promise<ProjectTask[]> {
+  return spFetch(`/api/public/projects/${projectId}/tasks`)
+}
+
+export async function getTaskDetail(tid: number): Promise<{ id:number; project_id:number; title:string; description?:string; priority?:string; status?:string; submission_type?:string; due_date?:string; planned_hours?:number; submissions?: Array<{ version:number; kind:string; url_or_path?:string; created_at:string; is_late?:number; accepted?:number }> }>{
+  return spFetch(`/api/public/tasks/${tid}`)
+}
+
+export async function submitTask(tid: number, data: { url?: string; file?: File }): Promise<any> {
+  if (data.file) {
+    const fd = new FormData()
+    fd.append('file', data.file)
+    // Include payload with email if available to support headerless environments
+    let email: string | undefined = process.env.NEXT_PUBLIC_MOCK_STUDENT_EMAIL as string | undefined
+    if (!email && typeof document !== 'undefined') {
+      const cookie = document.cookie || ''
+      const m = cookie.match(/(?:^|;\s*)student_email=([^;]+)/)
+      if (m && m[1]) email = decodeURIComponent(m[1])
+    }
+    fd.append('payload', JSON.stringify(email ? { email } : {}))
+    const headers: Record<string, string> = {}
+    if (email) headers['X-Student-Email'] = email
+    const res = await fetch(`/api/public/tasks/${tid}/submit`, { method: 'POST', body: fd, headers })
+    if (!res.ok) throw new Error(await res.text())
+    return res.json()
+  } else {
+    // Include email in JSON payload when possible
+    let email: string | undefined = process.env.NEXT_PUBLIC_MOCK_STUDENT_EMAIL as string | undefined
+    if (!email && typeof document !== 'undefined') {
+      const cookie = document.cookie || ''
+      const m = cookie.match(/(?:^|;\s*)student_email=([^;]+)/)
+      if (m && m[1]) email = decodeURIComponent(m[1])
+    }
+    const body: any = { url: data.url }
+    if (email) body.email = email
+    return spFetch(`/api/public/tasks/${tid}/submit`, { method: 'POST', body: JSON.stringify(body) })
+  }
+}
+
+export type TaskComment = { id:number; author_email?:string; submission_version?:number; body:string; created_at:string }
+export async function listTaskComments(tid: number): Promise<TaskComment[]> {
+  return spFetch(`/api/public/tasks/${tid}/comments`)
+}
+export async function postTaskComment(tid: number, body: string, email?: string, submission_version?: number): Promise<{ id:number }>{
+  const payload: any = { body }
+  if (email) payload.email = email
+  if (submission_version != null) payload.submission_version = submission_version
+  return spFetch(`/api/public/tasks/${tid}/comments`, { method: 'POST', body: JSON.stringify(payload) })
+}
+
+export async function listProjectMeetings(pid: number): Promise<Array<{ id:number; title:string; start_ts:string; end_ts:string; google_event_id?:string }>>{
+  return spFetch(`/api/public/projects/${pid}/meetings`)
+}
+export async function listProjectResources(pid: number): Promise<Array<{ id:number; kind:string; title:string; url_or_path?:string; version?:number }>>{
+  return spFetch(`/api/public/projects/${pid}/resources`)
+}
+export async function getMyTimesheet(pid: number, week: string): Promise<{ entries: Array<{ task_id?:number; day:string; segments?:any[]; hours:number }>; total_hours:number }>{
+  return spFetch(`/api/public/projects/${pid}/timesheets/${week}`)
+}
+export async function saveTimesheetEntry(pid: number, week: string, entry: { task_id?:number; day:string; segments?:any[]; hours?:number; replace?: boolean }): Promise<any>{
+  return spFetch(`/api/public/projects/${pid}/timesheets/${week}/entries`, { method: 'POST', body: JSON.stringify(entry) })
 }

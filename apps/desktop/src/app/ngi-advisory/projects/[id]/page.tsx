@@ -71,10 +71,25 @@ export default function AdvisoryProjectDetailPage() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="space-y-1">
           <div className="text-sm text-muted-foreground"><Link href="/ngi-advisory/projects" className="hover:underline">Projects</Link> /</div>
           <h1 className="text-3xl font-bold tracking-tight text-foreground">{project.project_name}</h1>
           <p className="text-sm text-muted-foreground">{project.client_name}</p>
+          {project.slack_channel_id && (
+            <div className="mt-1">
+              <a
+                className="text-sm text-blue-600 hover:underline"
+                href={(process.env.NEXT_PUBLIC_SLACK_WORKSPACE_ID && project.slack_channel_id)
+                  ? `https://app.slack.com/client/${process.env.NEXT_PUBLIC_SLACK_WORKSPACE_ID}/${project.slack_channel_id}`
+                  : undefined}
+                target={process.env.NEXT_PUBLIC_SLACK_WORKSPACE_ID ? '_blank' : undefined}
+                onClick={(e) => { if (!process.env.NEXT_PUBLIC_SLACK_WORKSPACE_ID) e.preventDefault(); }}
+                title={process.env.NEXT_PUBLIC_SLACK_WORKSPACE_ID ? 'Open Slack channel' : 'Set NEXT_PUBLIC_SLACK_WORKSPACE_ID to enable link'}
+              >
+                Open Slack {project.slack_channel_name ? `(#${project.slack_channel_name})` : ''}
+              </a>
+            </div>
+          )}
         </div>
         <span className="px-2 py-1 rounded border text-xs">{project.status}</span>
       </div>

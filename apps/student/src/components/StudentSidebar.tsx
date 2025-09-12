@@ -1,9 +1,9 @@
 'use client'
 
-import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { useUser, useClerk } from '@clerk/nextjs'
+import { postEvent } from '@/lib/telemetry'
 import { 
   FolderOpen, 
   FileText, 
@@ -28,6 +28,7 @@ export default function StudentSidebar() {
   const { signOut } = useClerk()
   const [hasActiveProject, setHasActiveProject] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const isSignedIn = !!user
 
   useEffect(() => {
     let ignore = false
@@ -50,10 +51,12 @@ export default function StudentSidebar() {
   const items = useMemo(() => {
     const baseItems: NavItem[] = [
       { name: 'Projects', href: '/projects', icon: FolderOpen },
-      { name: 'Applications', href: '/applications', icon: FileText },
-      { name: 'Coffee Chats', href: '/coffeechats', icon: Briefcase },
     ]
-    
+    // Signed-in only
+    if (isSignedIn) {
+      baseItems.push({ name: 'Applications', href: '/applications', icon: FileText })
+    }
+
     if (hasActiveProject) {
       baseItems.push({ name: 'My Projects', href: '/my-projects', icon: Briefcase })
     }
@@ -63,9 +66,9 @@ export default function StudentSidebar() {
     )
     
     return baseItems
-  }, [hasActiveProject])
+  }, [hasActiveProject, isSignedIn])
 
-  const isActive = (href: string) => pathname === href
+  const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/')
 
   // Parse name to exclude middle names
   // Sometimes Google OAuth puts full name in firstName field
@@ -127,6 +130,7 @@ export default function StudentSidebar() {
             <button
               key={item.name}
               onClick={() => {
+                try { postEvent('nav_click', { route: item.href, position: 'sidebar' }) } catch {}
                 window.location.href = item.href
               }}
               className={`

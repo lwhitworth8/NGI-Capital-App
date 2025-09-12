@@ -271,10 +271,15 @@ def require_partner_access():
     async def _require_partner(request: Request, credentials: HTTPAuthorizationCredentials = Security(security)):
         import os as _os
         # Dev bypass: when DISABLE_ADVISORY_AUTH=1, allow minimal partner principal for local dev and E2E
-        # Honor either backend or NEXT_PUBLIC flag in dev
+        # Only apply when no Authorization header/cookie is present (keeps explicit token tests strict)
+        try:
+            has_header = bool(credentials and getattr(credentials, 'credentials', None))
+        except Exception:
+            has_header = False
+        has_cookie = bool(request.cookies.get('auth_token') or request.cookies.get('__session'))
         _dev_bypass = any(str(_os.getenv(var, '0')).strip().lower() in ("1","true","yes") for var in (
             'DISABLE_ADVISORY_AUTH', 'NEXT_PUBLIC_DISABLE_ADVISORY_AUTH'
-        ))
+        )) and not (has_header or has_cookie)
         if _dev_bypass:
             return {
                 "id": 0,

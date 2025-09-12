@@ -194,6 +194,9 @@ export type AdvisoryProject = {
   is_public?: number | boolean;
   coffeechat_calendly?: string | null;
   showcase_pdf_url?: string | null;
+  // Slack
+  slack_channel_id?: string | null;
+  slack_channel_name?: string | null;
   // Derived
   open_roles?: number | null;
 }

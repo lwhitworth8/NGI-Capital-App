@@ -59,13 +59,19 @@ def setup_module():
 
 def teardown_module():
     """Clean up test database."""
+    # Ensure SQLAlchemy engine releases any open handles before removing file (Windows)
+    try:
+        engine.dispose()
+    except Exception:
+        pass
     if os.path.exists(TEST_DB_PATH):
         os.remove(TEST_DB_PATH)
     # Clean up any uploaded test files
-    test_upload_dir = Path("uploads/advisory-docs/users/test.student_at_berkeley.edu")
-    if test_upload_dir.exists():
+    # Clean up uploads folder created during tests (safe removal)
+    uploads_root = Path("uploads")
+    if uploads_root.exists():
         import shutil
-        shutil.rmtree(test_upload_dir.parent.parent.parent.parent)  # Remove entire uploads dir
+        shutil.rmtree(uploads_root)
 
 def test_profile_creation():
     """Test that a profile is created when fetched for the first time."""

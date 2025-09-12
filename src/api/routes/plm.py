@@ -8,6 +8,7 @@ from pathlib import Path
 from src.api.database import get_db
 from .advisory import require_ngiadvisory_admin, _ensure_tables
 from src.api.integrations import google_calendar as gcal
+from src.api.integrations import slack as slack
 
 router = APIRouter()
 public_router = APIRouter()
@@ -159,6 +160,17 @@ def _ensure_plm_tables(db: Session):
             db.rollback()
 
 
+def _extract_email_from_request(req: Request) -> str:
+    """Extract student email from request headers (public endpoints).
+    Accepts X-Student-Email (case-insensitive). Returns lower-cased email or ''.
+    """
+    try:
+        em = (req.headers.get('X-Student-Email') or req.headers.get('x-student-email') or '').strip().lower()
+    except Exception:
+        em = ''
+    return em
+
+
 @router.post("/projects/{pid}/milestones")
 async def create_milestone(pid: int, payload: Dict[str, Any], admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
     _ensure_tables(db); _ensure_plm_tables(db)
@@ -223,7 +235,26 @@ async def create_task(pid: int, payload: Dict[str, Any], admin=Depends(require_n
             db.execute(sa_text("INSERT INTO project_task_assignments (task_id, student_id) VALUES (:t,:s)"), {"t": tid, "s": int(sid)})
     except Exception:
         pass
-    db.commit(); return {"id": int(tid)}
+    db.commit()
+    # Slack: notify task creation/assignment
+    try:
+        if slack.is_enabled():
+            proj = db.execute(sa_text("SELECT project_code, slack_channel_id, slack_channel_name FROM advisory_projects WHERE id = :p"), {"p": pid}).fetchone()
+            code = (proj or [None])[0] or ''
+            chan_id = (proj or [None, None, None])[1]
+            if not chan_id and code:
+                ch = slack.ensure_project_channel(code)
+                if ch:
+                    db.execute(sa_text("UPDATE advisory_projects SET slack_channel_id = :id, slack_channel_name = :nm WHERE id = :p"), {"id": ch.get('id'), "nm": ch.get('name'), "p": pid}); db.commit(); chan_id = ch.get('id')
+            if chan_id:
+                assignees = payload.get('assignees') or []
+                text = f"New task created: {payload.get('title') or 'Untitled'}"
+                if assignees:
+                    text += f" — assigned to {len(assignees)} student(s)"
+                slack.post_message(chan_id, text)
+    except Exception:
+        pass
+    return {"id": int(tid)}
 
 
 @router.patch("/tasks/{tid}")
@@ -272,7 +303,8 @@ async def submit_task(
             except Exception:
                 payload = {}
     payload = payload or {}
-    student_email = payload.get('email')
+    # Prefer email from payload; fallback to header for public usage
+    student_email = payload.get('email') or ( _extract_email_from_request(request) if request else None )
     kind = (payload.get('kind') or ('url' if (payload.get('url') and not file) else 'file')).lower()
     url_or_path = None
     if kind == 'file' and file is not None:
@@ -295,6 +327,16 @@ async def submit_task(
         row = db.execute(sa_text("SELECT id FROM advisory_students WHERE lower(email) = :em"), {"em": str(student_email or '').lower()}).fetchone()
         sid = int(row[0]) if row else None
     if sid is None:
+        # Auto-create minimal student record for submissions with provided email
+        if student_email:
+            try:
+                db.execute(sa_text("INSERT OR IGNORE INTO advisory_students (entity_id, first_name, last_name, email, status, created_at, updated_at) VALUES (NULL, NULL, NULL, :em, 'active', datetime('now'), datetime('now'))"), {"em": str(student_email or '').lower()})
+                db.commit()
+                row = db.execute(sa_text("SELECT id FROM advisory_students WHERE lower(email) = :em"), {"em": str(student_email or '').lower()}).fetchone()
+                sid = int(row[0]) if row else None
+            except Exception:
+                sid = None
+    if sid is None:
         raise HTTPException(status_code=400, detail="student email required")
     vrow = db.execute(sa_text("SELECT COALESCE(MAX(version),0)+1 FROM project_task_submissions WHERE task_id = :t AND student_id = :s"), {"t": tid, "s": sid}).fetchone()
     ver = int(vrow[0] or 1)
@@ -306,7 +348,25 @@ async def submit_task(
     except Exception:
         is_late = 0
     db.execute(sa_text("INSERT INTO project_task_submissions (task_id, student_id, version, kind, url_or_path, created_at, is_late) VALUES (:t,:s,:v,:k,:u,datetime('now'),:l)"), {"t": tid, "s": sid, "v": ver, "k": kind, "u": url_or_path, "l": is_late})
-    db.commit(); return {"task_id": tid, "version": ver, "kind": kind}
+    db.commit()
+    # Slack: notify submission
+    try:
+        if slack.is_enabled():
+            row = db.execute(sa_text("SELECT project_id, title FROM project_tasks WHERE id = :t"), {"t": tid}).fetchone()
+            prj_id = int((row or [0])[0] or 0); title = (row or [None, None])[1] or 'Task'
+            proj = db.execute(sa_text("SELECT project_code, slack_channel_id, slack_channel_name FROM advisory_projects WHERE id = :p"), {"p": prj_id}).fetchone()
+            code = (proj or [None])[0] or ''
+            chan_id = (proj or [None, None, None])[1]
+            if not chan_id and code:
+                ch = slack.ensure_project_channel(code)
+                if ch:
+                    db.execute(sa_text("UPDATE advisory_projects SET slack_channel_id = :id, slack_channel_name = :nm WHERE id = :p"), {"id": ch.get('id'), "nm": ch.get('name'), "p": prj_id}); db.commit(); chan_id = ch.get('id')
+            if chan_id:
+                origin = os.getenv('APP_ORIGIN') or 'http://localhost:3001'
+                slack.post_message(chan_id, f"New submission on {title} (v{ver}). View: {origin}/my-projects/{prj_id}/tasks/{tid}")
+    except Exception:
+        pass
+    return {"task_id": tid, "version": ver, "kind": kind}
 
 
 @public_router.post("/tasks/{tid}/submit")
@@ -325,6 +385,36 @@ async def add_comment(tid: int, payload: Dict[str, Any], admin=Depends(require_n
         "INSERT INTO project_task_comments (task_id, author_email, submission_version, body) VALUES (:t,:e,:v,:b)"
     ), {"t": tid, "e": (admin or {}).get('email'), "v": payload.get('submission_version'), "b": body})
     cid = int(db.execute(sa_text("SELECT last_insert_rowid()")).scalar() or 0)
+    db.commit()
+    # Slack: notify comment (admin)
+    try:
+        if slack.is_enabled():
+            row = db.execute(sa_text("SELECT project_id, title FROM project_tasks WHERE id = :t"), {"t": tid}).fetchone()
+            prj_id = int((row or [0])[0] or 0); title = (row or [None, None])[1] or 'Task'
+            proj = db.execute(sa_text("SELECT project_code, slack_channel_id, slack_channel_name FROM advisory_projects WHERE id = :p"), {"p": prj_id}).fetchone()
+            code = (proj or [None])[0] or ''
+            chan_id = (proj or [None, None, None])[1]
+            if not chan_id and code:
+                ch = slack.ensure_project_channel(code)
+                if ch:
+                    db.execute(sa_text("UPDATE advisory_projects SET slack_channel_id = :id, slack_channel_name = :nm WHERE id = :p"), {"id": ch.get('id'), "nm": ch.get('name'), "p": prj_id}); db.commit(); chan_id = ch.get('id')
+            if chan_id:
+                origin = os.getenv('APP_ORIGIN') or 'http://localhost:3001'
+                slack.post_message(chan_id, f"New comment on {title}. View: {origin}/my-projects/{prj_id}/tasks/{tid}")
+    except Exception:
+        pass
+    return {"id": cid}
+
+
+@public_router.post("/tasks/{tid}/comments")
+async def add_comment_public(tid: int, payload: Dict[str, Any], request: Request, db: Session = Depends(get_db)):
+    _ensure_tables(db); _ensure_plm_tables(db)
+    body = (payload.get('body') or '').strip()
+    email = (payload.get('email') or '').strip().lower() or _extract_email_from_request(request)
+    if not (body and email):
+        raise HTTPException(status_code=422, detail="email and body required")
+    db.execute(sa_text("INSERT INTO project_task_comments (task_id, author_email, submission_version, body) VALUES (:t,:e,:v,:b)"), {"t": tid, "e": email, "v": payload.get('submission_version'), "b": body})
+    cid = int(db.execute(sa_text("SELECT last_insert_rowid()")).scalar() or 0)
     db.commit(); return {"id": cid}
 
 
@@ -336,6 +426,13 @@ async def list_comments(tid: int, admin=Depends(require_ngiadvisory_admin()), db
         {"id": r[0], "author_email": r[1], "submission_version": r[2], "body": r[3], "created_at": r[4]}
         for r in rows
     ]
+
+
+@public_router.get("/tasks/{tid}/comments")
+async def list_comments_public(tid: int, db: Session = Depends(get_db)):
+    _ensure_tables(db); _ensure_plm_tables(db)
+    rows = db.execute(sa_text("SELECT id, author_email, submission_version, body, created_at FROM project_task_comments WHERE task_id = :t ORDER BY id DESC"), {"t": tid}).fetchall()
+    return [{"id": r[0], "author_email": r[1], "submission_version": r[2], "body": r[3], "created_at": r[4]} for r in rows]
 
 
 @router.post("/projects/{pid}/resources")
@@ -398,7 +495,22 @@ async def create_meeting(pid: int, payload: Dict[str, Any], admin=Depends(requir
         "INSERT INTO project_meetings (project_id, google_event_id, title, start_ts, end_ts, attendees_emails, created_by) VALUES (:p,:g,:t,:s,:e,:a,:by)"
     ), {"p": pid, "g": evt.get('id'), "t": title, "s": start_ts, "e": end_ts, "a": _json.dumps(attendees or []), "by": owner})
     mid = int(db.execute(sa_text("SELECT last_insert_rowid()")).scalar() or 0)
-    db.commit(); return {"id": mid, "google_event_id": evt.get('id')}
+    db.commit()
+    # Slack: meeting scheduled
+    try:
+        if slack.is_enabled():
+            proj = db.execute(sa_text("SELECT project_code, slack_channel_id, slack_channel_name FROM advisory_projects WHERE id = :p"), {"p": pid}).fetchone()
+            code = (proj or [None])[0] or ''
+            chan_id = (proj or [None, None, None])[1]
+            if not chan_id and code:
+                ch = slack.ensure_project_channel(code)
+                if ch:
+                    db.execute(sa_text("UPDATE advisory_projects SET slack_channel_id = :id, slack_channel_name = :nm WHERE id = :p"), {"id": ch.get('id'), "nm": ch.get('name'), "p": pid}); db.commit(); chan_id = ch.get('id')
+            if chan_id:
+                slack.post_message(chan_id, f"Meeting scheduled: {title} on {start_ts}")
+    except Exception:
+        pass
+    return {"id": mid, "google_event_id": evt.get('id')}
 
 
 @router.get("/projects/{pid}/meetings")
@@ -478,13 +590,22 @@ async def waive_late(tid: int, payload: Dict[str, Any], admin=Depends(require_ng
 # ---- Public endpoints (students) ----
 
 @public_router.post("/projects/{pid}/timesheets/{week}/entries")
-async def add_timesheet_entry(pid: int, week: str, payload: Dict[str, Any], db: Session = Depends(get_db)):
+async def add_timesheet_entry(pid: int, week: str, payload: Dict[str, Any], request: Request, db: Session = Depends(get_db)):
     _ensure_tables(db); _ensure_plm_tables(db)
     student_id = int(payload.get('student_id') or 0)
+    if not student_id:
+        em = _extract_email_from_request(request)
+        if em:
+            row = db.execute(sa_text("SELECT id FROM advisory_students WHERE lower(email) = :em"), {"em": em}).fetchone()
+            student_id = int(row[0]) if row else 0
     task_id = int(payload.get('task_id') or 0) if payload.get('task_id') else None
     day = (payload.get('day') or '').strip()
     segments = payload.get('segments') or []
-    hours = float(payload.get('hours') or 0)
+    # If hours not provided, derive from segments
+    try:
+        hours = float(payload.get('hours') if payload.get('hours') is not None else sum(float(s.get('hours') or 0) for s in (segments or [])))
+    except Exception:
+        hours = 0.0
     if not (student_id and day and week):
         raise HTTPException(status_code=422, detail="student_id, day, week required")
     # Ensure or create timesheet row
@@ -494,6 +615,13 @@ async def add_timesheet_entry(pid: int, week: str, payload: Dict[str, Any], db: 
     else:
         db.execute(sa_text("INSERT INTO plm_timesheets (project_id, student_id, week_start_date, total_hours) VALUES (:p,:s,:w,0)"), {"p": pid, "s": student_id, "w": week})
         ts_id = int(db.execute(sa_text("SELECT last_insert_rowid()")).scalar() or 0)
+    # Optional replace: clear existing entries for this task/day before insert
+    replace_flag = str(payload.get('replace') or '').strip().lower() in ('1','true','yes','replace') or (payload.get('replace') is True)
+    if replace_flag:
+        if task_id is not None:
+            db.execute(sa_text("DELETE FROM plm_timesheet_entries WHERE timesheet_id = :t AND day = :d AND task_id = :task"), {"t": ts_id, "d": day, "task": task_id})
+        else:
+            db.execute(sa_text("DELETE FROM plm_timesheet_entries WHERE timesheet_id = :t AND day = :d AND task_id IS NULL"), {"t": ts_id, "d": day})
     import json as _json
     db.execute(sa_text("INSERT INTO plm_timesheet_entries (timesheet_id, task_id, day, segments, hours) VALUES (:t,:task,:d,:seg,:h)"), {"t": ts_id, "task": task_id, "d": day, "seg": _json.dumps(segments or []), "h": hours})
     # Recompute total
@@ -516,23 +644,114 @@ async def add_comment_public(tid: int, payload: Dict[str, Any], db: Session = De
 
 
 @public_router.get("/my-projects")
-async def my_projects(email: Optional[str] = None, db: Session = Depends(get_db)):
+async def my_projects(email: Optional[str] = None, request: Request = None, db: Session = Depends(get_db)):
     _ensure_tables(db); _ensure_plm_tables(db)
-    em = (email or '').strip().lower()
+    em = (email or '').strip().lower() or _extract_email_from_request(request)
     if not em:
         # In dev, allow missing email to return empty list
         return []
     rows = db.execute(sa_text(
         """
-        SELECT p.id, p.project_code, p.project_name, p.summary
+        SELECT p.id, p.project_code, p.project_name, p.summary, COALESCE(a.active,1) as active, COALESCE(p.status,'active') as pstatus
         FROM advisory_projects p
         JOIN advisory_project_assignments a ON a.project_id = p.id
         JOIN advisory_students s ON s.id = a.student_id
-        WHERE lower(s.email) = :em AND COALESCE(a.active,1) = 1
-        ORDER BY p.id DESC
+        WHERE lower(s.email) = :em
+        ORDER BY datetime(COALESCE(p.start_date, p.created_at)) DESC, p.id DESC
         """
     ), {"em": em}).fetchall()
-    return [{"id": r[0], "project_code": r[1], "project_name": r[2], "summary": r[3]} for r in rows]
+    out = []
+    for r in rows:
+        status = 'active' if int(r[4] or 1) == 1 and str(r[5] or '').lower() in ('active', 'in_progress', 'open') else 'past'
+        out.append({"id": r[0], "project_code": r[1], "project_name": r[2], "summary": r[3], "status": status})
+    return out
+
+
+@public_router.get("/projects/{pid}/tasks")
+async def list_my_tasks(pid: int, request: Request, db: Session = Depends(get_db)):
+    _ensure_tables(db); _ensure_plm_tables(db)
+    em = _extract_email_from_request(request)
+    if not em:
+        return []
+    row = db.execute(sa_text("SELECT id FROM advisory_students WHERE lower(email) = :em"), {"em": em}).fetchone()
+    sid = int(row[0]) if row else None
+    if not sid:
+        return []
+    rows = db.execute(sa_text(
+        """
+        SELECT t.id, t.title, t.description, t.priority, t.status, t.due_date, t.planned_hours
+        FROM project_tasks t
+        LEFT JOIN project_task_assignments a ON a.task_id = t.id AND a.student_id = :sid
+        WHERE t.project_id = :p AND (a.id IS NOT NULL OR t.submission_type = 'group')
+        ORDER BY datetime(COALESCE(t.due_date, t.created_at)) ASC, t.id ASC
+        """
+    ), {"p": pid, "sid": sid}).fetchall()
+    return [{"id": r[0], "title": r[1], "description": r[2], "priority": r[3], "status": r[4], "due_date": r[5], "planned_hours": r[6]} for r in rows]
+
+
+@public_router.get("/tasks/{tid}")
+async def task_detail_public(tid: int, request: Request, db: Session = Depends(get_db)):
+    _ensure_tables(db); _ensure_plm_tables(db)
+    em = _extract_email_from_request(request)
+    if not em:
+        raise HTTPException(status_code=403, detail="email required")
+    row = db.execute(sa_text("SELECT id FROM advisory_students WHERE lower(email) = :em"), {"em": em}).fetchone()
+    sid = int(row[0]) if row else None
+    if not sid:
+        raise HTTPException(status_code=404, detail="student not found")
+    t = db.execute(sa_text("SELECT id, project_id, title, description, priority, status, submission_type, due_date, planned_hours FROM project_tasks WHERE id = :id"), {"id": tid}).fetchone()
+    if not t:
+        raise HTTPException(status_code=404, detail="not found")
+    subs = db.execute(sa_text("SELECT version, kind, url_or_path, created_at, is_late, accepted FROM project_task_submissions WHERE task_id = :t AND student_id = :s ORDER BY version DESC"), {"t": tid, "s": sid}).fetchall()
+    return {
+        "id": t[0], "project_id": t[1], "title": t[2], "description": t[3], "priority": t[4], "status": t[5], "submission_type": t[6],
+        "due_date": t[7], "planned_hours": t[8],
+        "submissions": [{"version": r[0], "kind": r[1], "url_or_path": r[2], "created_at": r[3], "is_late": int(r[4] or 0), "accepted": int(r[5] or 0)} for r in subs],
+    }
+
+
+@public_router.get("/tasks/{tid}/comments")
+async def list_comments_public(tid: int, db: Session = Depends(get_db)):
+    _ensure_tables(db); _ensure_plm_tables(db)
+    rows = db.execute(sa_text("SELECT id, author_email, submission_version, body, created_at FROM project_task_comments WHERE task_id = :t ORDER BY id DESC"), {"t": tid}).fetchall()
+    return [{"id": r[0], "author_email": r[1], "submission_version": r[2], "body": r[3], "created_at": r[4]} for r in rows]
+
+
+@public_router.get("/projects/{pid}/resources")
+async def list_resources_public(pid: int, db: Session = Depends(get_db)):
+    _ensure_tables(db); _ensure_plm_tables(db)
+    rows = db.execute(sa_text("SELECT id, kind, title, url_or_path, version, created_by, created_at FROM project_resources WHERE project_id = :p ORDER BY id DESC"), {"p": pid}).fetchall()
+    return [{"id": r[0], "kind": r[1], "title": r[2], "url_or_path": r[3], "version": r[4], "created_by": r[5], "created_at": r[6]} for r in rows]
+
+
+@public_router.get("/projects/{pid}/meetings")
+async def list_meetings_public(pid: int, db: Session = Depends(get_db)):
+    _ensure_tables(db); _ensure_plm_tables(db)
+    rows = db.execute(sa_text("SELECT id, google_event_id, title, start_ts, end_ts, attendees_emails, created_by, created_at FROM project_meetings WHERE project_id = :p ORDER BY id DESC"), {"p": pid}).fetchall()
+    return [{"id": r[0], "google_event_id": r[1], "title": r[2], "start_ts": r[3], "end_ts": r[4], "attendees_emails": r[5], "created_by": r[6], "created_at": r[7]} for r in rows]
+
+
+@public_router.get("/projects/{pid}/timesheets/{week}")
+async def get_timesheet_public(pid: int, week: str, request: Request, db: Session = Depends(get_db)):
+    _ensure_tables(db); _ensure_plm_tables(db)
+    em = _extract_email_from_request(request)
+    row = db.execute(sa_text("SELECT id FROM advisory_students WHERE lower(email) = :em"), {"em": em}).fetchone()
+    sid = int(row[0]) if row else None
+    if not sid:
+        return {"entries": [], "total_hours": 0}
+    ts = db.execute(sa_text("SELECT id, total_hours FROM plm_timesheets WHERE project_id = :p AND student_id = :s AND week_start_date = :w"), {"p": pid, "s": sid, "w": week}).fetchone()
+    if not ts:
+        return {"entries": [], "total_hours": 0}
+    ents = db.execute(sa_text("SELECT task_id, day, segments, hours FROM plm_timesheet_entries WHERE timesheet_id = :i"), {"i": ts[0]}).fetchall()
+    import json as _json
+    entries = []
+    for e in ents:
+        try:
+            seg = _json.loads(e[2] or '[]')
+        except Exception:
+            seg = []
+        entries.append({"task_id": e[0], "day": e[1], "segments": seg, "hours": e[3]})
+    return {"entries": entries, "total_hours": ts[1]}
 
 
 @router.get("/projects/{pid}/timesheets")
@@ -584,3 +803,53 @@ async def list_tasks_public(pid: int, db: Session = Depends(get_db)):
         {"id": r[0], "milestone_id": r[1], "title": r[2], "description": r[3], "priority": r[4], "status": r[5], "submission_type": r[6], "due_date": r[7], "planned_hours": r[8]}
         for r in rows
     ]
+
+
+@public_router.post("/projects/{pid}/timesheets/{week}/entries")
+async def add_timesheet_entry(pid: int, week: str, payload: Dict[str, Any], request: Request, db: Session = Depends(get_db)):
+    _ensure_tables(db); _ensure_plm_tables(db)
+    student_id = int(payload.get('student_id') or 0)
+    if not student_id:
+        em = _extract_email_from_request(request)
+        if em:
+            row = db.execute(sa_text("SELECT id FROM advisory_students WHERE lower(email) = :em"), {"em": em}).fetchone()
+            student_id = int(row[0]) if row else 0
+    task_id = int(payload.get('task_id') or 0) if payload.get('task_id') else None
+    day = (payload.get('day') or '').strip()
+    segments = payload.get('segments') or []
+    hours = float(payload.get('hours') or 0)
+    if not (student_id and day and week):
+        raise HTTPException(status_code=422, detail="student_id, day, week required")
+    # Ensure or create timesheet row
+    row = db.execute(sa_text("SELECT id FROM plm_timesheets WHERE project_id = :p AND student_id = :s AND week_start_date = :w"), {"p": pid, "s": student_id, "w": week}).fetchone()
+    if row:
+        ts_id = int(row[0])
+    else:
+        db.execute(sa_text("INSERT INTO plm_timesheets (project_id, student_id, week_start_date, total_hours) VALUES (:p,:s,:w,0)"), {"p": pid, "s": student_id, "w": week})
+        ts_id = int(db.execute(sa_text("SELECT last_insert_rowid()")).scalar() or 0)
+    import json as _json
+    db.execute(sa_text("INSERT INTO plm_timesheet_entries (timesheet_id, task_id, day, segments, hours) VALUES (:t,:task,:d,:seg,:h)"), {"t": ts_id, "task": task_id, "d": day, "seg": _json.dumps(segments or []), "h": hours})
+    # Recompute total
+    row2 = db.execute(sa_text("SELECT COALESCE(SUM(hours),0) FROM plm_timesheet_entries WHERE timesheet_id = :t"), {"t": ts_id}).fetchone()
+    total = float((row2 or [0])[0] or 0)
+    db.execute(sa_text("UPDATE plm_timesheets SET total_hours = :th WHERE id = :id"), {"th": total, "id": ts_id})
+    db.commit(); return {"timesheet_id": ts_id, "total_hours": total}
+@router.post("/projects/{pid}/slack/ensure")
+async def ensure_slack_for_project(pid: int, payload: Dict[str, Any] = {}, admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
+    if not slack.is_enabled():
+        return {"enabled": False}
+    proj = db.execute(sa_text("SELECT project_code, slack_channel_id, slack_channel_name FROM advisory_projects WHERE id = :p"), {"p": pid}).fetchone()
+    if not proj:
+        raise HTTPException(status_code=404, detail="project not found")
+    code = (proj or [None])[0] or ''
+    ch = slack.ensure_project_channel(code)
+    if ch:
+        db.execute(sa_text("UPDATE advisory_projects SET slack_channel_id = :id, slack_channel_name = :nm WHERE id = :p"), {"id": ch.get('id'), "nm": ch.get('name'), "p": pid}); db.commit()
+        emails = payload.get('emails') or []
+        if isinstance(emails, list) and emails:
+            try:
+                slack.invite_members(ch.get('id'), emails)
+            except Exception:
+                pass
+        return {"enabled": True, "channel": ch}
+    return {"enabled": True, "channel": None}

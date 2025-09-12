@@ -91,6 +91,52 @@ def get_db():
                 db.execute(_text("CREATE TABLE IF NOT EXISTS journal_entries (id INTEGER PRIMARY KEY AUTOINCREMENT, entity_id INTEGER, entry_number TEXT, entry_date TEXT, description TEXT, reference_number TEXT, total_debit REAL, total_credit REAL, approval_status TEXT, is_posted INTEGER DEFAULT 0)"))
                 db.execute(_text("CREATE TABLE IF NOT EXISTS journal_entry_lines (id INTEGER PRIMARY KEY AUTOINCREMENT, journal_entry_id INTEGER, account_id INTEGER, line_number INTEGER, description TEXT, debit_amount REAL, credit_amount REAL)"))
                 db.commit()
+            # Ensure advisory_students has expected columns
+            try:
+                stu_cols = [r[0] for r in db.execute(_text("SELECT name FROM pragma_table_info('advisory_students')")).fetchall()]
+                def _add_s(col, type_):
+                    if col not in stu_cols:
+                        db.execute(_text(f"ALTER TABLE advisory_students ADD COLUMN {col} {type_}"))
+                _add_s('school','TEXT')
+                _add_s('program','TEXT')
+                _add_s('grad_year','INTEGER')
+                _add_s('skills','TEXT')
+                _add_s('status','TEXT')
+                _add_s('resume_url','TEXT')
+                _add_s('status_override','TEXT')
+                _add_s('status_override_reason','TEXT')
+                _add_s('status_override_at','TEXT')
+                _add_s('last_activity_at','TEXT')
+                _add_s('created_at','TEXT')
+                _add_s('updated_at','TEXT')
+                db.commit()
+            except Exception:
+                pass
+            # Ensure advisory_projects has commonly used columns for public/admin tests even if created minimally elsewhere
+            try:
+                proj_cols = [r[0] for r in db.execute(_text("SELECT name FROM pragma_table_info('advisory_projects')")).fetchall()]
+                def _add(col, type_):
+                    if col not in proj_cols:
+                        db.execute(_text(f"ALTER TABLE advisory_projects ADD COLUMN {col} {type_}"))
+                _add('description','TEXT')
+                _add('start_date','TEXT')
+                _add('end_date','TEXT')
+                _add('duration_weeks','INTEGER')
+                _add('commitment_hours_per_week','INTEGER')
+                _add('mode','TEXT')
+                _add('location_text','TEXT')
+                _add('tags','TEXT')
+                _add('is_public','INTEGER DEFAULT 1')
+                _add('allow_applications','INTEGER DEFAULT 1')
+                _add('gallery_urls','TEXT')
+                _add('hero_image_url','TEXT')
+                _add('partner_badges','TEXT')
+                _add('backer_badges','TEXT')
+                _add('coffeechat_calendly','TEXT')
+                _add('created_at','TEXT')
+                db.commit()
+            except Exception:
+                pass
     except Exception:
         pass
     try:
@@ -102,6 +148,17 @@ def get_db():
         try:
             if _engine is not None and _current_url and _current_url.startswith("sqlite"):
                 _engine.dispose()
+                # If using a pytest-specific DB file, drop engine to release OS locks fully
+                import re as _re
+                if _re.search(r"test_ngi_capital\.db$", _current_url):
+                    try:
+                        _engine.dispose()
+                    except Exception:
+                        pass
+                    # Reset engine so next get_db() recreates a fresh one
+                    globals()['_engine'] = None
+                    globals()['_SessionLocal'] = None
+                    globals()['_current_url'] = None
         except Exception:
             pass
         # Encourage prompt GC of SQLite connections on Windows

@@ -937,16 +937,19 @@ async def auth_debug(request: Request, partner=Depends(require_partner_access())
     Do not enable in production without protection; useful during integration.
     """
     import os as _os
-    # Reuse advisory admin gate logic
-    from src.api.routes.advisory import require_ngiadvisory_admin
-    admin_ok = False
+    # Compute admin status based on allowed sets and current principal
+    allowed = set([
+        "lwhitworth@ngicapitaladvisory.com",
+        "anurmamade@ngicapitaladvisory.com",
+    ])
     try:
-        # Call the dependency to validate admin; catch exception for boolean
-        dep = require_ngiadvisory_admin()
-        await dep(partner=partner)  # type: ignore
-        admin_ok = True
+        extra = os.getenv('ALLOWED_ADVISORY_ADMINS','') or os.getenv('ADMIN_EMAILS','')
+        for e in (extra or '').split(','):
+            if e and e.strip():
+                allowed.add(e.strip().lower())
     except Exception:
-        admin_ok = False
+        pass
+    admin_ok = (str(partner.get('email') or '').strip().lower() in allowed)
     return {
         "email": partner.get("email"),
         "is_admin": admin_ok,

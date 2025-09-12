@@ -1,4 +1,5 @@
 import React from 'react'
+import '@testing-library/jest-dom'
 import { render, screen } from '@testing-library/react'
 
 // Mock Clerk SignIn to render a placeholder so we can assert UI presence

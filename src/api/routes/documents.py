@@ -725,6 +725,12 @@ async def upload_documents(files: List[UploadFile] = File(...)):
     """
     uploaded_documents = []
     
+    # Ensure upload directories exist (idempotent)
+    try:
+        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
     for file in files:
         try:
             # Generate unique filename
@@ -734,6 +740,7 @@ async def upload_documents(files: List[UploadFile] = File(...)):
             file_path = UPLOAD_DIR / saved_filename
             
             # Save uploaded file
+            UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
             content = await file.read()
             with open(file_path, "wb") as f:
                 f.write(content)
@@ -1399,6 +1406,12 @@ async def get_documents(category: Optional[str] = None, doc_type: Optional[str] 
     """List documents with metadata if available"""
     # If called directly by tests (db unresolved), fall back to filesystem scan
     if not hasattr(db, 'execute'):
+        # Ensure directories exist
+        try:
+            UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+            PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
         documents = []
         for file_path in UPLOAD_DIR.iterdir():
             if file_path.is_file():

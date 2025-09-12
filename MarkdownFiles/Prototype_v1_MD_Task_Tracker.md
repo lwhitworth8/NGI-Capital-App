@@ -53,24 +53,24 @@ Instructions: Every agent must update this tracker after completing work and tes
   - Links: apps/student/src/app/applications/page.tsx, apps/student/src/app/applications/[id]/page.tsx, apps/student/src/app/applications/[id]/WithdrawButton.tsx, apps/student/src/app/projects/[id]/ApplyWidget.tsx, apps/student/src/app/settings/page.tsx, apps/student/src/lib/api.ts, src/api/routes/advisory_public.py, tests/test_public_applications.py
   - Notes: list + detail page; withdraw; snapshots; newest-first; Updated badge + /seen; Past view toggle. Profile gate requires phone, LinkedIn, GPA, location, school, program, grad_year, resume. Settings updated to edit/save these; backend /profile GET/PATCH extended with validation; DB columns added idempotently.
 
-- My Projects â€“ `MarkdownFiles/StudentApp/MyProjects/PRD.MyProjects.md`
-  - Status: Not Started
-  - Owner:
-  - Links:
-  - Notes: tabs, submissions (500 MB, resumable), comments, timesheets, meetings; deep links.
+- My Projects (Student) - `MarkdownFiles/StudentApp/MyProjects/PRD.MyProjects.md`
+  - Status: Ready for QA
+  - Owner: codex
+  - Links: apps/student/src/app/my-projects/page.tsx, apps/student/src/app/my-projects/[id]/page.tsx, apps/student/src/app/my-projects/[id]/tasks/[tid]/page.tsx, apps/student/src/app/my-projects/[id]/timesheets/TimesheetsPanel.tsx, apps/student/src/lib/api.ts, src/api/routes/plm.py, tests/test_my_projects_public.py
+  - Notes: Active/Past list; workspace tabs (Overview, My Tasks, Meetings, Timesheets, Resources); Task Detail with file (=500 MB) or URL submission and comments; Timesheets weekly entry (Sun–Sat) with total; header-based student identity supported for public submit/comments/timesheets; respects assignment filtering and file limits.
 
 - Learning (Coming Soon) â€“ `MarkdownFiles/StudentApp/Learning/PRD.StudentLearning.md`
-  - Status: Not Started
-  - Owner:
-  - Links:
-  - Notes: placeholder only.
+  - Status: Ready for QA
+  - Owner: codex
+  - Links: apps/student/src/app/learning/page.tsx
+  - Notes: Public placeholder with H1 + subtext; no CTAs/forms/links; optional telemetry page_view posted.
 
 ## Shared/Infra
 - Slack Integration â€“ `MarkdownFiles/NGIDesktopApp/StudentProjectLeadManager/SlackSetup.Appendix.md`
-  - Status: Not Started
+  - Status: Edtied still need to implement .env keys for slack and track it
   - Owner:
   - Links:
-  - Notes: single workspace; per-project private channels; required scopes; env vars.
+  - Notes: single workspace; per-project private channels; required scopes; env vars. Follow-up: fully implement Slack integration and test functionality end-to-end in live workspace.
 
 - Student Nav â€“ `MarkdownFiles/StudentApp/Nav.Spec.StudentApp.md`
   - Status: Not Started
@@ -120,6 +120,7 @@ Instructions: Every agent must update this tracker after completing work and tes
   - Owner:
   - Links:
   - Notes: Next step â€“ review repo and create MD doc set.
+
 
 
 

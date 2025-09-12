@@ -76,10 +76,15 @@ describe('Student middleware routing', () => {
     const res: any = await (middleware as any)(makeReq('/projects'))
     expect(res.headers.get('location')).toBe('http://localhost:3001/admin/dashboard')
   })
-  it('redirects unauthenticated users to /sign-in on same origin', async () => {
+  it('allows unauthenticated users to access /projects (public)', async () => {
     setAuth({ userId: null, sessionClaims: {} })
     const res: any = await (middleware as any)(makeReq('/projects'))
-    expect(res.headers.get('location')).toBe('http://localhost:3001/sign-in')
+    expect(res.headers.get('location')).toBeNull()
+  })
+  it('allows unauthenticated users to access /learning (public)', async () => {
+    setAuth({ userId: null, sessionClaims: {} })
+    const res: any = await (middleware as any)(makeReq('/learning'))
+    expect(res.headers.get('location')).toBeNull()
   })
   // Marketing root no longer forces logout to avoid loops
 
@@ -89,7 +94,7 @@ describe('Student middleware routing', () => {
     expect(res.headers.get('location')).toBeNull()
   })
 
-  it('blocks non-UC/non-advisory domains', async () => {
+  it('blocks non-UC/non-advisory domains on gated pages', async () => {
     setAuth({ userId: 'u3', sessionClaims: { email: 'someone@gmail.com' } })
     const res: any = await (middleware as any)(makeReq('/applications'))
     expect(res.headers.get('location')).toBe('http://localhost:3001/blocked')

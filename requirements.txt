@@ -53,6 +53,9 @@ requests==2.32.3
 black==23.12.1
 flake8==7.0.0
 
+# Slack integration
+slack_sdk>=3.27.1,<4
+
 # Google Calendar integration (optional; guarded by ENABLE_GCAL)
 google-api-python-client>=2.129.0,<3
 google-auth>=2.35.0,<3
