@@ -50,6 +50,26 @@ Current auth mixes Clerk sessions, legacy HS256 JWTs, and development bypass fla
 3. Enable `NEW_AUTH_FLOW` in staging; monitor metrics.
 4. Remove legacy code paths once stable.
 
+## Implementation Breakdown
+
+### Phase 1 – Backend
+1. **Create Clerk verifier** in `src/api/auth.py` using JWKS fetched from `CLERK_JWKS_URL`.
+2. **Replace legacy helpers**: remove `authenticate_partner`, HS256 signing utilities in `src/api/auth.py` and `src/api/utils/token.py`.
+3. **Introduce `get_current_user`** dependency returning a `User` model with role info.
+4. **Update routes**: change all `Depends(get_current_partner)` to `Depends(get_current_user)` across `src/api/routes/*`.
+5. **Feature flag**: wrap new logic behind `NEW_AUTH_FLOW` and default to legacy path when flag is false.
+
+### Phase 2 – Client Applications
+1. **Desktop app** (`apps/desktop/src/lib/api.ts`): remove `/auth/login` calls and token retry interceptor.
+2. **Student frontend**: ensure Next.js middleware uses Clerk for sign‑in and POSTs token to `/auth/session` once.
+3. **Session bridge**: verify `/auth/session` endpoint sets an HttpOnly cookie consumed by subsequent requests.
+
+### Phase 3 – Configuration & Cleanup
+1. **Environment checks**: on FastAPI startup, assert presence of `CLERK_JWKS_URL`, `CLERK_ISSUER`, and `CLERK_SECRET_KEY`; log fatal if missing.
+2. **Deprecate bypass flags**: remove `DISABLE_ADVISORY_AUTH` and `NEXT_PUBLIC_DISABLE_ADVISORY_AUTH`; introduce `ALLOW_DEV_BYPASS` gated by `ENV=development`.
+3. **Delete legacy endpoints**: remove `/auth/login` and any HS256 token issuance code after rollout completes.
+4. **Documentation**: update README and deployment guides with new flow and required variables.
+
 ## Open Questions
 - Should service accounts (e.g., cron jobs) use API keys instead of Clerk tokens?
 - Do we need rate limiting on `/auth/session` to mitigate abuse?
