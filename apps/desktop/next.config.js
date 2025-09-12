@@ -20,6 +20,16 @@ const nextConfig = {
   images: {
     domains: ['localhost'],
   },
+  async redirects() {
+    return [
+      {
+        // Redirect /admin to marketing homepage (student base URL)
+        source: '/',
+        destination: process.env.NEXT_PUBLIC_STUDENT_BASE_URL || 'http://localhost:3001',
+        permanent: false,
+      },
+    ]
+  },
   async rewrites() {
     return [
       { source: '/api/:path*', destination: `${BACKEND_ORIGIN}/api/:path*` },

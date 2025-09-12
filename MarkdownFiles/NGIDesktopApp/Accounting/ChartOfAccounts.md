@@ -1,0 +1,1 @@
+The Chart of accounts suite in the accounting module should represent US-Gaap specific chart of accounts setup. 

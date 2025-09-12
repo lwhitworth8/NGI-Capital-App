@@ -211,10 +211,14 @@ export function AppProvider({ children }: AppProviderProps) {
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
-      // Best-effort Clerk sign-out
+      // Redirect first to marketing, then attempt Clerk sign-out in background
+      try {
+        const marketing = (process.env.NEXT_PUBLIC_STUDENT_BASE_URL || 'http://localhost:3001') as string;
+        window.location.replace(marketing);
+      } catch {}
       try {
         const anyWin: any = window as any;
-        await anyWin?.Clerk?.signOut?.({ redirectUrl: '/sign-in' });
+        await anyWin?.Clerk?.signOut?.({ redirectUrl: undefined });
       } catch {}
       dispatch({ type: 'CLEAR_DATA' });
     }

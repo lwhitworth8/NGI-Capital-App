@@ -87,13 +87,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try { localStorage.removeItem('auth_token') } catch {}
     try { (globalThis as any).localStorage?.removeItem?.('auth_token') } catch {}
     // Attempt Clerk sign-out and hard redirect to marketing to avoid loops
+    // Navigate first to marketing to avoid any basePath redirect races
+    const marketing = (process.env.NEXT_PUBLIC_STUDENT_BASE_URL || 'http://localhost:3001') as string
+    try { window.location.replace(marketing) } catch { try { router.replace(marketing) } catch {} }
+    // Best-effort Clerk sign-out (student root also forces sign-out on load)
     try {
       const anyWin: any = window as any
       if (anyWin?.Clerk?.signOut) {
-        await anyWin.Clerk.signOut({ redirectUrl: '/' })
+        await anyWin.Clerk.signOut({ redirectUrl: undefined })
       }
     } catch {}
-    try { router.replace('/') } catch {}
     toast.info('Logged out successfully')
   }
 

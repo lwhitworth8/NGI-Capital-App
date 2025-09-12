@@ -14,7 +14,7 @@ const BASE_ALLOWED = new Set([
 ])
 
 export default function AdvisoryProjectDetailPage() {
-  const { user, loading } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const { state } = useApp()
   const params = useParams<{ id: string }>()
   const id = Number(params?.id || 0)
@@ -37,7 +37,7 @@ export default function AdvisoryProjectDetailPage() {
     return !!email && allowedSet.has(email)
   })()
 
-  const [loading, setLoading] = useState(false)
+  const [fetching, setFetching] = useState(false)
   const [project, setProject] = useState<(AdvisoryProject & { assignments?: any[] }) | null>(null)
   const [students, setStudents] = useState<AdvisoryStudent[]>([])
   const [q, setQ] = useState('')
@@ -45,8 +45,8 @@ export default function AdvisoryProjectDetailPage() {
 
   const load = async () => {
     if (!id || !allowed) return
-    setLoading(true)
-    try { setProject(await advisoryGetProject(id)) } finally { setLoading(false) }
+    setFetching(true)
+    try { setProject(await advisoryGetProject(id)) } finally { setFetching(false) }
   }
 
   useEffect(() => { load() }, [id, allowed])
@@ -64,7 +64,7 @@ export default function AdvisoryProjectDetailPage() {
     await load()
   }
 
-  if (loading) return <div className="p-6">Loading…</div>
+  if (authLoading || fetching) return <div className="p-6">Loading…</div>
   if (!allowed) return <div className="p-6">Access restricted.</div>
   if (!project) return <div className="p-6">{loading ? 'Loading…' : 'Not found'}</div>
 

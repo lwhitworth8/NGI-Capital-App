@@ -12,6 +12,7 @@ from typing import Optional, Dict, Any
 from fastapi import HTTPException, Security, status, Depends, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
+from .clerk_auth import verify_clerk_jwt, verify_clerk_session_cookie
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
@@ -111,11 +112,105 @@ async def get_current_partner(request: Request, credentials: HTTPAuthorizationCr
     db = None
     try:
         if not token:
+            # Fallback to Clerk session cookie
+            sess = request.cookies.get('__session')
+            if sess:
+                claims = verify_clerk_session_cookie(sess)
+                if claims and claims.get('sub'):
+                    email = (
+                        claims.get('email') or ''
+                    )
+                    # Optionally enrich from DB
+                    try:
+                        db = next(get_db())
+                        partner = db.query(Partner).filter(Partner.email == email).first()
+                    except Exception:
+                        partner = None
+                    return {
+                        "id": getattr(partner, 'id', 0) or 0,
+                        "email": email,
+                        "name": getattr(partner, 'name', None) or 'Partner',
+                        "ownership_percentage": float(getattr(partner, 'ownership_percentage', 0) or 0),
+                        "is_authenticated": True,
+                    }
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Missing authentication token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+        # First try Clerk JWT verification
+        claims = None
+        try:
+            claims = verify_clerk_jwt(token)
+        except Exception:
+            claims = None
+
+        if claims and claims.get('sub'):
+            email = (
+                claims.get('email')
+                or claims.get('email_address')
+                or claims.get('primary_email')
+                or claims.get('primary_email_address')
+                or ''
+            )
+            # If email missing or placeholder, resolve from Clerk Management API using sub
+            if not (isinstance(email, str) and '@' in email):
+                try:
+                    import requests as _req
+                    sk = os.getenv('CLERK_SECRET_KEY', '').strip()
+                    if sk:
+                        uid = str(claims.get('sub'))
+                        resp = _req.get(
+                            f"https://api.clerk.dev/v1/users/{uid}",
+                            headers={"Authorization": f"Bearer {sk}"},
+                            timeout=5,
+                        )
+                        if resp.status_code == 200:
+                            u = resp.json() or {}
+                            peid = (u.get('primary_email_address_id') or '').strip()
+                            for e in (u.get('email_addresses') or []):
+                                if e.get('id') == peid and e.get('email_address'):
+                                    email = e.get('email_address'); break
+                            if not email and (u.get('email_addresses') or []):
+                                email = (u.get('email_addresses')[0] or {}).get('email_address') or ''
+                except Exception:
+                    pass
+            # Accept principal and enrich from DB if present
+            try:
+                db = next(get_db())
+                partner = db.query(Partner).filter(Partner.email == email).first()
+            except Exception:
+                partner = None
+            return {
+                "id": getattr(partner, 'id', 0) or 0,
+                "email": email,
+                "name": getattr(partner, 'name', None) or (claims.get('name') or 'Partner'),
+                "ownership_percentage": float(getattr(partner, 'ownership_percentage', 0) or 0),
+                "is_authenticated": True,
+            }
+
+        # Try Clerk session verification as fallback (token might be a session token)
+        if not claims:
+            try:
+                claims2 = verify_clerk_session_cookie(token)
+            except Exception:
+                claims2 = None
+            if claims2 and claims2.get('sub'):
+                email = (claims2.get('email') or '')
+                try:
+                    db = next(get_db())
+                    partner = db.query(Partner).filter(Partner.email == email).first()
+                except Exception:
+                    partner = None
+                return {
+                    "id": getattr(partner, 'id', 0) or 0,
+                    "email": email,
+                    "name": getattr(partner, 'name', None) or 'Partner',
+                    "ownership_percentage": float(getattr(partner, 'ownership_percentage', 0) or 0),
+                    "is_authenticated": True,
+                }
+
+        # Fallback to legacy local JWT (HS256)
         payload = verify_token(token)
         email = payload.get("sub")
         partner_id = payload.get("partner_id")
@@ -175,14 +270,33 @@ def require_partner_access():
     """Dependency to require authenticated partner access"""
     async def _require_partner(request: Request, credentials: HTTPAuthorizationCredentials = Security(security)):
         import os as _os
-        if _os.getenv('PYTEST_CURRENT_TEST'):
+        # Dev bypass: when DISABLE_ADVISORY_AUTH=1, allow minimal partner principal for local dev and E2E
+        # Honor either backend or NEXT_PUBLIC flag in dev
+        _dev_bypass = any(str(_os.getenv(var, '0')).strip().lower() in ("1","true","yes") for var in (
+            'DISABLE_ADVISORY_AUTH', 'NEXT_PUBLIC_DISABLE_ADVISORY_AUTH'
+        ))
+        if _dev_bypass:
             return {
                 "id": 0,
-                "email": "pytest@ngicapitaladvisory.com",
-                "name": "PyTest",
+                "email": _os.getenv('DEFAULT_ADMIN_EMAIL', 'admin@ngicapitaladvisory.com'),
+                "name": "DevAdmin",
                 "ownership_percentage": 0,
                 "is_authenticated": True,
             }
+        if _os.getenv('PYTEST_CURRENT_TEST'):
+            # When running tests, if no Authorization header or session token is present,
+            # return a minimal principal to allow non-auth tests to proceed.
+            # If an Authorization header is present, honor it and go through normal auth flow.
+            has_header = bool(credentials and getattr(credentials, 'credentials', None))
+            has_cookie = bool(request.cookies.get('auth_token') or request.cookies.get('__session'))
+            if not has_header and not has_cookie:
+                return {
+                    "id": 0,
+                    "email": "pytest@ngicapitaladvisory.com",
+                    "name": "PyTest",
+                    "ownership_percentage": 0,
+                    "is_authenticated": True,
+                }
         partner = await get_current_partner(request, credentials)
         if not partner or not partner.get("is_authenticated"):
             raise HTTPException(

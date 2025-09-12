@@ -1,13 +1,18 @@
+const path = require('path');
+
+const swcJest = (() => { try { return require.resolve('@swc/jest') } catch { return '@swc/jest' } })();
+
 module.exports = {
-  preset: 'ts-jest',
   testEnvironment: 'jsdom',
   roots: ['<rootDir>/src'],
   testMatch: ['**/__tests__/**/*.{ts,tsx}', '**/*.test.{ts,tsx}'],
   transform: {
-    '^.+\\.(ts|tsx)$': ['ts-jest', {
-      tsconfig: {
-        jsx: 'react-jsx',
+    '^.+\\.(t|j)sx?$': [swcJest, {
+      jsc: {
+        parser: { syntax: 'typescript', tsx: true },
+        transform: { react: { runtime: 'automatic' } },
       },
+      module: { type: 'commonjs' },
     }],
   },
   moduleNameMapper: {

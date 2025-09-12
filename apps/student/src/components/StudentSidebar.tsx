@@ -51,6 +51,7 @@ export default function StudentSidebar() {
     const baseItems: NavItem[] = [
       { name: 'Projects', href: '/projects', icon: FolderOpen },
       { name: 'Applications', href: '/applications', icon: FileText },
+      { name: 'Coffee Chats', href: '/coffeechats', icon: Briefcase },
     ]
     
     if (hasActiveProject) {

@@ -32,11 +32,19 @@ from fastapi.staticfiles import StaticFiles
 import uvicorn
 import secrets
 import string
+try:
+    from dotenv import load_dotenv  # type: ignore
+    load_dotenv()
+except Exception:
+    # dotenv is optional; ignore if not available
+    pass
 
 # Import route modules - using absolute imports for Docker
 from src.api.routes import entities, reports, banking, documents, financial_reporting, employees, investor_relations, accounting
 from src.api.routes import advisory as advisory_routes
 from src.api.routes import advisory_public as advisory_public_routes
+from src.api.routes import coffeechats_internal as coffeechats_internal_routes
+from src.api.routes import plm as plm_routes
 from src.api.routes import coa as coa_routes
 from src.api.routes import mappings as mappings_routes
 from src.api.routes import aging as aging_routes
@@ -297,6 +305,19 @@ def require_partner_access():
     """Dependency to require authenticated partner access (legacy JWT or Clerk)."""
     async def _require_partner(request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)):
         import os as _os
+        # Global kill-switch for advisory auth: if enabled, bypass auth for advisory endpoints
+        try:
+            path = str(getattr(request, 'url', '').path)
+        except Exception:
+            path = ''
+        if (_os.getenv('DISABLE_ADVISORY_AUTH') == '1') and path.startswith('/api/advisory'):
+            return {
+                "id": 0,
+                "email": _os.getenv('DEFAULT_ADMIN_EMAIL', 'admin@ngicapitaladvisory.com'),
+                "name": "Bypass Admin",
+                "ownership_percentage": 0,
+                "is_authenticated": True,
+            }
         # Development convenience: if no token/cookie is present, allow a minimal dev principal
         if _os.getenv('ENV', 'development').lower() == 'development' or _os.getenv('LOCAL_DEV_NOAUTH') == '1':
             has_header = bool(credentials and getattr(credentials, 'credentials', None))
@@ -366,17 +387,43 @@ def require_partner_access():
             except Exception:
                 token = None
 
-        # Try Clerk verification
+        # Try Clerk verification (Bearer JWT)
         if token:
             claims = verify_clerk_jwt(token)
             if claims and claims.get("sub"):
+                # Derive email from claims or fetch from Clerk if missing
                 email_claim = (
                     claims.get("email")
                     or claims.get("email_address")
                     or claims.get("primary_email")
                     or claims.get("primary_email_address")
-                    or claims.get("sub")
+                    or ""
                 )
+                if not (isinstance(email_claim, str) and "@" in email_claim):
+                    # Fetch user info from Clerk to resolve primary email
+                    try:
+                        import requests as _req
+                        sk = os.getenv("CLERK_SECRET_KEY", "").strip()
+                        if sk:
+                            uid = str(claims.get("sub"))
+                            resp = _req.get(
+                                f"https://api.clerk.dev/v1/users/{uid}",
+                                headers={"Authorization": f"Bearer {sk}"},
+                                timeout=5,
+                            )
+                            if resp.status_code == 200:
+                                u = resp.json()
+                                peid = (u.get("primary_email_address_id") or "").strip()
+                                for e in (u.get("email_addresses") or []):
+                                    if e.get("id") == peid and e.get("email_address"):
+                                        email_claim = e.get("email_address"); break
+                                if not email_claim and (u.get("email_addresses") or []):
+                                    email_claim = (u.get("email_addresses")[0] or {}).get("email_address")
+                    except Exception:
+                        pass
+                if not (isinstance(email_claim, str) and "@" in email_claim):
+                    # As a last resort, use sub
+                    email_claim = str(claims.get("email") or claims.get("sub"))
                 return {
                     "id": claims.get("sub"),
                     "email": email_claim,
@@ -384,6 +431,22 @@ def require_partner_access():
                     "ownership_percentage": 0,
                     "is_authenticated": True,
                 }
+            # As a final Clerk fallback, try verifying token as a Clerk session token via Management API
+            if not claims:
+                try:
+                    from src.api.clerk_auth import verify_clerk_session_cookie as _vsc
+                    sess_claims2 = _vsc(token)
+                    if sess_claims2 and sess_claims2.get('sub'):
+                        email_claim = sess_claims2.get('email') or ''
+                        return {
+                            "id": sess_claims2.get('sub'),
+                            "email": email_claim,
+                            "name": "Clerk User",
+                            "ownership_percentage": 0,
+                            "is_authenticated": True,
+                        }
+                except Exception:
+                    pass
             # Development fallback: accept unverified Clerk JWT in dev
             if os.getenv('ENV', 'development').lower() == 'development':
                 try:
@@ -403,6 +466,24 @@ def require_partner_access():
                         }
                 except Exception:
                     pass
+        # Try Clerk session cookie (__session) as a fallback when no Authorization header present
+        if not credentials and request is not None:
+            try:
+                sess = request.cookies.get('__session')
+            except Exception:
+                sess = None
+            if sess:
+                from src.api.clerk_auth import verify_clerk_session_cookie
+                sess_claims = verify_clerk_session_cookie(sess)
+                if sess_claims and sess_claims.get('sub'):
+                    email_claim = sess_claims.get('email') or ''
+                    return {
+                        "id": sess_claims.get('sub'),
+                        "email": email_claim,
+                        "name": "Clerk User",
+                        "ownership_percentage": 0,
+                        "is_authenticated": True,
+                    }
         # Not authenticated
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -850,6 +931,30 @@ async def get_current_partner_info(partner=Depends(require_partner_access())):
         "permissions": ["read", "write", "approve"]  # Placeholder
     }
 
+@app.get("/api/auth/debug", tags=["auth"])
+async def auth_debug(request: Request, partner=Depends(require_partner_access())):
+    """Diagnostics: return perceived partner and admin access for advisory.
+    Do not enable in production without protection; useful during integration.
+    """
+    import os as _os
+    # Reuse advisory admin gate logic
+    from src.api.routes.advisory import require_ngiadvisory_admin
+    admin_ok = False
+    try:
+        # Call the dependency to validate admin; catch exception for boolean
+        dep = require_ngiadvisory_admin()
+        await dep(partner=partner)  # type: ignore
+        admin_ok = True
+    except Exception:
+        admin_ok = False
+    return {
+        "email": partner.get("email"),
+        "is_admin": admin_ok,
+        "allowed_admins": (_os.getenv('ALLOWED_ADVISORY_ADMINS','') or _os.getenv('ADMIN_EMAILS','')),
+        "has_auth_header": bool(request.headers.get('authorization') or request.headers.get('Authorization')),
+        "cookies": list(request.cookies.keys())
+    }
+
 # Dashboard endpoint
 @app.get("/api/dashboard", tags=["dashboard"])
 async def get_dashboard_data(partner=Depends(require_partner_access())):
@@ -1227,6 +1332,13 @@ app.include_router(metrics_routes.router)
 app.include_router(advisory_routes.router, prefix="/api/advisory", tags=["advisory"])  # type: ignore
 # Public read-only API for student portal (does not require partner access)
 app.include_router(advisory_public_routes.router, prefix="/api/public", tags=["advisory-public"])  # type: ignore
+# Coffee chats internal scheduling (public + admin endpoints)
+app.include_router(coffeechats_internal_routes.router, prefix="/api", tags=["coffeechats"])  # type: ignore
+app.include_router(plm_routes.router, prefix="/api/advisory", tags=["lead-manager"])  # type: ignore
+try:
+    app.include_router(plm_routes.public_router, prefix="/api/public", tags=["lead-manager-public"])  # type: ignore
+except Exception:
+    pass
 app.include_router(coa_routes.router, dependencies=[Depends(require_full_access())])
 app.include_router(mappings_routes.router, dependencies=[Depends(require_full_access())])
 app.include_router(aging_routes.router, dependencies=[Depends(require_full_access())])

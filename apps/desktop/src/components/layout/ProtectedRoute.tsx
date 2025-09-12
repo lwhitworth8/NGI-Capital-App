@@ -29,7 +29,8 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     if (typeof window !== 'undefined') {
       localStorage.setItem('redirect_after_login', pathname);
     }
-    router.replace('/');
+    const marketing = (process.env.NEXT_PUBLIC_STUDENT_BASE_URL || 'http://localhost:3001') as string;
+    router.replace(marketing);
     return null;
   }
 

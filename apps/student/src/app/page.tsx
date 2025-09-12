@@ -1,34 +1,16 @@
 'use client'
 
 import Link from 'next/link'
-import { SignedIn, SignedOut, UserButton, useClerk } from '@clerk/nextjs'
+import { useClerk } from '@clerk/nextjs'
 import { useEffect } from 'react'
 
 export default function HomePage() {
   const { signOut } = useClerk()
   
   useEffect(() => {
-    // Force sign out on initial page load
-    const shouldForceLogout = sessionStorage.getItem('clerk_force_logout') !== 'false'
-    
-    if (shouldForceLogout) {
-      // Sign out silently without redirect
-      signOut({ redirectUrl: undefined }).then(() => {
-        // Set flag to prevent logout on subsequent navigation
-        sessionStorage.setItem('clerk_force_logout', 'false')
-      }).catch(() => {
-        // User is already signed out or error occurred
-        sessionStorage.setItem('clerk_force_logout', 'false')
-      })
-    }
-    
-    // Clear the flag when the tab is closed
-    const handleBeforeUnload = () => {
-      sessionStorage.removeItem('clerk_force_logout')
-    }
-    
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+    // Always sign out on the marketing homepage so no session persists here
+    // Do not specify redirectUrl to avoid Clerk overriding navigation
+    try { signOut({ redirectUrl: undefined }).catch(() => {}) } catch {}
   }, [signOut])
   
   return (
@@ -37,23 +19,12 @@ export default function HomePage() {
         <div className="mx-auto max-w-6xl px-6 h-16 flex items-center justify-between">
           <div className="font-semibold tracking-tight">NGI Capital Advisory</div>
           <div className="flex items-center gap-4">
-            <SignedOut>
-              <Link 
-                href="/sign-in" 
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
-              >
-                Sign In
-              </Link>
-            </SignedOut>
-            <SignedIn>
-              <UserButton afterSignOutUrl="/" />
-              <Link 
-                href="/auth/resolve" 
-                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition"
-              >
-                Go to Dashboard
-              </Link>
-            </SignedIn>
+            <Link 
+              href="/sign-in" 
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
+            >
+              Sign In
+            </Link>
           </div>
         </div>
       </header>
@@ -69,22 +40,12 @@ export default function HomePage() {
               Apply to live advisory projects, join the student incubator, and grow with a community of builders.
             </p>
             <div className="mt-8 flex items-center justify-center gap-4">
-              <SignedOut>
-                <Link 
-                  href="/sign-in" 
-                  className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition font-medium"
-                >
-                  Sign In to Get Started
-                </Link>
-              </SignedOut>
-              <SignedIn>
-                <Link 
-                  href="/auth/resolve" 
-                  className="px-6 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 transition font-medium"
-                >
-                  Go to Dashboard
-                </Link>
-              </SignedIn>
+              <Link 
+                href="/sign-in" 
+                className="px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition font-medium"
+              >
+                Sign In to Get Started
+              </Link>
             </div>
           </div>
         </section>

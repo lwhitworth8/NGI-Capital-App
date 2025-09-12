@@ -187,6 +187,15 @@ export type AdvisoryProject = {
   apply_url?: string;
   eligibility_notes?: string;
   notes_internal?: string;
+  // V1 extensions (Projects PRD)
+  team_size?: number | null;
+  team_requirements?: string[] | null;
+  allow_applications?: number | boolean;
+  is_public?: number | boolean;
+  coffeechat_calendly?: string | null;
+  showcase_pdf_url?: string | null;
+  // Derived
+  open_roles?: number | null;
 }
 
 export type AdvisoryStudent = {
@@ -200,6 +209,13 @@ export type AdvisoryStudent = {
   grad_year?: number;
   skills?: Record<string, any> | string[];
   status: 'prospect' | 'active' | 'paused' | 'alumni';
+  // Extended/admin-computed fields
+  status_effective?: 'active' | 'alumni' | string;
+  status_override?: string | null;
+  status_override_reason?: string | null;
+  status_override_at?: string | null;
+  last_activity_at?: string | null;
+  resume_url?: string | null;
 }
 
 export type AdvisoryApplication = {
@@ -214,8 +230,9 @@ export type AdvisoryApplication = {
   program?: string;
   resume_url?: string;
   notes?: string;
-  status: 'new' | 'reviewing' | 'interview' | 'offer' | 'rejected' | 'withdrawn';
+  status: 'new' | 'reviewing' | 'interview' | 'offer' | 'joined' | 'rejected' | 'withdrawn';
   created_at: string;
+  reviewer_email?: string | null;
 }
 
 export type AdvisoryCoffeeChat = {
@@ -228,4 +245,28 @@ export type AdvisoryCoffeeChat = {
   scheduled_end?: string;
   status: 'scheduled' | 'completed' | 'canceled';
   topic?: string;
+}
+
+export type AdvisoryCoffeeAvailability = {
+  id: number;
+  admin_email: string;
+  start_ts: string;
+  end_ts: string;
+  slot_len_min: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type AdvisoryCoffeeRequest = {
+  id: number;
+  student_email: string;
+  start_ts: string;
+  end_ts: string;
+  slot_len_min: number;
+  status: 'requested'|'pending'|'accepted'|'completed'|'canceled'|'no_show'|'expired';
+  claimed_by?: string | null;
+  expires_at_ts?: string | null;
+  cooldown_until_ts?: string | null;
+  blacklist_until_ts?: string | null;
+  created_at?: string;
 }

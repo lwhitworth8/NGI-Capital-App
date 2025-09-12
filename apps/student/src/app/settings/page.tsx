@@ -22,6 +22,11 @@ type Profile = {
   last_name?: string | null;
   school?: string | null;
   program?: string | null;
+  grad_year?: number | null;
+  phone?: string | null;
+  linkedin_url?: string | null;
+  gpa?: number | null;
+  location?: string | null;
   theme?: string | null;
 }
 
@@ -34,6 +39,16 @@ export default function Settings() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [savingProfile, setSavingProfile] = useState(false);
+
+  // Editable fields
+  const [school, setSchool] = useState('');
+  const [program, setProgram] = useState('');
+  const [gradYear, setGradYear] = useState<number | ''>('');
+  const [phone, setPhone] = useState('');
+  const [linkedin, setLinkedin] = useState('');
+  const [gpa, setGpa] = useState<number | ''>('');
+  const [location, setLocation] = useState('');
 
   // Prevent hydration mismatch
   useEffect(() => {
@@ -58,6 +73,13 @@ export default function Settings() {
       if (res.ok) {
         const data = await res.json();
         setProfile(data);
+        setSchool(data.school || '');
+        setProgram(data.program || '');
+        setGradYear(data.grad_year || '');
+        setPhone(data.phone || '');
+        setLinkedin(data.linkedin_url || '');
+        setGpa((typeof data.gpa === 'number' ? data.gpa : null) ?? '');
+        setLocation(data.location || '');
       }
     } catch (err) {
       console.error('Failed to load profile:', err);
@@ -65,6 +87,35 @@ export default function Settings() {
       setLoading(false);
     }
   };
+
+  const saveProfileDetails = async () => {
+    setError(null); setSuccess(null); setSavingProfile(true);
+    try {
+      const email = user?.primaryEmailAddress?.emailAddress;
+      if (!email) throw new Error('No email found');
+      const payload: any = {
+        school,
+        program,
+        grad_year: gradYear === '' ? null : Number(gradYear),
+        phone: phone || null,
+        linkedin_url: linkedin || null,
+        gpa: gpa === '' ? null : Number(gpa),
+        location: location || null,
+      }
+      const res = await fetch('/api/public/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-Student-Email': email },
+        body: JSON.stringify(payload)
+      })
+      if (!res.ok) throw new Error(await res.text())
+      setSuccess('Profile updated')
+      await loadProfile()
+    } catch (e:any) {
+      setError(e?.message || 'Failed to save profile')
+    } finally {
+      setSavingProfile(false)
+    }
+  }
 
   const handleThemeChange = (newTheme: 'light' | 'dark' | 'system') => {
     // Apply theme immediately
@@ -359,40 +410,46 @@ export default function Settings() {
             )}
           </div>
 
-          {/* Profile Information */}
+          {/* Student Profile Details (editable) */}
           <div className="bg-card rounded-2xl border border-border p-6">
             <div className="mb-4">
-              <h2 className="text-lg font-semibold text-foreground">Profile Information</h2>
-              <p className="text-sm text-muted-foreground mt-1">
-                Your account details from Google
-              </p>
+              <h2 className="text-lg font-semibold text-foreground">Student Profile</h2>
+              <p className="text-sm text-muted-foreground mt-1">Provide details used for applications and matching</p>
             </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between py-2">
-                <span className="text-sm text-muted-foreground">Name</span>
-                <span className="text-sm font-medium text-foreground">
-                  {user?.fullName || user?.firstName || 'Not set'}
-                </span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">School</label>
+                <input value={school} onChange={e=>setSchool(e.target.value)} className="w-full px-3 py-2 text-sm rounded-md border bg-background" placeholder="e.g., UC Berkeley" />
               </div>
-              <div className="flex items-center justify-between py-2">
-                <span className="text-sm text-muted-foreground">Email</span>
-                <span className="text-sm font-medium text-foreground">
-                  {user?.primaryEmailAddress?.emailAddress || 'Not set'}
-                </span>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Program / Major</label>
+                <input value={program} onChange={e=>setProgram(e.target.value)} className="w-full px-3 py-2 text-sm rounded-md border bg-background" placeholder="e.g., Economics" />
               </div>
-              {profile?.school && (
-                <div className="flex items-center justify-between py-2">
-                  <span className="text-sm text-muted-foreground">School</span>
-                  <span className="text-sm font-medium text-foreground">{profile.school}</span>
-                </div>
-              )}
-              {profile?.program && (
-                <div className="flex items-center justify-between py-2">
-                  <span className="text-sm text-muted-foreground">Program</span>
-                  <span className="text-sm font-medium text-foreground">{profile.program}</span>
-                </div>
-              )}
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Graduation Year</label>
+                <input type="number" min={1900} max={2100} value={gradYear} onChange={e=>setGradYear(e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-3 py-2 text-sm rounded-md border bg-background" placeholder="e.g., 2026" />
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">Phone (E.164)</label>
+                <input value={phone} onChange={e=>setPhone(e.target.value)} className="w-full px-3 py-2 text-sm rounded-md border bg-background" placeholder="e.g., +14155552671" />
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">LinkedIn URL</label>
+                <input value={linkedin} onChange={e=>setLinkedin(e.target.value)} className="w-full px-3 py-2 text-sm rounded-md border bg-background" placeholder="https://www.linkedin.com/in/your-handle" />
+              </div>
+              <div>
+                <label className="block text-xs text-muted-foreground mb-1">GPA (0.0 – 4.0)</label>
+                <input type="number" step="0.01" min={0} max={4} value={gpa} onChange={e=>setGpa(e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-3 py-2 text-sm rounded-md border bg-background" placeholder="e.g., 3.85" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs text-muted-foreground mb-1">Location (City, State/Country)</label>
+                <input value={location} onChange={e=>setLocation(e.target.value)} className="w-full px-3 py-2 text-sm rounded-md border bg-background" placeholder="e.g., Berkeley, CA" />
+              </div>
+            </div>
+            <div className="mt-4">
+              <button onClick={saveProfileDetails} disabled={savingProfile} className={`px-4 py-2 rounded-lg text-sm font-medium ${savingProfile ? 'bg-muted text-muted-foreground' : 'bg-primary text-primary-foreground hover:bg-primary/90'}`}>
+                {savingProfile ? 'Saving…' : 'Save Profile'}
+              </button>
             </div>
           </div>
         </div>

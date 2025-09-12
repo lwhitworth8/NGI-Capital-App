@@ -45,12 +45,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
       >
         <ClerkProvider 
           publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
-          signInUrl="http://localhost:3001/sign-in"
+          signInUrl={`${(process.env.NEXT_PUBLIC_STUDENT_BASE_URL || 'http://localhost:3001').replace(/\/$/, '')}/sign-in`}
           afterSignInUrl="/dashboard"
-          afterSignOutUrl="http://localhost:3001"
-          // Important: Share auth state across the domain
-          domain="localhost:3001"
-          isSatellite={false}
+          afterSignOutUrl={(process.env.NEXT_PUBLIC_STUDENT_BASE_URL || 'http://localhost:3001')}
         >
           <AuthProvider>
             <ThemeHydrator />

@@ -13,6 +13,7 @@ services:
       - CLERK_AUDIENCE=backend
       - CLERK_ISSUER=${CLERK_ISSUER}
       - CLERK_JWKS_URL=${CLERK_JWKS_URL}
+      - CLERK_VERIFY_AUDIENCE=${CLERK_VERIFY_AUDIENCE:-1}
     volumes:
       # Persist and/or bring your real DB into the container
       - ./ngi_capital.db:/app/data/ngi_capital.db
@@ -85,3 +86,4 @@ services:
 networks:
   ngi:
     driver: bridge
+

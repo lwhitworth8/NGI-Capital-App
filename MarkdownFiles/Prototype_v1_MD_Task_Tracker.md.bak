@@ -1,0 +1,124 @@
+﻿# Prototype V1 â€“ Task Tracker
+
+Instructions: Every agent must update this tracker after completing work and tests are green, and the user confirms the module matches its MD docs. Use statuses: Not Started, In Progress, Ready for QA, Done, Blocked.
+
+## Legend
+- Module: Name of the area (link to PRD)
+- Status: current state
+- Owner: agent initials
+- Links: PR(s), MR(s), test runs
+- Notes: blockers, followâ€‘ups
+
+## Admin Modules
+- Projects (Admin) - `MarkdownFiles/NGIDesktopApp/NGICapitalAdvisory/Projects/PRD.Projects.md`
+  - Status: Ready for QA
+  - Owner: codex
+  - Links: tests/test_advisory_projects_module.py, apps/desktop/src/app/ngi-advisory/projects/page.tsx, src/api/routes/advisory.py, MarkdownFiles/NGIDesktopApp/NGICapitalAdvisory/Projects/QA.Report.Projects.md, apps/desktop/e2e/projects-admin.spec.ts, apps/desktop/playwright.config.ts, MarkdownFiles/NGIDesktopApp/NGICapitalAdvisory/Projects/Addendum.Projects.2025-09-11.md
+  - Notes: Backend upgraded (fastapi 0.116.1 + starlette 0.40.0 + python-multipart 0.0.18 + python-jose 3.4.0 + pypdf 6.0.0). Dev auth bypass added (`DISABLE_ADVISORY_AUTH=1`). Playwright tests hardened (create+publish; media/close/showcase). Node deps clean in Snyk; Python remaining transitives documented in Addendum.
+
+- Students (Admin) - `MarkdownFiles/NGIDesktopApp/NGICapitalAdvisory/Students/PRD.StudentsAdmin.md`
+  - Status: Ready for QA
+  - Owner: codex
+  - Links: tests/test_advisory_students_admin.py, apps/desktop/src/app/ngi-advisory/students/page.tsx, src/api/routes/advisory.py, apps/desktop/src/lib/api.ts
+  - Notes: lifecycle cutoff (June 30 PT) + override; archive table + restore; paging 100/page + search/status/sort + resume/applied filters; strict auth; timeline panels; assignments (override when capacity 0 with confirm); audit logs added for key actions.
+
+- Coffee Chats (Admin) â€“ `MarkdownFiles/NGIDesktopApp/NGICapitalAdvisory/Coffee Chats/PRD.CoffeeChatsAdmin.md`
+  - Status:
+  - Owner:
+  - Links:
+  - Notes: availability, accept/propose, expiry job, Calendar + Slack integration, cooldown/blacklist.
+
+- Applications (Admin) â€“ `MarkdownFiles/NGIDesktopApp/NGICapitalAdvisory/Applications/PRD.ApplicationsAdmin.md`
+  - Status:
+  - Owner:
+  - Links:
+  - Notes: perâ€‘project Kanban and global table; capacity override warning; reviewer badges.
+
+- Onboarding (Admin) â€“ `MarkdownFiles/NGIDesktopApp/NGICapitalAdvisory/Onboarding/PRD.OnboardingAdmin.md`
+  - Status:
+  - Owner:
+  - Links:
+  - Notes: auto instance on Offer Accepted; evidence uploads (PDF 25 MB); access gate to My Projects.
+
+- Student Project Lead Manager â€“ `MarkdownFiles/NGIDesktopApp/StudentProjectLeadManager/PRD.StudentProjectLeadManager.md`
+  - Status:
+  - Owner:
+  - Links:
+  - Notes: tasks/submissions (500 MB files), comments, meetings (Calendar), Slack channels, timesheets.
+
+## Student Modules
+- Student Applications â€“ `MarkdownFiles/StudentApp/Applications/PRD.StudentApplications.md`
+  - Status:
+  - Owner:
+  - Links:
+  - Notes: list + modal detail; withdraw; snapshots; newestâ€‘first.
+
+- My Projects â€“ `MarkdownFiles/StudentApp/MyProjects/PRD.MyProjects.md`
+  - Status:
+  - Owner:
+  - Links:
+  - Notes: tabs, submissions (500 MB, resumable), comments, timesheets, meetings; deep links.
+
+- Learning (Coming Soon) â€“ `MarkdownFiles/StudentApp/Learning/PRD.StudentLearning.md`
+  - Status:
+  - Owner:
+  - Links:
+  - Notes: placeholder only.
+
+## Shared/Infra
+- Slack Integration â€“ `MarkdownFiles/NGIDesktopApp/StudentProjectLeadManager/SlackSetup.Appendix.md`
+  - Status:
+  - Owner:
+  - Links:
+  - Notes: single workspace; perâ€‘project private channels; required scopes; env vars.
+
+- Student Nav â€“ `MarkdownFiles/StudentApp/Nav.Spec.StudentApp.md`
+  - Status:
+  - Owner:
+  - Links:
+  - Notes: Projects is landing; Learning is public; Apps/My Projects are gated.
+
+## Admin Modules (Backlog)
+- Accounting (Admin) â€“ MarkdownFiles/NGIDesktopApp/Accounting/
+  - Status: Not Started
+  - Owner:
+  - Links:
+  - Notes: Next step â€” review repo and create MD doc set (PRD/UX/Test/QA/AC); then implement per docs.
+
+- Dashboard (Admin) â€“ MarkdownFiles/NGIDesktopApp/Dashboard/
+  - Status: Not Started
+  - Owner:
+  - Links:
+  - Notes: Next step â€” review repo and create MD doc set.
+
+- Employees (Admin) â€“ MarkdownFiles/NGIDesktopApp/Employees/
+  - Status: Not Started
+  - Owner:
+  - Links:
+  - Notes: Next step â€” review repo and create MD doc set.
+
+- Entities (Admin) â€“ MarkdownFiles/NGIDesktopApp/Entities/
+  - Status: Not Started
+  - Owner:
+  - Links:
+  - Notes: Next step â€” review repo and create MD doc set.
+
+- Finance (Admin) â€“ MarkdownFiles/NGIDesktopApp/Finance/
+  - Status: Not Started
+  - Owner:
+  - Links:
+  - Notes: Next step â€” review repo and create MD doc set.
+
+- Investor Management (Admin) â€“ MarkdownFiles/NGIDesktopApp/InvestorManagement/
+  - Status: Not Started
+  - Owner:
+  - Links:
+  - Notes: Next step â€” review repo and create MD doc set.
+
+- Taxes (Admin) â€“ MarkdownFiles/NGIDesktopApp/Taxes/
+  - Status: Not Started
+  - Owner:
+  - Links:
+  - Notes: Next step â€” review repo and create MD doc set.
+
+

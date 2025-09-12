@@ -120,8 +120,8 @@ class Entities(Base):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     
     # Relationships
-    parent_entity = relationship("Entities", remote_side=[id])
-    child_entities = relationship("Entities")
+    parent_entity = relationship("Entities", remote_side=[id], overlaps="child_entities")
+    child_entities = relationship("Entities", overlaps="parent_entity")
     transactions = relationship("Transactions", back_populates="entity")
     chart_of_accounts = relationship("ChartOfAccounts", back_populates="entity")
     journal_entries = relationship("JournalEntries", back_populates="entity")
@@ -146,8 +146,8 @@ class ChartOfAccounts(Base):
     
     # Relationships
     entity = relationship("Entities", back_populates="chart_of_accounts")
-    parent_account = relationship("ChartOfAccounts", remote_side=[id])
-    child_accounts = relationship("ChartOfAccounts")
+    parent_account = relationship("ChartOfAccounts", remote_side=[id], overlaps="child_accounts")
+    child_accounts = relationship("ChartOfAccounts", overlaps="parent_account")
     journal_entry_lines = relationship("JournalEntryLines", back_populates="account")
     transactions = relationship("Transactions", back_populates="account")
     

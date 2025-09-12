@@ -8,5 +8,7 @@ export default async function Home() {
     const role = (user.publicMetadata?.role as string) || 'STUDENT'
     redirect(role === 'PARTNER_ADMIN' ? '/admin/dashboard' : '/projects')
   }
-  return <Marketing />
+  // Unauthenticated: hard redirect to marketing homepage to avoid blank /admin page
+  const marketing = (process.env.NEXT_PUBLIC_STUDENT_BASE_URL || 'http://localhost:3001').toString()
+  redirect(marketing)
 }

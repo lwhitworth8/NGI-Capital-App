@@ -27,6 +27,8 @@ import {
   LogOut,
 } from 'lucide-react';
 import { useUser, useClerk } from '@clerk/nextjs';
+import { useApp } from '@/lib/context/AppContext';
+import { advisoryListApplications } from '@/lib/api';
 
 interface NavItem {
   name: string;
@@ -72,9 +74,11 @@ const navigation: NavItem[] = [
     children: [
       { name: 'Projects', href: '/ngi-advisory/projects' },
       { name: 'Students', href: '/ngi-advisory/students' },
+      { name: 'Coffee Chat Availability', href: '/ngi-advisory/availability' },
+      { name: 'Coffee Chats (Requests)', href: '/ngi-advisory/coffeechats/requests' },
       { name: 'Applications', href: '/ngi-advisory/applications' },
-      { name: 'Coffee Chats', href: '/ngi-advisory/coffeechats' },
       { name: 'Onboarding', href: '/ngi-advisory/onboarding' },
+      { name: 'Student Project Lead Manager', href: '/ngi-advisory/lead-manager' },
     ]
   },
 ];
@@ -86,6 +90,29 @@ export default function Sidebar() {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const { user } = useUser();
   const { signOut } = useClerk();
+  const { state } = useApp();
+  const entityId = useMemo(() => Number(state.currentEntity?.id || 0), [state.currentEntity])
+  const [appsNewCount, setAppsNewCount] = useState(0)
+
+  // Reviewer badge for Applications nav
+  useEffect(() => {
+    let ignore = false
+    const load = async () => {
+      try {
+        const email = (user?.primaryEmailAddress?.emailAddress || '').toLowerCase()
+        if (!email) return
+        const lastSeenKey = `apps_last_seen_${email}`
+        const sinceIso = (typeof window !== 'undefined') ? (localStorage.getItem(lastSeenKey) || '') : ''
+        const since = sinceIso ? Date.parse(sinceIso) : 0
+        const list = await advisoryListApplications({ entity_id: entityId })
+        const cnt = (list||[]).filter(a => (a.reviewer_email||'').toLowerCase() === email && Date.parse(a.created_at||'') > since).length
+        if (!ignore) setAppsNewCount(cnt)
+      } catch {}
+    }
+    load();
+    const id = setInterval(load, 60_000)
+    return () => { ignore = true; clearInterval(id) }
+  }, [user?.primaryEmailAddress?.emailAddress, entityId])
 
   useEffect(() => {
     // Auto-expand active parent items
@@ -191,8 +218,8 @@ export default function Sidebar() {
               </button>
 
               {/* Children items */}
-              {item.children && isExpanded && (
-                <div className="mt-1 ml-7 space-y-0.5">
+                  {item.children && isExpanded && (
+                    <div className="mt-1 ml-7 space-y-0.5">
                   {item.children.map((child) => {
                     const ChildIcon = child.icon;
                     return (
@@ -208,7 +235,12 @@ export default function Sidebar() {
                         `}
                       >
                         {ChildIcon && <ChildIcon className="h-3.5 w-3.5" />}
-                        <span>{child.name}</span>
+                        <span className="flex-1">
+                          {child.name}
+                        </span>
+                        {child.href === '/ngi-advisory/applications' && appsNewCount > 0 && (
+                          <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-blue-600 text-white">{appsNewCount}</span>
+                        )}
                       </Link>
                     );
                   })}
@@ -255,7 +287,11 @@ export default function Sidebar() {
               <button
                 onClick={async () => {
                   setShowProfileMenu(false);
-                  try { await signOut({ redirectUrl: '/' }); } catch {}
+                  const marketing = (process.env.NEXT_PUBLIC_STUDENT_BASE_URL || 'http://localhost:3001') as string;
+                  // Navigate first to avoid any basePath redirect races
+                  try { window.location.replace(marketing) } catch { window.location.href = marketing }
+                  // Best-effort sign-out in the background (student root also forces sign-out on load)
+                  try { await signOut({ redirectUrl: undefined as any }); } catch {}
                 }}
                 className="w-full px-4 py-2 text-sm text-foreground hover:bg-muted text-left flex items-center gap-2"
                 role="menuitem"

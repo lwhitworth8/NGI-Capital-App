@@ -188,7 +188,22 @@ class ApiClient {
     
     if (error.response) {
       const status = error.response.status
-      const message = error.response.data?.detail || 'An error occurred'
+      const message = error.response.data?.detail || error.response.data?.message || 'An error occurred'
+      const normalize = (val: any): string => {
+        if (typeof val === 'string') return val
+        if (Array.isArray(val)) {
+          try {
+            return val.map((v) => (typeof v === 'string' ? v : (v?.msg || v?.message || ''))).join(' ').trim() || 'Unprocessable entity'
+          } catch { return 'Unprocessable entity' }
+        }
+        if (val && typeof val === 'object') {
+          const s = (val.detail || val.message || val.msg)
+          if (typeof s === 'string') return s
+          try { return JSON.stringify(val) } catch { return 'An error occurred' }
+        }
+        try { return String(val) } catch { return 'An error occurred' }
+      }
+      const messageStr = normalize(message)
 
       switch (status) {
         case 401:
@@ -202,13 +217,13 @@ class ApiClient {
           toast.error('Resource not found.')
           break
         case 422: {
-          const detail: string = message || ''
-          if (detail.toLowerCase().includes('balanced')) {
+          const detail = (messageStr || '').toLowerCase()
+          if (detail.includes('balanced')) {
             toast.error('Journal entry must be balanced (debits equal credits).')
-          } else if (detail.toLowerCase().includes('account code') || detail.toLowerCase().includes('invalid account code')) {
+          } else if (detail.includes('account code') || detail.includes('invalid account code')) {
             toast.error('Invalid Chart of Accounts mapping. Use 5-digit code and correct type (1xxxx asset, 2xxxx liability, 3xxxx equity, 4xxxx revenue, 5xxxx expense).')
           } else {
-            toast.error('Invalid data provided.')
+            toast.error(messageStr || 'Invalid data provided.')
           }
           break
         }
@@ -216,7 +231,7 @@ class ApiClient {
           toast.error('Server error. Please try again later.')
           break
         default:
-          toast.error(message)
+          toast.error(messageStr)
       }
     } else if (error.request) {
       console.error('No response received:', error.request)
@@ -841,7 +856,63 @@ export async function advisoryUpdateProject(id: number, patch: Partial<AdvisoryP
   return apiClient.request('PUT', `/advisory/projects/${id}`, patch)
 }
 
-export async function advisoryListStudents(params?: { entity_id?: number; q?: string }): Promise<AdvisoryStudent[]> {
+// Lead Manager (PLM)
+export async function plmListTasks(projectId: number): Promise<any[]> {
+  return apiClient.request('GET', `/advisory/projects/${projectId}/tasks`)
+}
+
+export async function plmCreateTask(projectId: number, data: any): Promise<{ id: number }> {
+  return apiClient.request('POST', `/advisory/projects/${projectId}/tasks`, data)
+}
+
+export async function plmAddComment(taskId: number, data: { body: string; submission_version?: number }): Promise<{ id: number }>{
+  return apiClient.request('POST', `/advisory/tasks/${taskId}/comments`, data)
+}
+
+export async function plmListComments(taskId: number): Promise<Array<{ id:number; author_email?: string; body: string; created_at: string }>>{
+  return apiClient.request('GET', `/advisory/tasks/${taskId}/comments`)
+}
+
+export async function plmCreateMeeting(projectId: number, data: { title?: string; start_ts: string; end_ts: string; attendees_emails?: string[] }): Promise<{ id: number; google_event_id?: string }>{
+  return apiClient.request('POST', `/advisory/projects/${projectId}/meetings`, data)
+}
+
+export async function plmListMeetings(projectId: number): Promise<any[]> {
+  return apiClient.request('GET', `/advisory/projects/${projectId}/meetings`)
+}
+
+export async function plmAddResourceLink(projectId: number, data: { title?: string; url: string }): Promise<{ id:number; kind: 'link'|'package' }>{
+  const params = new URLSearchParams({ kind: 'link', title: data.title || '', url: data.url })
+  return apiClient.request('POST', `/advisory/projects/${projectId}/resources?${params.toString()}`)
+}
+
+export async function plmListResources(projectId: number): Promise<any[]> {
+  return apiClient.request('GET', `/advisory/projects/${projectId}/resources`)
+}
+
+export async function plmListTimesheets(projectId: number): Promise<any[]> {
+  return apiClient.request('GET', `/advisory/projects/${projectId}/timesheets`)
+}
+
+export async function plmListDeliverables(projectId: number): Promise<any[]> {
+  return apiClient.request('GET', `/advisory/projects/${projectId}/deliverables`)
+}
+
+// Milestones
+export async function plmListMilestones(projectId: number): Promise<Array<{ id:number; title:string; start_date?:string; end_date?:string; ord?:number }>>{
+  return apiClient.request('GET', `/advisory/projects/${projectId}/milestones`)
+}
+export async function plmCreateMilestone(projectId: number, data: { title: string; start_date?: string; end_date?: string; ord?: number }): Promise<{ id:number }>{
+  return apiClient.request('POST', `/advisory/projects/${projectId}/milestones`, data)
+}
+export async function plmUpdateMilestone(id: number, patch: Partial<{ title:string; start_date:string; end_date:string; ord:number }>): Promise<{ id:number }>{
+  return apiClient.request('PATCH', `/advisory/milestones/${id}`, patch)
+}
+export async function plmDeleteMilestone(id: number): Promise<{ deleted: boolean }>{
+  return apiClient.request('DELETE', `/advisory/milestones/${id}`)
+}
+
+export async function advisoryListStudents(params?: { entity_id?: number; q?: string; status?: string; page?: number; page_size?: number }): Promise<AdvisoryStudent[]> {
   return apiClient.request('GET', '/advisory/students', undefined, { params })
 }
 
@@ -858,6 +929,30 @@ export async function advisoryDeleteStudent(id: number): Promise<{ id: number; d
   return apiClient.request('DELETE', `/advisory/students/${id}`)
 }
 
+export async function advisorySoftDeleteStudent(id: number): Promise<{ id: number; deleted: boolean; soft?: boolean }> {
+  return apiClient.request('POST', `/advisory/students/${id}/soft-delete`)
+}
+
+export async function advisoryRestoreStudent(id: number): Promise<{ id: number; restored_from: number }> {
+  return apiClient.request('POST', `/advisory/students/${id}/restore`)
+}
+
+export async function advisoryOverrideStudentStatus(id: number, data: { status?: 'active'|'alumni'; reason?: string; clear?: boolean }): Promise<{ id: number }>{
+  return apiClient.request('PUT', `/advisory/students/${id}/status-override`, data)
+}
+
+export async function advisoryCreateStudentAssignment(studentId: number, data: { project_id: number; role?: string; hours_planned?: number }): Promise<{ id: number }>{
+  return apiClient.request('POST', `/advisory/students/${studentId}/assignments`, data)
+}
+
+export async function advisoryGetStudentTimeline(studentId: number): Promise<{ applications: any[]; coffeechats: any[]; onboarding: any[] }>{
+  return apiClient.request('GET', `/advisory/students/${studentId}/timeline`)
+}
+
+export async function advisoryListArchivedStudents(params?: { q?: string; page?: number; page_size?: number }): Promise<Array<{ id:number; original_id:number; email:string; deleted_at:string; deleted_by?:string; snapshot?: any }>> {
+  return apiClient.request('GET', `/advisory/students/archived`, undefined, { params })
+}
+
 export async function advisoryListApplications(params?: { entity_id?: number; status?: string; project_id?: number; q?: string }): Promise<AdvisoryApplication[]> {
   return apiClient.request('GET', '/advisory/applications', undefined, { params })
 }
@@ -870,12 +965,75 @@ export async function advisoryUpdateApplication(id: number, patch: Partial<Advis
   return apiClient.request('PUT', `/advisory/applications/${id}`, patch)
 }
 
+export async function advisoryGetApplication(id: number): Promise<AdvisoryApplication & { attachments: { id:number; file_name:string; file_url:string; uploaded_by?:string; uploaded_at:string }[]; rejection_reason?: string | null; answers_json?: any }>{
+  return apiClient.request('GET', `/advisory/applications/${id}`)
+}
+
+export async function advisoryRejectApplication(id: number, reason?: string): Promise<{ id: number; status: string }>{
+  return apiClient.request('POST', `/advisory/applications/${id}/reject`, { reason })
+}
+
+export async function advisoryWithdrawApplication(id: number): Promise<{ id: number; status: string }>{
+  return apiClient.request('POST', `/advisory/applications/${id}/withdraw`)
+}
+
+export async function advisoryUploadApplicationAttachment(id: number, file: File): Promise<{ file_url: string; file_name: string }>{
+  const form = new FormData()
+  form.append('file', file)
+  return apiClient.request('POST', `/advisory/applications/${id}/attachments`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+}
+
+export async function advisoryListArchivedApplications(params?: { q?: string; page?: number; page_size?: number }): Promise<Array<{ id:number; original_id:number; email:string; snapshot:any; archived_at:string; reason?:string }>>{
+  return apiClient.request('GET', '/advisory/applications/archived', undefined, { params })
+}
+
 export async function advisoryListCoffeechats(params?: { entity_id?: number }): Promise<AdvisoryCoffeeChat[]> {
   return apiClient.request('GET', '/advisory/coffeechats', undefined, { params })
 }
 
 export async function advisorySyncCoffeechats(): Promise<{ synced: number }> {
   return apiClient.request('POST', '/advisory/coffeechats/sync')
+}
+
+// ----- Coffee Chats (Internal Scheduling) -----
+export async function advisoryListCoffeeAvailability(): Promise<import('@/types').AdvisoryCoffeeAvailability[]> {
+  return apiClient.request('GET', '/advisory/coffeechats/availability')
+}
+
+export async function advisoryAddCoffeeAvailability(data: { start_ts: string; end_ts: string; slot_len_min?: number }): Promise<{ id: number }> {
+  return apiClient.request('POST', '/advisory/coffeechats/availability', data)
+}
+
+export async function advisoryDeleteCoffeeAvailability(id: number): Promise<{ id: number }> {
+  return apiClient.request('DELETE', `/advisory/coffeechats/availability/${id}`)
+}
+
+export async function advisoryListCoffeeRequests(params?: { status?: string; admin_email?: string }): Promise<import('@/types').AdvisoryCoffeeRequest[]> {
+  return apiClient.request('GET', '/advisory/coffeechats/requests', undefined, { params })
+}
+
+export async function advisoryAcceptCoffeeRequest(id: number): Promise<{ status: string; google_event_id?: string; owner?: string }>{
+  return apiClient.request('POST', `/advisory/coffeechats/requests/${id}/accept`)
+}
+
+export async function advisoryProposeCoffeeRequest(id: number, data: { start_ts: string; end_ts: string }): Promise<{ id: number; status: string; proposed_ts: string }>{
+  return apiClient.request('POST', `/advisory/coffeechats/requests/${id}/propose`, data)
+}
+
+export async function advisoryCancelCoffeeRequest(id: number, reason: 'student'|'admin' = 'admin'): Promise<{ id: number; status: string; reason: string }>{
+  return apiClient.request('POST', `/advisory/coffeechats/requests/${id}/cancel`, { reason })
+}
+
+export async function advisoryCompleteCoffeeRequest(id: number): Promise<{ id: number; status: string }>{
+  return apiClient.request('POST', `/advisory/coffeechats/requests/${id}/complete`)
+}
+
+export async function advisoryNoShowCoffeeRequest(id: number, actor: 'student'|'admin' = 'admin'): Promise<{ id: number; status: string; cooldown_until_ts: string }>{
+  return apiClient.request('POST', `/advisory/coffeechats/requests/${id}/no-show`, { actor })
+}
+
+export async function advisoryExpireCoffeeRequests(): Promise<{ ok: boolean }>{
+  return apiClient.request('POST', '/advisory/coffeechats/expire')
 }
 
 export async function advisoryGetProject(id: number): Promise<import('@/types').AdvisoryProject & { assignments?: any[] }> {
@@ -892,6 +1050,58 @@ export async function advisoryUpdateAssignment(id: number, patch: { role?: strin
 
 export async function advisoryDeleteAssignment(id: number): Promise<{ id: number; active: number }> {
   return apiClient.request('DELETE', `/advisory/assignments/${id}`)
+}
+
+// ----- NGI Advisory Projects: Leads, Questions, Media Uploads -----
+export async function advisoryGetProjectLeads(projectId: number): Promise<{ leads: string[] }> {
+  return apiClient.request('GET', `/advisory/projects/${projectId}/leads`)
+}
+
+export async function advisorySetProjectLeads(projectId: number, emails: string[]): Promise<{ id: number; leads: string[] }> {
+  return apiClient.request('PUT', `/advisory/projects/${projectId}/leads`, { emails })
+}
+
+export async function advisoryGetProjectQuestions(projectId: number): Promise<{ prompts: string[] }> {
+  return apiClient.request('GET', `/advisory/projects/${projectId}/questions`)
+}
+
+export async function advisorySetProjectQuestions(projectId: number, prompts: string[]): Promise<{ id: number; count: number }> {
+  return apiClient.request('PUT', `/advisory/projects/${projectId}/questions`, { prompts })
+}
+
+export async function advisoryUploadProjectHero(projectId: number, file: File): Promise<{ hero_image_url: string }>{
+  const form = new FormData()
+  form.append('file', file)
+  return apiClient.request('POST', `/advisory/projects/${projectId}/hero`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+}
+
+export async function advisoryUploadProjectGallery(projectId: number, file: File): Promise<{ gallery_urls: string[] }>{
+  const form = new FormData()
+  form.append('file', file)
+  return apiClient.request('POST', `/advisory/projects/${projectId}/gallery`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+}
+
+export async function advisoryUploadProjectShowcase(projectId: number, file: File): Promise<{ showcase_pdf_url: string }>{
+  const form = new FormData()
+  form.append('file', file)
+  return apiClient.request('POST', `/advisory/projects/${projectId}/showcase`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+}
+
+// Logos (partner/backer)
+export async function advisoryGetProjectLogos(projectId: number): Promise<{ partner_logos: { name: string; url: string }[]; backer_logos: { name: string; url: string }[] }>{
+  return apiClient.request('GET', `/advisory/projects/${projectId}/logos`)
+}
+
+// Known clients
+export async function advisoryGetKnownClients(): Promise<{ clients: { name: string; slug: string; logo_url: string }[] }>{
+  return apiClient.request('GET', '/advisory/known-clients')
+}
+
+export async function advisoryUploadProjectLogo(projectId: number, kind: 'partner'|'backer', file: File, name?: string): Promise<{ partner_logos?: any[]; backer_logos?: any[] }>{
+  const form = new FormData()
+  form.append('file', file)
+  if (name) form.append('name', name)
+  return apiClient.request('POST', `/advisory/projects/${projectId}/logos/${encodeURIComponent(kind)}`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
 }
 
 export async function advisoryListOnboardingTemplates(): Promise<{ id: number; name: string; description?: string }[]> {
