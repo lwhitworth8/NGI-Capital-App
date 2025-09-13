@@ -1,0 +1,37 @@
+version: '3.9'
+
+services:
+  backend:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.backend
+    container_name: ngi-backend-api
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - SECRET_KEY=${SECRET_KEY}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - CLERK_AUDIENCE=${CLERK_AUDIENCE:-backend}
+      - CLERK_ISSUER=${CLERK_ISSUER}
+      - CLERK_JWKS_URL=${CLERK_JWKS_URL}
+      - CLERK_VERIFY_AUDIENCE=${CLERK_VERIFY_AUDIENCE:-1}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      - FRONTEND_URL=${FRONTEND_URL}
+      - DATABASE_PATH=/app/data/ngi_capital.db
+      # If using Postgres instead of SQLite, set DATABASE_URL in .env and uncomment:
+      # - DATABASE_URL=${DATABASE_URL}
+    volumes:
+      - ./data:/app/data
+    # For production behind a reverse proxy, do not publish 8001 publicly.
+    # Uncomment the next line only for temporary verification:
+    # ports:
+    #   - "8001:8001"
+    restart: unless-stopped
+    networks:
+      - ngi
+
+networks:
+  ngi:
+    driver: bridge
+
