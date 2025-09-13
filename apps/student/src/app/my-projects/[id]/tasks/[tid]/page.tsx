@@ -111,7 +111,7 @@ export default function TaskDetailPage({ params }: { params: { id: string, tid: 
           <div className="mt-4">
             <div className="font-medium mb-1">My Submissions</div>
             <ul className="text-sm divide-y">
-              {(detail.submissions||[]).map(s => (
+              {(detail.submissions||[]\).map((s: any) => (
                 <li key={s.version} className="py-2 flex justify-between">
                   <div>
                     <div>v{s.version} · {s.kind.toUpperCase()} · {new Date(s.created_at).toLocaleString()}</div>
@@ -143,7 +143,7 @@ export default function TaskDetailPage({ params }: { params: { id: string, tid: 
             <input className="flex-1 border rounded px-2 py-1 text-sm" placeholder="Add a comment" value={newComment} onChange={e=>setNewComment(e.target.value)} />
             <select className="border rounded px-2 py-1 text-sm" value={anchorVersion ?? ''} onChange={e => setAnchorVersion(e.target.value ? Number(e.target.value) : undefined)}>
               <option value="">No anchor</option>
-              {(detail.submissions||[]).map(s => <option key={s.version} value={s.version}>v{s.version}</option>)}
+              {(detail.submissions||[]\).map((s: any) => <option key={s.version} value={s.version}>v{s.version}</option>)}
             </select>
             <button onClick={onPostComment} className="px-3 py-1.5 rounded bg-blue-600 text-white text-sm">Post</button>
           </div>
@@ -157,3 +157,4 @@ export default function TaskDetailPage({ params }: { params: { id: string, tid: 
     </div>
   )
 }
+
