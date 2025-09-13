@@ -52,8 +52,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
           <AuthProvider>
             <ThemeHydrator />
             <AppProvider>
-              {children}
-              <Toaster position="top-right" toastOptions={{ duration: 5000 }} />
+              <SignedIn>
+                {children}
+                <Toaster position="top-right" toastOptions={{ duration: 5000 }} />
+              </SignedIn>
+              <SignedOut>
+                <div className="p-6 text-sm text-muted-foreground">Redirecting to sign in…</div>
+              </SignedOut>
             </AppProvider>
           </AuthProvider>
         </ClerkProvider>
