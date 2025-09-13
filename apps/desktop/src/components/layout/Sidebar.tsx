@@ -171,7 +171,8 @@ export default function Sidebar() {
     }
     const computedName = (df && dl) ? `${df} ${dl}` : (df || user?.primaryEmailAddress?.emailAddress || 'User');
     const initials = (df && dl) ? `${df[0]}${dl[0]}`.toUpperCase() : (df ? df[0].toUpperCase() : 'U');
-    return { displayFirstName: df, displayLastName: dl, userName: computedName, userInitials: initials, profileImageUrl: user?.profileImageUrl };
+    // Clerk user uses imageUrl; map to profileImageUrl for UI
+    return { displayFirstName: df, displayLastName: dl, userName: computedName, userInitials: initials, profileImageUrl: (user as any)?.imageUrl };
   }, [user]);
 
   return (
