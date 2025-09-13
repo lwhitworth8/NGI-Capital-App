@@ -1,0 +1,53 @@
+version: '3.9'
+
+services:
+  backend:
+    build:
+      context: ../..
+      dockerfile: Dockerfile.backend
+    container_name: ngi-backend-prod
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - SECRET_KEY=${SECRET_KEY}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
+      - CLERK_AUDIENCE=${CLERK_AUDIENCE:-backend}
+      - CLERK_ISSUER=${CLERK_ISSUER}
+      - CLERK_JWKS_URL=${CLERK_JWKS_URL}
+      - CLERK_VERIFY_AUDIENCE=${CLERK_VERIFY_AUDIENCE:-1}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+      - FRONTEND_URL=${FRONTEND_URL}
+      - DATABASE_PATH=/app/data/ngi_capital.db
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    networks:
+      - ngi
+
+  caddy:
+    image: caddy:2.7-alpine
+    container_name: ngi-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - API_DOMAIN=${API_DOMAIN}
+    volumes:
+      - ./caddy/Caddyfile.docker:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - ngi
+
+networks:
+  ngi:
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:
+
