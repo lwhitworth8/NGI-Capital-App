@@ -58,6 +58,8 @@ const nextConfig = {
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || process.env.CLERK_PUBLISHABLE_KEY,
     // Surface issuer for any client-side flows that need it (safe)
     NEXT_PUBLIC_CLERK_ISSUER: process.env.NEXT_PUBLIC_CLERK_ISSUER || process.env.CLERK_ISSUER,
+    // Disable legacy session bridge retries by default (backend returns 410)
+    NEXT_PUBLIC_DISABLE_SESSION_BRIDGE: process.env.NEXT_PUBLIC_DISABLE_SESSION_BRIDGE || '1',
   },
   experimental: {
     externalDir: true,
