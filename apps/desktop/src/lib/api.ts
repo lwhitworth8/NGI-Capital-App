@@ -14,11 +14,9 @@ import {
 } from '@/types'
 import { toast } from 'sonner'
 
-// Prefer relative /api in the browser so nginx can path-route at a single apex domain.
-// Fall back to NEXT_PUBLIC_API_URL (or localhost) when running on the server.
-const API_BASE_URL = typeof window !== 'undefined'
-  ? '/api'
-  : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001')
+// Always use relative /api so Vercel middleware can attach auth headers
+// and rewrites can route to the backend uniformly for SSR and client.
+const API_BASE_URL = '/api'
 
 // Types
 interface ApiError {
