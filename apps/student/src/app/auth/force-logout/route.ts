@@ -7,7 +7,7 @@ export async function GET(req: Request){
   try {
     const url = new URL(req.url)
     const next = url.searchParams.get('next') || '/'
-    const { sessionId } = auth()
+    const { sessionId } = await auth()
     if (sessionId) {
       try { await clerkClient.sessions.revokeSession(sessionId) } catch {}
     }
