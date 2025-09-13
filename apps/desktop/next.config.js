@@ -3,8 +3,14 @@ const BACKEND_ORIGIN = process.env.BACKEND_ORIGIN || (process.env.NODE_ENV === '
   ? 'https://internal.ngicapital.com'
   : 'http://localhost:8001')
 
+// If deploying the Admin app to its own domain (e.g., admin.example.com),
+// we should not prefix routes with /admin and should not redirect '/' away.
+// Toggle this with ADMIN_STANDALONE_DOMAIN=1 in the environment.
+const IS_STANDALONE = (process.env.ADMIN_STANDALONE_DOMAIN || '0') === '1'
+
 const nextConfig = {
-  basePath: '/admin',
+  // Only apply basePath when NOT on a standalone admin domain
+  ...(IS_STANDALONE ? {} : { basePath: '/admin' }),
   transpilePackages: ['@ngi/ui'],
   // Note: Next.js 14 does not support trustHostHeader; rely on nginx proxy headers
   typescript: {
@@ -21,9 +27,11 @@ const nextConfig = {
     domains: ['localhost'],
   },
   async redirects() {
+    // On a standalone admin domain, keep '/' as the admin landing (no redirect)
+    if (IS_STANDALONE) return []
     return [
       {
-        // Redirect /admin to marketing homepage (student base URL)
+        // Redirect admin root to marketing homepage (student base URL)
         source: '/',
         destination: process.env.NEXT_PUBLIC_STUDENT_BASE_URL || 'http://localhost:3001',
         permanent: false,

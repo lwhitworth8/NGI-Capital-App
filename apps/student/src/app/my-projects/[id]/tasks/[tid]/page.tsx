@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useEffect, useMemo, useState } from 'react'
 import { useUser } from '@clerk/nextjs'
@@ -94,7 +94,7 @@ export default function TaskDetailPage({ params }: { params: { id: string, tid: 
           <div className="text-sm text-muted-foreground"><Link href={`/my-projects/${pid}`}>Back to workspace</Link></div>
           <h1 className="text-2xl font-semibold mt-1">{detail.title}</h1>
           <div className="text-sm text-muted-foreground mt-1">
-            Due: {detail.due_date ? new Date(detail.due_date).toLocaleDateString() : '-'} · Priority: {detail.priority || '-'} · Planned: {detail.planned_hours ?? '-'}
+            Due: {detail.due_date ? new Date(detail.due_date).toLocaleDateString() : '-'} | Priority: {detail.priority || '-'} | Planned: {detail.planned_hours ?? '-'}
           </div>
         </div>
       </div>
