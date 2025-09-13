@@ -24,7 +24,7 @@ export async function GET() {
     const slug = String(process.env.CLERK_ADMIN_ORG_SLUG || '').trim().toLowerCase()
     if (slug) {
       try {
-        const memberships = await clerkClient.users.getOrganizationMembershipList({ userId })
+        const cc: any = typeof (clerkClient as any) === 'function' ? await (clerkClient as any)() : clerkClient; const memberships = await cc.users?.getOrganizationMembershipList?.({ userId }) as any
         if (Array.isArray((memberships as any)?.data)) {
           isAdmin = (memberships as any).data.some((m: any) => String(m?.organization?.slug || '').toLowerCase() === slug)
         }
@@ -55,3 +55,4 @@ export async function GET() {
 
   return NextResponse.redirect(`${base}/projects`)
 }
+

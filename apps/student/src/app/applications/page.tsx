@@ -77,7 +77,7 @@ export default async function ApplicationsPage({ searchParams }: { searchParams?
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
               <div>
                 <div style={{ fontSize:14 }}>Application #{a.id} {a.has_updates ? <span style={{ marginLeft:8, fontSize:10, color:'#fff', background:'#7c3aed', padding:'2px 6px', borderRadius:999 }}>Updated</span> : null}</div>
-                <div style={{ fontSize:12, color:'#6b7280' }}>Status: <StatusPill status={a.status} /> · {new Date(a.created_at).toLocaleString()}</div>
+                <div style={{ fontSize:12, color:'#6b7280' }}>Status: <StatusPill status={a.status} /> | {new Date(a.created_at).toLocaleString()}</div>
                 {a.target_project_id ? (
                   <div style={{ fontSize:12 }}>
                     <Link href={`/projects/${a.target_project_id}`} style={{ color:'#2563eb' }}>
@@ -98,3 +98,4 @@ export default async function ApplicationsPage({ searchParams }: { searchParams?
     </div>
   )
 }
+

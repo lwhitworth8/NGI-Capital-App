@@ -19,16 +19,16 @@ export default async function DevHealthPage() {
   const backendUrl = process.env.BACKEND_ORIGIN || 'http://backend:8001'
   const jwksUrl = process.env.CLERK_JWKS_URL || ''
 
-  const [apiHealth, jwks, studentRoot] = await Promise.all([
+  const [apiHealth, jwks, studentRoot] = await Promise.all<{ ok: boolean; status?: number; note?: string }>([
     tryFetch(`${backendUrl.replace(/\/$/, '')}/api/health`),
-    jwksUrl ? tryFetch(jwksUrl) : Promise.resolve({ ok: false, note: 'CLERK_JWKS_URL missing' }),
+    jwksUrl ? tryFetch(jwksUrl) : Promise.resolve({ ok: false, note: 'CLERK_JWKS_URL missing' } as { ok: boolean; status?: number; note?: string }),
     tryFetch('http://student:3002/'),
   ])
 
   const checks = [
     { name: 'Backend /api/health', status: apiHealth.ok ? 'ok' as const : 'fail' as const, detail: apiHealth.ok ? String(apiHealth.status) : apiHealth.note },
-    { name: 'Clerk JWKS reachable', status: jwks.ok ? 'ok' as const : 'fail' as const, detail: jwks.ok ? String(jwks.status) : jwks.note },
-    { name: 'Student / (SSR reach)', status: studentRoot.ok ? 'ok' as const : 'fail' as const, detail: studentRoot.ok ? String(studentRoot.status) : studentRoot.note },
+    { name: 'Clerk JWKS reachable', status: jwks.ok ? 'ok' as const : 'fail' as const, detail: jwks.ok ? String(jwks.status ?? '') : jwks.note },
+    { name: 'Student / (SSR reach)', status: studentRoot.ok ? 'ok' as const : 'fail' as const, detail: studentRoot.ok ? String(studentRoot.status ?? '') : studentRoot.note },
     { name: 'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY', status: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ? 'ok' as const : 'fail' as const, detail: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY ? `len=${process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY.length}` : 'missing' },
     { name: 'CLERK_ISSUER', status: process.env.CLERK_ISSUER ? 'ok' as const : 'fail' as const, detail: process.env.CLERK_ISSUER || 'missing' },
     { name: 'CLERK_JWKS_URL', status: process.env.CLERK_JWKS_URL ? 'ok' as const : 'fail' as const, detail: process.env.CLERK_JWKS_URL || 'missing' },
@@ -53,3 +53,4 @@ export default async function DevHealthPage() {
     </div>
   )
 }
+

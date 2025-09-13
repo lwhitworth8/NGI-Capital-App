@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { apiClient } from "@/lib/api";
+import { accountingGetUnpostedEntries, accountingPostBatchEntries } from "@/lib/api";
 
 export default function UnpostedEntriesPage() {
   const [entityId, setEntityId] = useState<number>(1);
@@ -13,7 +13,7 @@ export default function UnpostedEntriesPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const list = await apiClient.getUnpostedEntries(entityId);
+      const list = await accountingGetUnpostedEntries(entityId);
       setEntries(list);
     } finally {
       setLoading(false);
@@ -23,7 +23,7 @@ export default function UnpostedEntriesPage() {
   const postAll = async () => {
     setLoading(true);
     try {
-      await apiClient.postBatchEntries({ entity_id: entityId });
+      await accountingPostBatchEntries({ entity_id: entityId });
       await load();
     } finally {
       setLoading(false);
@@ -76,4 +76,5 @@ export default function UnpostedEntriesPage() {
     </div>
   );
 }
+
 

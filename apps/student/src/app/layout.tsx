@@ -1,6 +1,6 @@
 import './globals.css'
-import { ClerkProvider } from '@clerk/nextjs'
 import ClientRoot from '@/components/ClientRoot'
+import ClerkAppProviders from '@/components/ClerkAppProviders'
 
 export const metadata = {
   title: 'NGI Capital',
@@ -9,16 +9,14 @@ export const metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <ClerkProvider
-      publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
-    >
-      <html lang="en" suppressHydrationWarning>
-        <body>
+    <html lang="en" suppressHydrationWarning>
+      <body>
+        <ClerkAppProviders>
           <ClientRoot>
             {children}
           </ClientRoot>
-        </body>
-      </html>
-    </ClerkProvider>
+        </ClerkAppProviders>
+      </body>
+    </html>
   )
 }

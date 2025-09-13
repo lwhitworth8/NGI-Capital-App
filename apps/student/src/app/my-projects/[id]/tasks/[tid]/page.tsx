@@ -25,7 +25,6 @@ export default function TaskDetailPage({ params }: { params: { id: string, tid: 
     setLoading(true)
     setError(null)
     try {
-      // Fetch detail with email header to resolve student context
       const res = await fetch(`/api/public/tasks/${tid}`, { headers: email ? { 'X-Student-Email': email } : undefined })
       if (!res.ok) throw new Error(await res.text())
       const d = await res.json()
@@ -40,7 +39,9 @@ export default function TaskDetailPage({ params }: { params: { id: string, tid: 
     }
   }
 
-  useEffect(() => { load() // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    load()
   }, [tid])
 
   const onSubmit = async () => {
@@ -82,7 +83,7 @@ export default function TaskDetailPage({ params }: { params: { id: string, tid: 
     }
   }
 
-  if (loading) return <div className="p-6 text-sm text-muted-foreground">Loading…</div>
+  if (loading) return <div className="p-6 text-sm text-muted-foreground">Loading...</div>
   if (error) return <div className="p-6 text-sm text-red-600">{error}</div>
   if (!detail) return <div className="p-6 text-sm text-muted-foreground">Not found</div>
 
@@ -93,7 +94,7 @@ export default function TaskDetailPage({ params }: { params: { id: string, tid: 
           <div className="text-sm text-muted-foreground"><Link href={`/my-projects/${pid}`}>Back to workspace</Link></div>
           <h1 className="text-2xl font-semibold mt-1">{detail.title}</h1>
           <div className="text-sm text-muted-foreground mt-1">
-            Due: {detail.due_date ? new Date(detail.due_date).toLocaleDateString() : '—'} · Priority: {detail.priority || '—'} · Planned: {detail.planned_hours ?? '—'}
+            Due: {detail.due_date ? new Date(detail.due_date).toLocaleDateString() : '-'} | Priority: {detail.priority || '-'} | Planned: {detail.planned_hours ?? '-'}
           </div>
         </div>
       </div>
@@ -103,18 +104,18 @@ export default function TaskDetailPage({ params }: { params: { id: string, tid: 
           <div className="font-medium mb-2">Submit</div>
           <div className="text-sm text-muted-foreground mb-2">Upload files up to 500 MB each (or submit a URL)</div>
           <input type="file" onChange={e => setFile(e.target.files?.[0] || null)} />
-          <div className="my-2 text-center text-xs text-muted-foreground">— or —</div>
-          <input className="w-full border rounded px-2 py-1 text-sm" placeholder="https://…" value={urlValue} onChange={e=>setUrlValue(e.target.value)} />
+          <div className="my-2 text-center text-xs text-muted-foreground">-- or --</div>
+          <input className="w-full border rounded px-2 py-1 text-sm" placeholder="https://..." value={urlValue} onChange={e=>setUrlValue(e.target.value)} />
           <div className="mt-3">
-            <button onClick={onSubmit} disabled={submitting} className="px-3 py-1.5 rounded bg-blue-600 text-white text-sm disabled:opacity-50">{submitting? 'Submitting…' : 'Submit'}</button>
+            <button onClick={onSubmit} disabled={submitting} className="px-3 py-1.5 rounded bg-blue-600 text-white text-sm disabled:opacity-50">{submitting? 'Submitting...' : 'Submit'}</button>
           </div>
           <div className="mt-4">
             <div className="font-medium mb-1">My Submissions</div>
             <ul className="text-sm divide-y">
-              {(detail.submissions||[]).map(s => (
+              {(detail.submissions||[]).map((s: any) => (
                 <li key={s.version} className="py-2 flex justify-between">
                   <div>
-                    <div>v{s.version} · {s.kind.toUpperCase()} · {new Date(s.created_at).toLocaleString()}</div>
+                    <div>v{s.version} - {s.kind?.toUpperCase?.()} - {new Date(s.created_at).toLocaleString()}</div>
                     {s.is_late ? <div className="text-red-600">Late</div> : null}
                     {s.accepted ? <div className="text-green-600">Accepted</div> : null}
                   </div>
@@ -133,7 +134,7 @@ export default function TaskDetailPage({ params }: { params: { id: string, tid: 
           <div className="space-y-2 max-h-64 overflow-auto">
             {comments.map(c => (
               <div key={c.id} className="border rounded p-2">
-                <div className="text-xs text-muted-foreground">{c.author_email || 'Anon'} · {new Date(c.created_at).toLocaleString()} {c.submission_version ? `· v${c.submission_version}` : ''}</div>
+                <div className="text-xs text-muted-foreground">{c.author_email || 'Anon'} - {new Date(c.created_at).toLocaleString()} {c.submission_version ? `- v${c.submission_version}` : ''}</div>
                 <div className="text-sm mt-1 whitespace-pre-wrap">{c.body}</div>
               </div>
             ))}
@@ -143,7 +144,7 @@ export default function TaskDetailPage({ params }: { params: { id: string, tid: 
             <input className="flex-1 border rounded px-2 py-1 text-sm" placeholder="Add a comment" value={newComment} onChange={e=>setNewComment(e.target.value)} />
             <select className="border rounded px-2 py-1 text-sm" value={anchorVersion ?? ''} onChange={e => setAnchorVersion(e.target.value ? Number(e.target.value) : undefined)}>
               <option value="">No anchor</option>
-              {(detail.submissions||[]).map(s => <option key={s.version} value={s.version}>v{s.version}</option>)}
+              {(detail.submissions||[]).map((s: any) => <option key={s.version} value={s.version}>v{s.version}</option>)}
             </select>
             <button onClick={onPostComment} className="px-3 py-1.5 rounded bg-blue-600 text-white text-sm">Post</button>
           </div>
@@ -157,3 +158,4 @@ export default function TaskDetailPage({ params }: { params: { id: string, tid: 
     </div>
   )
 }
+

@@ -7,15 +7,17 @@ export async function GET(req: Request){
   try {
     const url = new URL(req.url)
     const next = url.searchParams.get('next') || '/'
-    const { sessionId } = auth()
+    const { sessionId } = await auth()
     if (sessionId) {
-      try { await clerkClient.sessions.revokeSession(sessionId) } catch {}
+      try { const cc: any = typeof (clerkClient as any) === 'function' ? await (clerkClient as any)() : clerkClient; await cc.sessions?.revokeSession?.(sessionId) } catch {}
     }
-    const res = NextResponse.redirect(next)
+    const res = NextResponse.redirect(new URL(next, url))
     // Clear hint cookie used by SSR fetching
     try { res.cookies.set('student_email', '', { path: '/', maxAge: 0 }) } catch {}
     return res
   } catch {
-    return NextResponse.redirect('/')
+    const url = new URL(req.url)
+    return NextResponse.redirect(new URL('/', url))
   }
 }
+

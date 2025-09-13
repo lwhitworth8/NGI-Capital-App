@@ -8,8 +8,6 @@ export default function HomePage() {
   const { signOut } = useClerk()
   
   useEffect(() => {
-    // Always sign out on the marketing homepage so no session persists here
-    // Do not specify redirectUrl to avoid Clerk overriding navigation
     try { signOut({ redirectUrl: undefined }).catch(() => {}) } catch {}
   }, [signOut])
   
@@ -36,7 +34,7 @@ export default function HomePage() {
               Launch your experience with NGI Capital Advisory
             </h1>
             <p className="text-muted-foreground mt-4 max-w-2xl mx-auto">
-              Hands-on projects, mentorship, and a pathway from learning to building. 
+              Hands-on projects, mentorship, and a pathway from learning to building.
               Apply to live advisory projects, join the student incubator, and grow with a community of builders.
             </p>
             <div className="mt-8 flex items-center justify-center gap-4">
@@ -71,9 +69,10 @@ export default function HomePage() {
       
       <footer className="border-t mt-16">
         <div className="mx-auto max-w-6xl px-6 py-6 text-xs text-muted-foreground text-center">
-          © {new Date().getFullYear()} NGI Capital
+          (c) {new Date().getFullYear()} NGI Capital
         </div>
       </footer>
     </>
   )
 }
+
