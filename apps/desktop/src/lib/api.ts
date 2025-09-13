@@ -196,6 +196,7 @@ class ApiClient {
     if (error.response) {
       const status = error.response.status
       const message = error.response.data?.detail || error.response.data?.message || 'An error occurred'
+      const url = (error.request?.responseURL || '').toString()
       const normalize = (val: any): string => {
         if (typeof val === 'string') return val
         if (Array.isArray(val)) {
@@ -221,6 +222,7 @@ class ApiClient {
           toast.error('Access denied. Insufficient permissions.')
           break
         case 404:
+          if (url.includes('/api/goals')) return
           toast.error('Resource not found.')
           break
         case 422: {

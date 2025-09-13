@@ -88,7 +88,7 @@ export default function Sidebar() {
   const router = useRouter();
   const [expandedItems, setExpandedItems] = useState<string[]>([]);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const { user } = useUser();
+  const { user, isLoaded } = useUser();
   const { signOut } = useClerk();
   const { state } = useApp();
   const entityId = useMemo(() => Number(state.currentEntity?.id || 0), [state.currentEntity])
@@ -144,9 +144,12 @@ export default function Sidebar() {
 
   // Compute display name matching student UI behavior (avoid middle names)
   const { displayFirstName, displayLastName, userName, userInitials, profileImageUrl } = useMemo(() => {
+    if (!isLoaded) {
+      return { displayFirstName: '', displayLastName: '', userName: 'Loading…', userInitials: 'U', profileImageUrl: undefined as any };
+    }
     const rawFirstName = user?.firstName || '';
     const rawLastName = user?.lastName || '';
-    const fullName = user?.fullName || '';
+    const fullName = (user as any)?.fullName || '';
 
     let df = '';
     let dl = '';
@@ -169,7 +172,10 @@ export default function Sidebar() {
       df = firstNameParts[0] || '';
       dl = rawLastName;
     }
-    const computedName = (df && dl) ? `${df} ${dl}` : (df || user?.primaryEmailAddress?.emailAddress || 'User');
+    // Fallback order: full name, first+last, username, primary email, first email, 'User'
+    const primaryEmail = user?.primaryEmailAddress?.emailAddress || (user as any)?.emailAddresses?.[0]?.emailAddress || '';
+    const username = (user as any)?.username || '';
+    const computedName = (df && dl) ? `${df} ${dl}` : (df || fullName || username || primaryEmail || 'User');
     const initials = (df && dl) ? `${df[0]}${dl[0]}`.toUpperCase() : (df ? df[0].toUpperCase() : 'U');
     // Clerk user object uses imageUrl (no profileImageUrl on type). Cast to any to avoid type drift.
     const image = (user as any)?.imageUrl as string | undefined;
