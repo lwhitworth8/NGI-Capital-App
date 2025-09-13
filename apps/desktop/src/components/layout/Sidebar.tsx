@@ -171,7 +171,9 @@ export default function Sidebar() {
     }
     const computedName = (df && dl) ? `${df} ${dl}` : (df || user?.primaryEmailAddress?.emailAddress || 'User');
     const initials = (df && dl) ? `${df[0]}${dl[0]}`.toUpperCase() : (df ? df[0].toUpperCase() : 'U');
-    return { displayFirstName: df, displayLastName: dl, userName: computedName, userInitials: initials, profileImageUrl: user?.profileImageUrl };
+    // Clerk user object uses imageUrl (no profileImageUrl on type). Cast to any to avoid type drift.
+    const image = (user as any)?.imageUrl as string | undefined;
+    return { displayFirstName: df, displayLastName: dl, userName: computedName, userInitials: initials, profileImageUrl: image };
   }, [user]);
 
   return (
