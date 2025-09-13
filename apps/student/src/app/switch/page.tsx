@@ -14,7 +14,7 @@ export default async function Switch() {
   // Fallback: check Clerk org memberships for admin/owner
   if (!isAdmin) {
     try {
-      const list = await clerkClient.users.getOrganizationMembershipList({ userId: user.id })
+      const cc: any = typeof (clerkClient as any) === 'function' ? await (clerkClient as any)() : clerkClient; const list: any[] = (await cc.users?.getOrganizationMembershipList?.({ userId: user.id }) as any) || [];
       const requiredSlug = (process.env.CLERK_ADMIN_ORG_SLUG || '').trim()
       isAdmin = list.some((m: any) => {
         const inOrg = requiredSlug ? (m.organization?.slug === requiredSlug) : true
@@ -31,3 +31,4 @@ export default async function Switch() {
 
   redirect('/projects')
 }
+
