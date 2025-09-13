@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { Suspense, useMemo, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api';
 import { toast } from 'sonner';
 import { Card } from '@/components/ui/Card';
 
-export default function ResetPasswordPage() {
+function ResetPasswordInner() {
   const params = useSearchParams();
   const router = useRouter();
   const initialToken = useMemo(() => params.get('token') || '', [params]);
@@ -115,4 +115,12 @@ export default function ResetPasswordPage() {
       </div>
     </div>
   );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<div className="p-6">Loading...</div>}>
+      <ResetPasswordInner />
+    </Suspense>
+  )
 }

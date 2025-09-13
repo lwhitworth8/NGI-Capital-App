@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useApp } from '@/lib/context/AppContext'
 import {
@@ -26,7 +26,7 @@ type Flow = {
   status: string;
 }
 
-export default function OnboardingAdminPage() {
+function OnboardingContent() {
   const { state } = useApp()
   const entityId = useMemo(() => Number(state.currentEntity?.id || 0), [state.currentEntity])
   const [flows, setFlows] = useState<Flow[]>([])
@@ -160,5 +160,13 @@ export default function OnboardingAdminPage() {
           </div>
       </div>
     </div>
+  )
+}
+
+export default function OnboardingAdminPage() {
+  return (
+    <Suspense fallback={<div className="p-6">Loading...</div>}>
+      <OnboardingContent />
+    </Suspense>
   )
 }
