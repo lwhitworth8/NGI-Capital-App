@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { ThemeProvider } from 'next-themes'
 import { Toaster } from 'sonner'
-import { ClerkProvider, SignedIn, SignedOut } from '@clerk/nextjs'
+import { ClerkProvider } from '@clerk/nextjs'
 import { AuthProvider } from '@/lib/auth'
 import { AppProvider } from '@/lib/context/AppContext'
 import { useState, useEffect } from 'react'
@@ -52,13 +52,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
           <AuthProvider>
             <ThemeHydrator />
             <AppProvider>
-              <SignedIn>
+              <AuthGate>
                 {children}
-                <Toaster position="top-right" toastOptions={{ duration: 5000 }} />
-              </SignedIn>
-              <SignedOut>
-                <div className="p-6 text-sm text-muted-foreground">Redirecting to sign in…</div>
-              </SignedOut>
+              </AuthGate>
             </AppProvider>
           </AuthProvider>
         </ClerkProvider>
@@ -97,4 +93,14 @@ function ThemeHydrator() {
     })()
   }, [user, setTheme])
   return null
+}
+
+function AuthGate({ children }: { children: React.ReactNode }) {
+  const { isLoaded, isSignedIn } = useUser()
+  if (!isLoaded) return <div className="p-6 text-sm text-muted-foreground">Loading…</div>
+  if (!isSignedIn) return <div className="p-6 text-sm text-muted-foreground">Redirecting to sign in…</div>
+  return <>
+    {children}
+    <Toaster position="top-right" toastOptions={{ duration: 5000 }} />
+  </>
 }
