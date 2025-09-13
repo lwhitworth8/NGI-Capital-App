@@ -1,4 +1,4 @@
-import { currentUser } from '@clerk/nextjs'
+import { currentUser, clerkClient } from '@clerk/nextjs/server'
 import { clerkClient } from '@clerk/nextjs/server'
 
 export async function POST(req: Request){
