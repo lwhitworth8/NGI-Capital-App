@@ -7,7 +7,8 @@
                    ],
     "scripts":  {
                     "e2e":  "npx playwright test -c e2e/playwright.config.ts",
-                    "backfill:metrics":  "node scripts/backfill_metrics.js"
+                    "backfill:metrics":  "node scripts/backfill_metrics.js",
+                    "predeploy:check":  "node tools/predeploy-check.mjs"
                 },
     "dependencies":  {
                          "@clerk/nextjs":  "^6.31.6"
