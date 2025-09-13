@@ -1,5 +1,12 @@
 {$API_DOMAIN} {
     encode gzip
     reverse_proxy backend:8001
-}
 
+    # Force Let's Encrypt and set contact email to avoid ZeroSSL EAB errors
+    tls {
+        issuer acme {
+            email {$API_EMAIL}
+            ca https://acme-v02.api.letsencrypt.org/directory
+        }
+    }
+}
