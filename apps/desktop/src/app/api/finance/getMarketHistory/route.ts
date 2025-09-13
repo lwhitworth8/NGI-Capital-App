@@ -10,9 +10,13 @@ export async function GET(req: NextRequest) {
 
   try {
     if (symbol) {
+      // yahoo-finance2 returns a ChartResult object with top-level fields
+      // { meta, timestamp, indicators: { quote: [{ close, open, ... }] } }
       const result = await yahooFinance.chart(symbol as any, { period1: '1975-01-01', interval: '1mo' } as any)
-      const points = (result.chart?.result?.[0]?.indicators?.quote?.[0]?.close || []).map((v: number, i: number) => ({
-        t: result.chart.result[0].timestamp?.[i] ? new Date(result.chart.result[0].timestamp[i] * 1000).toISOString() : '',
+      const closes = (result as any)?.indicators?.quote?.[0]?.close as number[] | undefined
+      const ts = (result as any)?.timestamp as number[] | undefined
+      const points = (closes || []).map((v: number, i: number) => ({
+        t: ts?.[i] ? new Date(ts[i] * 1000).toISOString() : '',
         v,
       }))
       return NextResponse.json({ series: points })
@@ -31,4 +35,3 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ series: [] })
   }
 }
-
