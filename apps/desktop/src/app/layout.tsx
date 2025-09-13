@@ -5,6 +5,10 @@ import { Providers } from './providers'
 
 const inter = Inter({ subsets: ['latin'] })
 
+// Ensure dynamic rendering to avoid build-time type/env coupling when
+// Clerk and providers load; keeps runtime consistent across environments.
+export const dynamic = 'force-dynamic'
+
 export const metadata: Metadata = {
   title: 'NGI Capital Internal System',
   description: 'Internal Business and Financial Management System for NGI Capital',
