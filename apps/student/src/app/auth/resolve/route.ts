@@ -6,8 +6,9 @@ export const runtime = 'nodejs'
 export async function GET() {
   const { userId } = await auth()
 
-  const base = (process.env.NEXT_PUBLIC_STUDENT_BASE_URL || 'http://localhost:3001').replace(/\/$/, '')
-  const signInUrl = `${base}/sign-in`
+  const studentBase = (process.env.NEXT_PUBLIC_STUDENT_BASE_URL || 'http://localhost:3001').replace(/\/$/, '')
+  const adminBase = (process.env.NEXT_PUBLIC_ADMIN_BASE_URL || `${studentBase}/admin`).replace(/\/$/, '')
+  const signInUrl = `${studentBase}/sign-in`
 
   if (!userId) {
     return NextResponse.redirect(signInUrl)
@@ -24,7 +25,8 @@ export async function GET() {
     const slug = String(process.env.CLERK_ADMIN_ORG_SLUG || '').trim().toLowerCase()
     if (slug) {
       try {
-        const cc: any = typeof (clerkClient as any) === 'function' ? await (clerkClient as any)() : clerkClient; const memberships = await cc.users?.getOrganizationMembershipList?.({ userId }) as any
+        const cc: any = typeof (clerkClient as any) === 'function' ? await (clerkClient as any)() : clerkClient
+        const memberships = await cc.users?.getOrganizationMembershipList?.({ userId }) as any
         if (Array.isArray((memberships as any)?.data)) {
           isAdmin = (memberships as any).data.some((m: any) => String(m?.organization?.slug || '').toLowerCase() === slug)
         }
@@ -35,12 +37,16 @@ export async function GET() {
   }
 
   if (!isAdmin) {
-    const admins = (process.env.ADMIN_EMAILS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
-    if (email && admins.includes(email)) isAdmin = true
+    const defaultAdmins = ['lwhitworth@ngicapitaladvisory.com', 'anurmamade@ngicapitaladvisory.com']
+      .map(s => s.trim().toLowerCase())
+    const envAdmins = (process.env.ADMIN_EMAILS || '')
+      .split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+    const admins = new Set<string>([...defaultAdmins, ...envAdmins])
+    if (email && admins.has(email)) isAdmin = true
   }
 
   if (isAdmin) {
-    return NextResponse.redirect(`${base}/admin/dashboard`)
+    return NextResponse.redirect(`${adminBase}/dashboard`)
   }
 
   // Student access gate by domain (configurable)
@@ -50,9 +56,9 @@ export async function GET() {
 
   if (!domain || !allowedDomains.includes(domain)) {
     console.warn('[auth/resolve] Blocked domain', { email, domain })
-    return NextResponse.redirect(`${base}/blocked`)
+    return NextResponse.redirect(`${studentBase}/blocked`)
   }
 
-  return NextResponse.redirect(`${base}/projects`)
+  return NextResponse.redirect(`${studentBase}/projects`)
 }
 
