@@ -64,9 +64,9 @@ export default function AdvisoryProjectDetailPage() {
     await load()
   }
 
-  if (authLoading || fetching) return <div className="p-6">Loading…</div>
+  if (authLoading || fetching) return <div className="p-6">Loading.</div>
   if (!allowed) return <div className="p-6">Access restricted.</div>
-  if (!project) return <div className="p-6">{loading ? 'Loading…' : 'Not found'}</div>
+  if (!project) return <div className="p-6">Not found</div>
 
   return (
     <div className="p-6 space-y-6">
