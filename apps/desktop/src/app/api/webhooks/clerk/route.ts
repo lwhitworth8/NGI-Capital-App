@@ -68,9 +68,10 @@ export async function POST(req: Request) {
     
     const role = isAdmin ? 'PARTNER_ADMIN' : 'STUDENT'
     
-    // Update user metadata in Clerk
+    // Update user metadata in Clerk (support function or object forms)
     if (type === 'user.created' || type === 'user.updated') {
-      await clerkClient.users.updateUserMetadata(userId, { 
+      const cc: any = typeof (clerkClient as any) === 'function' ? await (clerkClient as any)() : (clerkClient as any)
+      await cc?.users?.updateUserMetadata?.(userId, { 
         publicMetadata: { 
           role, 
           email,
@@ -88,4 +89,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 400 })
   }
 }
-
