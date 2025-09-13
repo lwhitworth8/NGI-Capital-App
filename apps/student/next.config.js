@@ -18,6 +18,10 @@ const nextConfig = {
     // Ensure marketing + auth links always target the nginx origin (port 3001)
     NEXT_PUBLIC_STUDENT_BASE_URL: process.env.NEXT_PUBLIC_STUDENT_BASE_URL || 'http://localhost:3001',
     NEXT_PUBLIC_ADMIN_BASE_URL: process.env.NEXT_PUBLIC_ADMIN_BASE_URL || 'http://localhost:3001/admin',
+    // Propagate Clerk publishable key to client if only CLERK_PUBLISHABLE_KEY is set in env
+    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || process.env.CLERK_PUBLISHABLE_KEY,
+    // Surface issuer for any client-side flows that need it (safe)
+    NEXT_PUBLIC_CLERK_ISSUER: process.env.NEXT_PUBLIC_CLERK_ISSUER || process.env.CLERK_ISSUER,
   },
   experimental: {
     externalDir: true,

@@ -18,6 +18,10 @@ services:
       - CLERK_VERIFY_AUDIENCE=${CLERK_VERIFY_AUDIENCE:-1}
       - CORS_ORIGINS=${CORS_ORIGINS}
       - FRONTEND_URL=${FRONTEND_URL}
+      # Admin gating fallback (enable for demo only)
+      - ENABLE_ENV_ADMIN_FALLBACK=${ENABLE_ENV_ADMIN_FALLBACK:-0}
+      - ADMIN_EMAILS=${ADMIN_EMAILS}
+      - ALLOWED_ADVISORY_ADMINS=${ALLOWED_ADVISORY_ADMINS}
       - DATABASE_PATH=/app/data/ngi_capital.db
     volumes:
       - ./data:/app/data
@@ -33,6 +37,7 @@ services:
       - "443:443"
     environment:
       - API_DOMAIN=${API_DOMAIN}
+      - API_EMAIL=${API_EMAIL}
     volumes:
       - ./caddy/Caddyfile.docker:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -50,4 +55,3 @@ networks:
 volumes:
   caddy_data:
   caddy_config:
-
