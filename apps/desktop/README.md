@@ -39,3 +39,10 @@ npm test
 - Reverse-proxied at `/admin` via nginx in dev compose.
 - Backend docs at `http://localhost:8001/docs`.
 
+
+
+## Production Notes
+- Root Directory: apps/desktop (Vercel).
+- BACKEND_ORIGIN=https://api.ngicapitaladvisory.com (set in Vercel env).
+- Admin landing: https://admin.ngicapitaladvisory.com (ADMIN_STANDALONE_DOMAIN=1).
+- Clerk org slug (CLERK_ADMIN_ORG_SLUG) gates admin access; env allowlist is fallback.

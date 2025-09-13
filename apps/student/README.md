@@ -29,3 +29,10 @@ CLERK_ADMIN_ORG_SLUG=
 ## Notes
 - Served at `/` behind nginx in dev compose.
 
+
+
+## Production Routing
+- Sign-in at marketing (/sign-in) resolves via /auth/resolve.
+- Admins go to NEXT_PUBLIC_ADMIN_BASE_URL + /dashboard.
+- Default admin allowlist: lwhitworth@ngicapitaladvisory.com, anurmamade@ngicapitaladvisory.com (merged with ADMIN_EMAILS).
+- Students go to /projects (domain-gated by ALLOWED_EMAIL_DOMAINS).

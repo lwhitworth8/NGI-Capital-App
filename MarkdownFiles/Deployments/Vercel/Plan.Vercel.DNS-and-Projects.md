@@ -51,7 +51,7 @@ Option B — Nginx + Certbot (if preferred):
   - Root Directory: `apps/student`
   - Install Command: `npm ci --prefix=../..`
   - Build Command: default
-  - Production Branch: `production`
+  - Production Branch: `production` (CI workflow included)
   - Environment Variables: see Env Matrix (Student)
   - Domains: add `ngicapitaladvisory.com` (apex) and `www.ngicapitaladvisory.com` (optional)
 
@@ -59,7 +59,7 @@ Option B — Nginx + Certbot (if preferred):
   - Root Directory: `apps/desktop`
   - Install Command: `npm ci --prefix=../..`
   - Build Command: default
-  - Production Branch: `production`
+  - Production Branch: `production` (CI workflow included)
   - Environment Variables: see Env Matrix (Admin)
   - Domains: add `admin.ngicapitaladvisory.com`
 
@@ -82,3 +82,13 @@ Option B — Nginx + Certbot (if preferred):
 - Backend: `https://api.ngicapitaladvisory.com/api/health` → 200 JSON.
 - Core flows: Advisory Projects list, Investor Management pages, Accounting quick checks.
 
+
+
+Status (Done vs Next)
+- Done:
+  - Domains wired in Vercel and Squarespace (apex -> Student, admin -> Admin).
+  - Backend stack running behind Caddy TLS (Docker Compose).
+  - Clerk envs set in Vercel Production.
+- Next:
+  - Keep dev on docker-compose.dev.yml; preview on main; merge to production when demo-ready.
+  - Optional: add preview BACKEND_ORIGIN pointing to a staging API.

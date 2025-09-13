@@ -1,4 +1,4 @@
-﻿# Prototype V1 â€” Task Tracker
+# Prototype V1 — Task Tracker
 
 Instructions: Every agent must update this tracker after completing work and tests are green, and the user confirms the module matches its MD docs. Use statuses: Not Started, In Progress, Ready for QA, Done, Blocked.
 
@@ -22,25 +22,25 @@ Instructions: Every agent must update this tracker after completing work and tes
   - Links: tests/test_advisory_students_admin.py, apps/desktop/src/app/ngi-advisory/students/page.tsx, src/api/routes/advisory.py, apps/desktop/src/lib/api.ts
   - Notes: lifecycle cutoff (June 30 PT) + override; archive table + restore; paging 100/page + search/status/sort + resume/applied filters; strict auth; timeline panels; assignments (override when capacity 0 with confirm); audit logs added for key actions.
 
-- Coffee Chats (Admin) â€“ `MarkdownFiles/NGIDesktopApp/NGICapitalAdvisory/Coffee Chats/PRD.CoffeeChatsAdmin.md`
+- Coffee Chats (Admin) – `MarkdownFiles/NGIDesktopApp/NGICapitalAdvisory/Coffee Chats/PRD.CoffeeChatsAdmin.md`
   - Status: In Progress
   - Owner: codex
   - Links: src/api/routes/coffeechats_internal.py, apps/desktop/src/app/ngi-advisory/availability/page.tsx, apps/desktop/src/app/ngi-advisory/coffeechats/requests/page.tsx, apps/student/src/app/coffeechats/page.tsx, e2e/tests/coffeechats.api.spec.ts
-  - Notes: Internal scheduling (Google Calendar + Meet) scaffolded with robust â€œBoth freeâ€ overlay; availability CRUD, student requests, admin actions implemented; expiry job added. Google API is gated by `ENABLE_GCAL` and will be fully tested after service account setup.
+  - Notes: Internal scheduling (Google Calendar + Meet) scaffolded with robust “Both free” overlay; availability CRUD, student requests, admin actions implemented; expiry job added. Google API is gated by `ENABLE_GCAL` and will be fully tested after service account setup.
 
-- Applications (Admin) – `MarkdownFiles/NGIDesktopApp/NGICapitalAdvisory/Applications/PRD.ApplicationsAdmin.md`
+- Applications (Admin) � `MarkdownFiles/NGIDesktopApp/NGICapitalAdvisory/Applications/PRD.ApplicationsAdmin.md`
   - Status: In Progress
   - Owner: codex
   - Links: apps/desktop/src/app/ngi-advisory/applications/page.tsx, apps/desktop/src/app/ngi-advisory/applications/past/page.tsx, src/api/routes/advisory.py, apps/desktop/src/lib/api.ts, apps/desktop/src/components/layout/Sidebar.tsx
   - Notes: Project Kanban + Global table implemented; detail drawer (status, reviewer, resume, attachments, reject/withdraw); Past Applications page; reviewer badge. Backend adds reviewer/attachments/archive endpoints; attachments PDF=25MB; legacy DBs map joined?offer.
 
-- Onboarding (Admin) – `MarkdownFiles/NGIDesktopApp/NGICapitalAdvisory/Onboarding/PRD.OnboardingAdmin.md`
+- Onboarding (Admin) � `MarkdownFiles/NGIDesktopApp/NGICapitalAdvisory/Onboarding/PRD.OnboardingAdmin.md`
   - Status: In Progress
   - Owner: codex
   - Links: apps/desktop/src/app/ngi-advisory/onboarding/page.tsx, src/api/routes/advisory.py
   - Notes: Reworked to fixed flow (NGI email, Intern Agreement, optional NDA, uploads, finalize). Finalize creates assignment and archives application. Templates/instances removed from UI.
 
-- Student Project Lead Manager – `MarkdownFiles/NGIDesktopApp/StudentProjectLeadManager/PRD.StudentProjectLeadManager.md` â€“ `MarkdownFiles/NGIDesktopApp/StudentProjectLeadManager/PRD.StudentProjectLeadManager.md`
+- Student Project Lead Manager � `MarkdownFiles/NGIDesktopApp/StudentProjectLeadManager/PRD.StudentProjectLeadManager.md` – `MarkdownFiles/NGIDesktopApp/StudentProjectLeadManager/PRD.StudentProjectLeadManager.md`
   - Status: In Progress
   - Owner: codex
   - Links: src/api/routes/plm.py; apps/desktop/src/app/ngi-advisory/lead-manager/page.tsx; apps/desktop/src/lib/api.ts; tests/test_plm.py
@@ -57,75 +57,75 @@ Instructions: Every agent must update this tracker after completing work and tes
   - Status: Ready for QA
   - Owner: codex
   - Links: apps/student/src/app/my-projects/page.tsx, apps/student/src/app/my-projects/[id]/page.tsx, apps/student/src/app/my-projects/[id]/tasks/[tid]/page.tsx, apps/student/src/app/my-projects/[id]/timesheets/TimesheetsPanel.tsx, apps/student/src/lib/api.ts, src/api/routes/plm.py, tests/test_my_projects_public.py
-  - Notes: Active/Past list; workspace tabs (Overview, My Tasks, Meetings, Timesheets, Resources); Task Detail with file (=500 MB) or URL submission and comments; Timesheets weekly entry (Sun–Sat) with total; header-based student identity supported for public submit/comments/timesheets; respects assignment filtering and file limits.
+  - Notes: Active/Past list; workspace tabs (Overview, My Tasks, Meetings, Timesheets, Resources); Task Detail with file (=500 MB) or URL submission and comments; Timesheets weekly entry (Sun�Sat) with total; header-based student identity supported for public submit/comments/timesheets; respects assignment filtering and file limits.
 
-- Learning (Coming Soon) â€“ `MarkdownFiles/StudentApp/Learning/PRD.StudentLearning.md`
+- Learning (Coming Soon) – `MarkdownFiles/StudentApp/Learning/PRD.StudentLearning.md`
   - Status: Ready for QA
   - Owner: codex
   - Links: apps/student/src/app/learning/page.tsx
   - Notes: Public placeholder with H1 + subtext; no CTAs/forms/links; optional telemetry page_view posted.
 
 ## Shared/Infra
-- Slack Integration â€“ `MarkdownFiles/NGIDesktopApp/StudentProjectLeadManager/SlackSetup.Appendix.md`
+- Slack Integration – `MarkdownFiles/NGIDesktopApp/StudentProjectLeadManager/SlackSetup.Appendix.md`
   - Status: Edtied still need to implement .env keys for slack and track it
   - Owner:
   - Links:
   - Notes: single workspace; per-project private channels; required scopes; env vars. Follow-up: fully implement Slack integration and test functionality end-to-end in live workspace.
 
-- Security/Auth — Unified Clerk
+- Security/Auth � Unified Clerk
   - Status: In Progress
   - Owner: codex
   - Links: MarkdownFiles/AuthRefactorClerk/*, src/api/auth_deps.py, src/api/main.py, apps/desktop/src/lib/auth.tsx
   - Notes: Phase 1 complete (unified deps, router guards, advisory gating); staging flags set; targeted tests pass. Phase 2/3 in progress (desktop cleanup, student verification). Phase 4/5 pending (hard removal, Snyk + docs).
 
-- Student Nav â€“ `MarkdownFiles/StudentApp/Nav.Spec.StudentApp.md`
+- Student Nav – `MarkdownFiles/StudentApp/Nav.Spec.StudentApp.md`
   - Status: Not Started
   - Owner:
   - Links:
   - Notes: Projects is landing; Learning is public; Apps/My Projects are gated.
 
 ## Admin Modules (Backlog)
-- Accounting (Admin) â€“ MarkdownFiles/NGIDesktopApp/Accounting/
+- Accounting (Admin) – MarkdownFiles/NGIDesktopApp/Accounting/
   - Status: Not Started
   - Owner:
   - Links:
-  - Notes: Next step â€“ review repo and create MD doc set (PRD/UX/Test/QA/AC); then implement per docs.
+  - Notes: Next step – review repo and create MD doc set (PRD/UX/Test/QA/AC); then implement per docs.
 
-- Dashboard (Admin) â€“ MarkdownFiles/NGIDesktopApp/Dashboard/
+- Dashboard (Admin) – MarkdownFiles/NGIDesktopApp/Dashboard/
   - Status: Not Started
   - Owner:
   - Links:
-  - Notes: Next step â€“ review repo and create MD doc set.
+  - Notes: Next step – review repo and create MD doc set.
 
-- Employees (Admin) â€“ MarkdownFiles/NGIDesktopApp/Employees/
+- Employees (Admin) – MarkdownFiles/NGIDesktopApp/Employees/
   - Status: Not Started
   - Owner:
   - Links:
-  - Notes: Next step â€“ review repo and create MD doc set.
+  - Notes: Next step – review repo and create MD doc set.
 
-- Entities (Admin) â€“ MarkdownFiles/NGIDesktopApp/Entities/
+- Entities (Admin) – MarkdownFiles/NGIDesktopApp/Entities/
   - Status: Not Started
   - Owner:
   - Links:
-  - Notes: Next step â€“ review repo and create MD doc set.
+  - Notes: Next step – review repo and create MD doc set.
 
-- Finance (Admin) â€“ MarkdownFiles/NGIDesktopApp/Finance/
+- Finance (Admin) – MarkdownFiles/NGIDesktopApp/Finance/
   - Status: Not Started
   - Owner:
   - Links:
-  - Notes: Next step â€“ review repo and create MD doc set.
+  - Notes: Next step – review repo and create MD doc set.
 
-- Investor Management (Admin) â€“ MarkdownFiles/NGIDesktopApp/InvestorManagement/
+- Investor Management (Admin) – MarkdownFiles/NGIDesktopApp/InvestorManagement/
   - Status: Not Started
   - Owner:
   - Links:
-  - Notes: Next step â€“ review repo and create MD doc set.
+  - Notes: Next step – review repo and create MD doc set.
 
-- Taxes (Admin) â€“ MarkdownFiles/NGIDesktopApp/Taxes/
+- Taxes (Admin) – MarkdownFiles/NGIDesktopApp/Taxes/
   - Status: Not Started
   - Owner:
   - Links:
-  - Notes: Next step â€“ review repo and create MD doc set.
+  - Notes: Next step – review repo and create MD doc set.
 
 
 
@@ -135,3 +135,12 @@ Instructions: Every agent must update this tracker after completing work and tes
 
 
 
+
+
+### Deployment Status (2025-09-13)
+- Frontends deployed on Vercel (Student apex, Admin admin subdomain).
+- Backend served via Docker Compose stack with Caddy TLS at api.ngicapitaladvisory.com.
+- DNS updated (Squarespace).
+- Clerk Production keys configured in Vercel (both apps).
+- Admin routing fixed: default admins resolve to Admin dashboard; students resolve to Projects.
+- CI workflow ready for production branch deploys.

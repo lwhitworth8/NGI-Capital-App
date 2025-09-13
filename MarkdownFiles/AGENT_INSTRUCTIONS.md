@@ -48,3 +48,15 @@ Each module has: PRD, UX Spec, Test Plan, QA Checklist, Acceptance Criteria, Ope
 - For integrations (Slack/Google), see:
   - Slack: `MarkdownFiles/NGIDesktopApp/StudentProjectLeadManager/SlackSetup.Appendix.md`
   - Calendar: Coffee Chats / Onboarding PRDs
+
+
+## Dev vs Prod
+- Dev: use docker-compose.dev.yml (local backend on http://localhost:8001).
+- Prod: use ops/production/docker-compose.stack.yml with .env.prod and DNS api.<domain>.
+- Vercel: main = Preview, production = Production (CI workflow available).
+- Clerk: set Allowed Origins/Redirects for apex and admin domains. Use CLERK_ADMIN_ORG_SLUG for admin gating; ADMIN_EMAILS is a fallback.
+
+## Quick Commands (PowerShell)
+- Start prod stack: docker compose -f ops/production/docker-compose.stack.yml --env-file .env.prod up -d --build
+- Tail TLS proxy: docker logs -f ngi-caddy
+- Health: Invoke-WebRequest https://api.ngicapitaladvisory.com/api/health -UseBasicParsing
