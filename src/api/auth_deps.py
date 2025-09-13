@@ -137,6 +137,30 @@ async def require_clerk_user(
         except Exception as e:
             logger.debug("Legacy auth fallback failed: %s", str(e))
 
+    # 3b) Env admin allowlist fallback: accept X-Admin-Email when enabled
+    try:
+        allow_env_fallback = _env_true("ENABLE_ENV_ADMIN_FALLBACK", "0")
+        if allow_env_fallback:
+            hdr_email = (request.headers.get('X-Admin-Email') or request.headers.get('x-admin-email') or '').strip().lower()
+            if hdr_email:
+                allowed = set()
+                for var in ("ALLOWED_ADVISORY_ADMINS", "ADMIN_EMAILS", "ALLOWED_FULL_ACCESS_EMAILS"):
+                    raw = os.getenv(var, "")
+                    for e in raw.split(","):
+                        e = e.strip().lower()
+                        if e:
+                            allowed.add(e)
+                if hdr_email in allowed:
+                    return {
+                        "id": hdr_email,
+                        "email": hdr_email,
+                        "name": hdr_email,
+                        "is_authenticated": True,
+                        "_auth_source": "env-admin-fallback",
+                    }
+    except Exception:
+        pass
+
     # Fail closed
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,

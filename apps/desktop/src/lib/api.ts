@@ -129,6 +129,14 @@ class ApiClient {
                 ;(config.headers as any).Authorization = `Bearer ${token}`
               }
             }
+            // Always include admin email header (env-allowlist fallback on backend)
+            try {
+              const email = clerk?.user?.primaryEmailAddress?.emailAddress || clerk?.session?.user?.primaryEmailAddress?.emailAddress
+              if (email) {
+                config.headers = config.headers || {}
+                ;(config.headers as any)['X-Admin-Email'] = String(email).toLowerCase()
+              }
+            } catch {}
           } catch {}
         }
         return config
