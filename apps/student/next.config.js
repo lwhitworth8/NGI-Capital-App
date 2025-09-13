@@ -23,3 +23,4 @@ const nextConfig = {\n  typescript: { ignoreBuildErrors: true },\n  eslint: { ig
 }
 module.exports = nextConfig
 
+
