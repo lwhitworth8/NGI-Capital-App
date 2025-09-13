@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
@@ -66,7 +66,7 @@ export default function AdvisoryProjectDetailPage() {
 
   if (authLoading || fetching) return <div className="p-6">Loading…</div>
   if (!allowed) return <div className="p-6">Access restricted.</div>
-  if (!project) return <div className="p-6">{loading ? 'Loading…' : 'Not found'}</div>
+  if (!project) return <div className="p-6">Not found</div>
 
   return (
     <div className="p-6 space-y-6">
@@ -105,8 +105,8 @@ export default function AdvisoryProjectDetailPage() {
           <div><span className="text-muted-foreground">Lead:</span> {project.project_lead || '-'}</div>
           <div><span className="text-muted-foreground">Contact:</span> {project.contact_email || '-'}</div>
           <div><span className="text-muted-foreground">Mode:</span> {project.mode}</div>
-          <div><span className="text-muted-foreground">Timing:</span> {project.start_date || '-'} → {project.end_date || '-'}</div>
-          <div><span className="text-muted-foreground">Commitment:</span> {project.commitment_hours_per_week || 0} hrs/wk • {project.duration_weeks || 0} wks</div>
+          <div><span className="text-muted-foreground">Timing:</span> {project.start_date || '-'}  -  {project.end_date || '-'}</div>
+          <div><span className="text-muted-foreground">Commitment:</span> {project.commitment_hours_per_week || 0} hrs/wk  |  {project.duration_weeks || 0} wks</div>
         </div>
       </div>
 
