@@ -9,7 +9,7 @@ from sqlalchemy import text as sa_text
 from datetime import datetime, timezone
 
 from ..database import get_db
-from ..auth import require_partner_access
+from ..auth_deps import require_clerk_user as _require_clerk_user
 
 router = APIRouter(prefix="/api/finance", tags=["finance"])
 
@@ -19,7 +19,7 @@ def _iso_now():
 
 
 @router.get("/kpis")
-async def get_finance_kpis(entity_id: int | None = None, partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def get_finance_kpis(entity_id: int | None = None, partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     """
     Return finance KPIs for the given entity. If entity has no data yet, return
     empty values with timestamps. Values are display-ready strings and small series.
@@ -60,7 +60,7 @@ async def get_finance_kpis(entity_id: int | None = None, partner=Depends(require
 
 
 @router.get("/cap-table-summary")
-async def cap_table_summary(entity_id: int | None = None, partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def cap_table_summary(entity_id: int | None = None, partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     """Summarized cap table for the Finance dashboard card."""
     # Return classes and basic FD shares if discoverable; else empty.
     data = {"summary": {"fdShares": "", "optionPool": ""}, "classes": []}
@@ -107,7 +107,7 @@ def _ensure_forecast_schema(db: Session):
 
 
 @router.get("/forecast/scenarios")
-async def list_scenarios(entity_id: int | None = None, partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def list_scenarios(entity_id: int | None = None, partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     _ensure_forecast_schema(db)
     rows = db.execute(sa_text(
         "SELECT id, entity_id, name, state, created_at, updated_at FROM forecast_scenarios" + (" WHERE entity_id = :eid" if entity_id else "")
@@ -116,7 +116,7 @@ async def list_scenarios(entity_id: int | None = None, partner=Depends(require_p
 
 
 @router.post("/forecast/scenarios")
-async def create_scenario(payload: dict, partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def create_scenario(payload: dict, partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     _ensure_forecast_schema(db)
     name = (payload.get("name") or "Scenario").strip()
     entity_id = int(payload.get("entity_id") or 0)
@@ -128,14 +128,14 @@ async def create_scenario(payload: dict, partner=Depends(require_partner_access(
 
 
 @router.get("/forecast/scenarios/{scenario_id}/assumptions")
-async def list_assumptions(scenario_id: int, partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def list_assumptions(scenario_id: int, partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     _ensure_forecast_schema(db)
     rows = db.execute(sa_text("SELECT id, key, value, effective_start, effective_end, created_at FROM forecast_assumptions WHERE scenario_id = :sid"), {"sid": scenario_id}).fetchall()
     return [{"id": r[0], "key": r[1], "value": r[2], "effective_start": r[3], "effective_end": r[4], "created_at": r[5]} for r in rows]
 
 
 @router.post("/forecast/scenarios/{scenario_id}/assumptions")
-async def add_assumption(scenario_id: int, payload: dict, partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def add_assumption(scenario_id: int, payload: dict, partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     _ensure_forecast_schema(db)
     key = (payload.get("key") or "").strip()
     value = (payload.get("value") or "").strip()

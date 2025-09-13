@@ -7,7 +7,7 @@ from src.api.config import SECRET_KEY, ALGORITHM
 client = TestClient(app)
 
 
-def auth(email: str = "pytest@ngicapitaladvisory.com"):
+def auth(email: str = "lwhitworth@ngicapitaladvisory.com"):
     payload = {"sub": email, "iat": datetime.utcnow().timestamp()}
     token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
     return {"Authorization": f"Bearer {token}"}
@@ -24,4 +24,3 @@ def test_contacts_create_and_list():
     lr = client.get('/api/investors/contacts', params={'entity_id': 1, 'investor': inv}, headers=auth())
     assert lr.status_code == 200
     assert any(c['subject'] == 'Intro' for c in lr.json())
-

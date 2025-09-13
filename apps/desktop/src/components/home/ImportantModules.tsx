@@ -1,5 +1,6 @@
 "use client";
 import { Card } from "@/components/ui/Card";
+import Link from 'next/link';
 
 export function ImportantModules(){
   const tiles = [
@@ -11,14 +12,13 @@ export function ImportantModules(){
   return (
     <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
       {tiles.map(t=> (
-        <a key={t.title} href={t.href}>
+        <Link key={t.title} href={t.href}>
           <Card className="p-4 hover:border-foreground/40">
             <div className="font-semibold">{t.title}</div>
             <ul className="mt-2 text-sm text-muted-foreground space-y-1">{t.kpis.map(k=> <li key={k}>{k}</li>)}</ul>
           </Card>
-        </a>
+        </Link>
       ))}
     </div>
   );
 }
-

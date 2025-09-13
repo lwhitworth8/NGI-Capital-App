@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text as sa_text
 
 from ..database import get_db
-from ..auth import require_partner_access
+from ..auth_deps import require_clerk_user as _require_clerk_user
 
 
 router = APIRouter(prefix="/api/metrics", tags=["metrics"])
@@ -98,7 +98,7 @@ async def metric_history(metric_id: str, limit: int = Query(2000, ge=1, le=10000
 @router.post("/admin/append")
 async def admin_append(
     payload: Dict[str, Any],
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     """

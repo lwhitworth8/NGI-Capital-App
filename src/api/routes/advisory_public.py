@@ -15,36 +15,70 @@ import os
 
 from src.api.database import get_db
 from .advisory import _ensure_tables
+from src.api.clerk_auth import verify_clerk_jwt as _verify_clerk_jwt, verify_clerk_session_cookie as _verify_clerk_session
 
 router = APIRouter()
 
 
 def _extract_student_email(request: Request) -> Optional[str]:
-    # Try Authorization: Bearer <token>, parse unverified for dev
-    auth = request.headers.get("authorization") or request.headers.get("Authorization")
+    """Resolve student email from Clerk (preferred) or dev/test fallbacks.
+    Order:
+      1) Authorization: Bearer <Clerk JWT> verified via JWKS
+      2) Clerk session cookie (__session) via Clerk verify endpoint
+      3) Dev/test fallbacks: X-Student-Email header or ?email= param
+    """
     email: Optional[str] = None
-    if auth and auth.lower().startswith("bearer "):
-        token = auth.split(" ", 1)[1].strip()
+    # 1) Bearer token (Clerk)
+    try:
+        auth = request.headers.get("authorization") or request.headers.get("Authorization")
+        if auth and auth.lower().startswith("bearer "):
+            token = auth.split(" ", 1)[1].strip()
+            claims = _verify_clerk_jwt(token)
+            if claims and claims.get("sub"):
+                # Prefer explicit email claims; otherwise sub/email as available
+                email = (
+                    claims.get("email")
+                    or claims.get("email_address")
+                    or claims.get("primary_email")
+                    or claims.get("primary_email_address")
+                    or claims.get("sub")
+                )
+    except Exception:
+        email = None
+    # 2) Clerk session cookie
+    if not email:
         try:
-            claims = _jwt.get_unverified_claims(token)  # dev-friendly; in prod verify
-            email = (
-                claims.get("email")
-                or claims.get("email_address")
-                or claims.get("primary_email_address")
-                or claims.get("sub")
-            )
+            sess = request.cookies.get("__session")
+            if sess:
+                sclaims = _verify_clerk_session(sess)
+                if sclaims and sclaims.get("sub"):
+                    email = sclaims.get("email") or None
         except Exception:
-            email = None
-    # Header override (for tests/dev) - handle case-insensitive retrieval
+            pass
+    # 3) Dev/test fallbacks
+    if not email:
+        # If an unverified Bearer is present, extract claims for dev
+        try:
+            auth = request.headers.get("authorization") or request.headers.get("Authorization")
+            if auth and auth.lower().startswith("bearer "):
+                token = auth.split(" ", 1)[1].strip()
+                unv = _jwt.get_unverified_claims(token)
+                email = (
+                    unv.get("email")
+                    or unv.get("email_address")
+                    or unv.get("primary_email_address")
+                    or unv.get("sub")
+                )
+        except Exception:
+            pass
     if not email:
         email = request.headers.get("X-Student-Email") or request.headers.get("x-student-email")
-    # Query param fallback
     if not email:
         try:
             email = request.query_params.get("email")
         except Exception:
             pass
-    return email.lower() if isinstance(email, str) else None
+    return (email or "").lower() if isinstance(email, str) else None
 
 
 def _check_domain(email: str, allow_all_for_applications: bool = False) -> bool:

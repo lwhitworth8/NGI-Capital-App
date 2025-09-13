@@ -1,6 +1,7 @@
 ﻿from fastapi.testclient import TestClient
 import os
 from src.api.main import app
+from tests.helpers_auth import auth_headers
 from src.api.database import get_db
 from sqlalchemy import text as sa_text
 from datetime import datetime, timedelta
@@ -15,6 +16,8 @@ def seed_app(db, email='student@example.com', proj_id=101, created_at=None):
     db.commit()
 
 def test_public_applications_endpoints():
+    # Ensure advisory tables are created
+    client.get('/api/advisory/projects', headers=auth_headers('lwhitworth@ngicapitaladvisory.com'))
     os.environ['ALLOWED_STUDENT_DOMAINS'] = ''
     db = next(get_db())
     try:

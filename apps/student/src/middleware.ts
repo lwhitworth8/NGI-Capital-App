@@ -34,7 +34,7 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.redirect(signInUrl)
   }
 
-  // If authenticated, route partners to admin and block non-allowed domains
+  // If authenticated, block non-allowed domains (admin routing handled by backend/Desktop)
   try {
     const email = (
       (sessionClaims as any)?.email ||
@@ -43,15 +43,6 @@ export default clerkMiddleware(async (auth, req) => {
       ''
     ) as string
     const em = (email || '').toLowerCase()
-    const partners = (process.env.PARTNER_EMAILS || '')
-      .split(',')
-      .map(s => s.trim().toLowerCase())
-      .filter(Boolean)
-    if (em && partners.includes(em)) {
-      // Admin base default
-      const adminBase = (process.env.NEXT_PUBLIC_ADMIN_BASE_URL || 'http://localhost:3001/admin').replace(/\/$/, '')
-      return NextResponse.redirect(`${adminBase}/dashboard`)
-    }
 
     // Domain gating (best-effort)
     const allowed = (process.env.ALLOWED_EMAIL_DOMAINS || '')

@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.api.main import app
+from tests.helpers_auth import auth_headers
 
 
 client = TestClient(app)
@@ -122,24 +123,14 @@ def setup_finance_db():
             db_path.unlink()
 
 
-def _login_token() -> str:
-    r = client.post(
-        "/api/auth/login",
-        json={
-            "email": "anurmamade@ngicapitaladvisory.com",
-            "password": "TestPassword123!",
-        },
-    )
-    assert r.status_code == 200, r.text
-    return r.json()["access_token"]
+def _headers():
+    return auth_headers('lwhitworth@ngicapitaladvisory.com')
 
 
 class TestFinanceKPIs:
     def test_kpis_include_numeric_cash_position(self, setup_finance_db):
-        token = _login_token()
-
         # All entities
-        r = client.get("/api/finance/kpis", headers={"Authorization": f"Bearer {token}"})
+        r = client.get("/api/finance/kpis", headers=_headers())
         assert r.status_code == 200
         data = r.json()
         # New numeric fields supported by frontend
@@ -150,11 +141,7 @@ class TestFinanceKPIs:
         assert isinstance(data.get("items"), list)
 
         # Filter by entity
-        r2 = client.get(
-            "/api/finance/kpis",
-            params={"entity_id": 1},
-            headers={"Authorization": f"Bearer {token}"},
-        )
+        r2 = client.get("/api/finance/kpis", params={"entity_id": 1}, headers=_headers())
         assert r2.status_code == 200
         d2 = r2.json()
         assert abs(float(d2.get("cash_position", 0.0)) - 1200.50) < 1e-6
@@ -162,8 +149,7 @@ class TestFinanceKPIs:
 
 class TestForecasting:
     def test_scenarios_and_assumptions_flow(self, setup_finance_db):
-        token = _login_token()
-        headers = {"Authorization": f"Bearer {token}"}
+        headers = _headers()
 
         # Initially empty
         r0 = client.get("/api/finance/forecast/scenarios", headers=headers)
@@ -212,11 +198,10 @@ class TestForecasting:
 
 class TestCapTableSummary:
     def test_cap_table_summary_shape(self, setup_finance_db):
-        token = _login_token()
         r = client.get(
             "/api/finance/cap-table-summary",
             params={"entity_id": 1},
-            headers={"Authorization": f"Bearer {token}"},
+            headers=_headers(),
         )
         assert r.status_code == 200
         data = r.json()
@@ -224,4 +209,3 @@ class TestCapTableSummary:
         # Ensure keys exist even when empty
         assert "fdShares" in data["summary"]
         assert "classes" in data
-

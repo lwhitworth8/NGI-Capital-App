@@ -15,11 +15,23 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text as sa_text
 
 from ..database import get_db
-from ..auth import require_partner_access
+from ..auth_deps import require_clerk_user as _require_clerk_user
 
-
+# Router
 router = APIRouter(prefix="/api/investors", tags=["investors"])
 
+
+def _has_column(db: Session, table: str, column: str) -> bool:
+    try:
+        rows = db.execute(sa_text(f"PRAGMA table_info({table})")).fetchall()
+        return any((r[1] == column) for r in rows)
+    except Exception:
+        return False
+
+
+def _add_column_if_missing(db: Session, table: str, column: str, coltype: str) -> None:
+    if not _has_column(db, table, column):
+        db.execute(sa_text(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}"))
 
 def _uuid() -> str:
     return uuid.uuid4().hex
@@ -42,6 +54,20 @@ def _ensure_schema(db: Session) -> None:
         )
         """
     ))
+    # Ensure columns exist on older DBs and backfill legal_name from name if needed
+    try:
+        for col, typ in (
+            ('legal_name','TEXT'),('firm','TEXT'),('email','TEXT'),('phone','TEXT'),
+            ('type','TEXT'),('notes','TEXT'),('created_at','TEXT'),('updated_at','TEXT')
+        ):
+            _add_column_if_missing(db, 'investors', col, typ)
+        # Backfill legal_name from legacy 'name' if present
+        if _has_column(db, 'investors', 'name') and _has_column(db, 'investors', 'legal_name'):
+            db.execute(sa_text("UPDATE investors SET legal_name = COALESCE(legal_name, name) WHERE legal_name IS NULL OR legal_name = ''"))
+        # Ensure DDL/backfill are applied before any SELECTs
+        db.commit()
+    except Exception:
+        pass
     # Pipelines
     db.execute(sa_text(
         """
@@ -97,6 +123,21 @@ def _ensure_schema(db: Session) -> None:
         )
         """
     ))
+    # Evolve investor_reports for older DBs
+    try:
+        for col, typ in (
+            ('period','TEXT'),
+            ('type','TEXT'),
+            ('status','TEXT'),
+            ('due_date','TEXT'),
+            ('submitted_at','TEXT'),
+            ('owner_user_id','TEXT'),
+            ('current_doc_url','TEXT'),
+        ):
+            _add_column_if_missing(db, 'investor_reports', col, typ)
+        db.commit()
+    except Exception:
+        pass
     db.execute(sa_text(
         """
         CREATE TABLE IF NOT EXISTS investor_report_files (
@@ -149,7 +190,7 @@ def _resolve_entity(entity: Optional[int] = None, entity_id: Optional[int] = Non
 async def kpis(
     entity: int | None = Query(None),
     entity_id: int | None = Query(None),
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_schema(db)
@@ -222,7 +263,7 @@ async def kpis(
 async def kpis_alias(
     entity: int | None = Query(None),
     entity_id: int | None = Query(None),
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     return await kpis(entity=entity, entity_id=entity_id, partner=partner, db=db)  # type: ignore
@@ -236,7 +277,7 @@ async def list_investors(
     type: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     pageSize: int = Query(50, ge=1, le=200),
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_schema(db)
@@ -263,7 +304,7 @@ async def list_investors(
     rows = db.execute(sa_text(sql), params).fetchall()
     total = int(db.execute(sa_text(count_sql), params).scalar() or 0)
     items = [
-        {"id": r[0], "legal_name": r[1], "firm": r[2], "email": r[3], "phone": r[4], "type": r[5]}
+        {"id": "" if r[0] is None else str(r[0]), "legal_name": r[1], "firm": r[2], "email": r[3], "phone": r[4], "type": r[5]}
         for r in rows
     ]
     return {"items": items, "total": total, "page": page, "pageSize": pageSize}
@@ -272,7 +313,7 @@ async def list_investors(
 @router.post("")
 async def create_investor(
     payload: Dict[str, Any],
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_schema(db)
@@ -285,13 +326,13 @@ async def create_investor(
         email = str(email).strip().lower()
         row = db.execute(sa_text("SELECT id FROM investors WHERE lower(coalesce(email,'')) = :e"), {"e": email}).fetchone()
         if row:
-            return {"id": row[0]}
+            return {"id": "" if row[0] is None else str(row[0])}
     # Dedupe by exact name+firm if email not provided
     firm = payload.get("firm")
     if firm and not email:
         row = db.execute(sa_text("SELECT id FROM investors WHERE legal_name = :n AND coalesce(firm,'') = :f"), {"n": name, "f": firm}).fetchone()
         if row:
-            return {"id": row[0]}
+            return {"id": "" if row[0] is None else str(row[0])}
     iid = payload.get("id") or _uuid()
     db.execute(sa_text("""
         INSERT INTO investors (id, legal_name, firm, email, phone, type, notes, created_at, updated_at)
@@ -313,7 +354,7 @@ async def create_investor(
 async def update_investor(
     iid: str,
     payload: Dict[str, Any],
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_schema(db)
@@ -339,7 +380,7 @@ async def get_pipeline(
     q: Optional[str] = Query(None),
     stage: Optional[str] = Query(None),  # single stage or special 'in_progress'
     sort: Optional[str] = Query(None),   # 'name' | 'lastActivity'
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_schema(db)
@@ -373,7 +414,7 @@ async def get_pipeline(
     for r in rows:
         grouped.get(r[1], grouped["Not Started"]).append({
             "pipelineId": r[0],
-            "investor": {"id": r[4], "name": r[5], "firm": r[6], "email": r[7]},
+            "investor": {"id": "" if r[4] is None else str(r[4]), "name": r[5], "firm": r[6], "email": r[7]},
             "ownerUserId": r[2],
             "lastActivityAt": r[3],
         })
@@ -383,7 +424,7 @@ async def get_pipeline(
 @router.post("/pipeline")
 async def upsert_pipeline(
     payload: Dict[str, Any],
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_schema(db)
@@ -410,7 +451,7 @@ async def upsert_pipeline(
 @router.post("/link")
 async def link_investor(
     payload: Dict[str, Any],
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     """
@@ -442,7 +483,7 @@ async def search_investors(
     entity: int | None = Query(None),
     entity_id: int | None = Query(None),
     limit: int = Query(10, ge=1, le=50),
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     """Search global investors by name/firm/email. If entity provided, exclude already linked."""
@@ -473,13 +514,13 @@ async def search_investors(
             LIMIT :lim
             """
         ), {"q": ql, "lim": limit}).fetchall()
-    return [{"id": r[0], "legal_name": r[1], "firm": r[2], "email": r[3]} for r in rows]
+    return [{"id": "" if r[0] is None else str(r[0]), "legal_name": r[1], "firm": r[2], "email": r[3]} for r in rows]
 
 
 @router.get("/raise-costs")
 async def raise_costs(
     entity: int | None = Query(None), entity_id: int | None = Query(None), consolidated: bool | None = Query(None),
-    partner=Depends(require_partner_access()), db: Session = Depends(get_db)
+    partner=Depends(_require_clerk_user), db: Session = Depends(get_db)
 ):
     """
     Returns a cost breakdown suitable for a pie chart.
@@ -527,7 +568,7 @@ async def raise_costs(
 async def patch_pipeline(
     pid: str,
     payload: Dict[str, Any],
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_schema(db)
@@ -559,7 +600,7 @@ async def patch_pipeline(
 # Contacts (Interactions) endpoints per spec
 @router.post("/contacts")
 async def create_contact(
-    payload: Dict[str, Any], partner=Depends(require_partner_access()), db: Session = Depends(get_db)
+    payload: Dict[str, Any], partner=Depends(_require_clerk_user), db: Session = Depends(get_db)
 ):
     _ensure_schema(db)
     investor_id = (payload.get("investorId") or payload.get("investor_id") or "").strip()
@@ -585,7 +626,7 @@ async def create_contact(
 
 @router.get("/contacts")
 async def list_contacts(
-    entity: int | None = Query(None), entity_id: int | None = Query(None), investor: str | None = Query(None), partner=Depends(require_partner_access()), db: Session = Depends(get_db)
+    entity: int | None = Query(None), entity_id: int | None = Query(None), investor: str | None = Query(None), partner=Depends(_require_clerk_user), db: Session = Depends(get_db)
 ):
     _ensure_schema(db)
     eid = _resolve_entity(entity, entity_id)
@@ -610,54 +651,54 @@ async def list_contacts(
 
 # Reporting endpoint aliases under /api
 @router.get("/../reports", include_in_schema=False)
-async def reports_alias(entity: int | None = Query(None), entity_id: int | None = Query(None), partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def reports_alias(entity: int | None = Query(None), entity_id: int | None = Query(None), partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     from fastapi import APIRouter
     return await list_reports(entity=entity, entity_id=entity_id, partner=partner, db=db)  # type: ignore
 
 
 @router.post("/../reports", include_in_schema=False)
-async def create_report_alias(payload: Dict[str, Any], partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def create_report_alias(payload: Dict[str, Any], partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     return await create_report(payload=payload, partner=partner, db=db)  # type: ignore
 
 
 @router.patch("/../reports/{rid}", include_in_schema=False)
-async def patch_report_alias(rid: str, payload: Dict[str, Any], partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def patch_report_alias(rid: str, payload: Dict[str, Any], partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     return await patch_report(rid=rid, payload=payload, partner=partner, db=db)  # type: ignore
 
 
 @router.post("/../reports/{rid}/files", include_in_schema=False)
-async def attach_file_alias(rid: str, payload: Dict[str, Any], partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def attach_file_alias(rid: str, payload: Dict[str, Any], partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     return await attach_file(rid=rid, payload=payload, partner=partner, db=db)  # type: ignore
 
 
 # Goals aliases under /api/raise
 @router.get("/../raise/goals", include_in_schema=False)
-async def raise_goals(entity: int | None = Query(None), entity_id: int | None = Query(None), partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def raise_goals(entity: int | None = Query(None), entity_id: int | None = Query(None), partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     return await list_rounds(entity=entity, entity_id=entity_id, consolidated=False, partner=partner, db=db)  # type: ignore
 
 
 @router.get("/../raise/goals/consolidated", include_in_schema=False)
-async def raise_goals_consolidated(partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def raise_goals_consolidated(partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     return await list_rounds(entity=None, entity_id=None, consolidated=True, partner=partner, db=db)  # type: ignore
 
 
 @router.post("/../raise/goals", include_in_schema=False)
-async def raise_create_goal(payload: Dict[str, Any], partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def raise_create_goal(payload: Dict[str, Any], partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     return await create_round(payload=payload, partner=partner, db=db)  # type: ignore
 
 
 @router.patch("/../raise/goals/{rid}", include_in_schema=False)
-async def raise_patch_goal(rid: str, payload: Dict[str, Any], partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def raise_patch_goal(rid: str, payload: Dict[str, Any], partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     return await patch_round(rid=rid, payload=payload, partner=partner, db=db)  # type: ignore
 
 
 @router.get("/../raise/progress", include_in_schema=False)
-async def raise_progress(roundId: str, partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def raise_progress(roundId: str, partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     return await list_contribs(rid=roundId, partner=partner, db=db)  # type: ignore
 
 
 @router.patch("/../raise/progress", include_in_schema=False)
-async def raise_progress_patch(payload: Dict[str, Any], partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def raise_progress_patch(payload: Dict[str, Any], partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     # Accept roundId, amount, status
     rid = payload.get('roundId')
     if not rid:
@@ -670,7 +711,7 @@ async def raise_progress_patch(payload: Dict[str, Any], partner=Depends(require_
 @router.get("/{pipeline_id}/interactions")
 async def list_interactions(
     pipeline_id: str,
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_schema(db)
@@ -688,7 +729,7 @@ async def list_interactions(
 async def create_interaction(
     pipeline_id: str,
     payload: Dict[str, Any],
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_schema(db)
@@ -715,7 +756,7 @@ async def create_interaction(
 async def list_reports(
     entity: int | None = Query(None),
     entity_id: int | None = Query(None),
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_schema(db)
@@ -732,38 +773,74 @@ async def list_reports(
         FROM investor_reports WHERE entity_id = :e AND (submitted_at IS NOT NULL OR status = 'Submitted')
         ORDER BY COALESCE(submitted_at, due_date) DESC
     """), {"e": eid}).fetchall()
+
+    def _norm_row(row):
+        # Normalize legacy rows: coerce id to string and default missing enums/strings
+        return {
+            "id": "" if row[0] is None else str(row[0]),
+            "entityId": int(row[1] or 0),
+            "period": (row[2] or ""),
+            "type": (row[3] or "Quarterly"),
+            "status": (row[4] or "Draft"),
+            "dueDate": row[5],
+            "submittedAt": row[6],
+            "ownerUserId": row[7],
+            "currentDocUrl": row[8],
+        }
+
     return {
-        "current": None if not current else {
-            "id": current[0], "entityId": current[1], "period": current[2], "type": current[3], "status": current[4], "dueDate": current[5], "submittedAt": current[6], "ownerUserId": current[7], "currentDocUrl": current[8]
-        },
-        "past": [
-            {"id": r[0], "entityId": r[1], "period": r[2], "type": r[3], "status": r[4], "dueDate": r[5], "submittedAt": r[6], "ownerUserId": r[7], "currentDocUrl": r[8]}
-            for r in past_rows
-        ]
+        "current": None if not current else _norm_row(current),
+        "past": [_norm_row(r) for r in past_rows],
     }
 
 
 @router.post("/reports")
 async def create_report(
-    payload: Dict[str, Any], partner=Depends(require_partner_access()), db: Session = Depends(get_db)
+    payload: Dict[str, Any], partner=Depends(_require_clerk_user), db: Session = Depends(get_db)
 ):
     _ensure_schema(db)
     eid = _resolve_entity(payload.get("entity"), payload.get("entityId") or payload.get("entity_id"))
     period = (payload.get("period") or "").strip()
     if not eid or not period:
         raise HTTPException(status_code=422, detail="entityId and period required")
-    rid = _uuid()
-    db.execute(sa_text("""
-        INSERT INTO investor_reports (id, entity_id, period, type, status, due_date, owner_user_id)
-        VALUES (:id,:e,:p,:t,'Draft',:d,:o)
-    """), {"id": rid, "e": eid, "p": period, "t": payload.get("type") or 'Quarterly', "d": payload.get("dueDate"), "o": payload.get("ownerUserId")})
-    db.commit()
-    return {"id": rid}
+    # Determine legacy vs. new schema for primary key handling
+    id_is_integer_pk = False
+    try:
+        rows = db.execute(sa_text("PRAGMA table_info(investor_reports)")).fetchall()
+        for r in rows:
+            col_name = str(r[1] or '').lower()
+            col_type = str(r[2] or '').upper()
+            is_pk = int(r[5] or 0) == 1
+            if col_name == 'id' and is_pk and 'INT' in col_type:
+                id_is_integer_pk = True
+                break
+    except Exception:
+        id_is_integer_pk = False
+
+    if id_is_integer_pk:
+        # Legacy table: id is INTEGER PRIMARY KEY. Let SQLite assign it.
+        db.execute(sa_text("""
+            INSERT INTO investor_reports (entity_id, period, type, status, due_date, owner_user_id)
+            VALUES (:e,:p,:t,'Draft',:d,:o)
+        """), {"e": eid, "p": period, "t": payload.get("type") or 'Quarterly', "d": payload.get("dueDate"), "o": payload.get("ownerUserId")})
+        rid_row = db.execute(sa_text("SELECT last_insert_rowid()")).fetchone()
+        rid_val = str(int(rid_row[0])) if rid_row and rid_row[0] is not None else None
+        db.commit()
+        return {"id": rid_val}
+    else:
+        # New table: id is TEXT UUID.
+        rid = _uuid()
+        db.execute(sa_text("""
+            INSERT INTO investor_reports (id, entity_id, period, type, status, due_date, owner_user_id)
+            VALUES (:id,:e,:p,:t,'Draft',:d,:o)
+        """), {"id": rid, "e": eid, "p": period, "t": payload.get("type") or 'Quarterly', "d": payload.get("dueDate"), "o": payload.get("ownerUserId")})
+        db.commit()
+        return {"id": rid}
 
 
 @router.patch("/reports/{rid}")
 async def patch_report(
-    rid: str, payload: Dict[str, Any], partner=Depends(require_partner_access()), db: Session = Depends(get_db)
+    rid: str, payload: Dict[str, Any], partner=Depends(_require_clerk_user), db: Session = Depends(get_db)
 ):
     _ensure_schema(db)
     fields = []
@@ -782,7 +859,7 @@ async def patch_report(
 
 @router.post("/reports/{rid}/files")
 async def attach_file(
-    rid: str, payload: Dict[str, Any], partner=Depends(require_partner_access()), db: Session = Depends(get_db)
+    rid: str, payload: Dict[str, Any], partner=Depends(_require_clerk_user), db: Session = Depends(get_db)
 ):
     _ensure_schema(db)
     fid = _uuid()
@@ -798,7 +875,7 @@ async def list_rounds(
     entity: int | None = Query(None),
     entity_id: int | None = Query(None),
     consolidated: bool | None = Query(None),
-    partner=Depends(require_partner_access()), db: Session = Depends(get_db)
+    partner=Depends(_require_clerk_user), db: Session = Depends(get_db)
 ):
     _ensure_schema(db)
     eid = _resolve_entity(entity, entity_id)
@@ -822,7 +899,7 @@ async def list_rounds(
 
 @router.post("/rounds")
 async def create_round(
-    payload: Dict[str, Any], partner=Depends(require_partner_access()), db: Session = Depends(get_db)
+    payload: Dict[str, Any], partner=Depends(_require_clerk_user), db: Session = Depends(get_db)
 ):
     _ensure_schema(db)
     rid = _uuid()
@@ -840,7 +917,7 @@ async def create_round(
 
 @router.patch("/rounds/{rid}")
 async def patch_round(
-    rid: str, payload: Dict[str, Any], partner=Depends(require_partner_access()), db: Session = Depends(get_db)
+    rid: str, payload: Dict[str, Any], partner=Depends(_require_clerk_user), db: Session = Depends(get_db)
 ):
     _ensure_schema(db)
     fields = []
@@ -859,7 +936,7 @@ async def patch_round(
 
 @router.get("/rounds/{rid}/contribs")
 async def list_contribs(
-    rid: str, partner=Depends(require_partner_access()), db: Session = Depends(get_db)
+    rid: str, partner=Depends(_require_clerk_user), db: Session = Depends(get_db)
 ):
     _ensure_schema(db)
     rows = db.execute(sa_text("""
@@ -873,7 +950,7 @@ async def list_contribs(
 
 @router.post("/rounds/{rid}/contribs")
 async def add_contrib(
-    rid: str, payload: Dict[str, Any], partner=Depends(require_partner_access()), db: Session = Depends(get_db)
+    rid: str, payload: Dict[str, Any], partner=Depends(_require_clerk_user), db: Session = Depends(get_db)
 ):
     _ensure_schema(db)
     cid = _uuid()
@@ -893,3 +970,4 @@ async def add_contrib(
     db.execute(sa_text("UPDATE capital_raise_rounds SET soft_commits = :s, hard_commits = :h WHERE id = :r"), {"s": soft, "h": hard, "r": rid})
     db.commit()
     return {"id": cid}
+

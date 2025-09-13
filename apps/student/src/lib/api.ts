@@ -21,6 +21,24 @@ export async function spFetch<T>(path: string, opts?: RequestInit): Promise<T> {
     } catch {}
   }
 
+  // Attach Clerk bearer token in browser when available (backend template preferred)
+  if (typeof window !== 'undefined') {
+    try {
+      const anyWin: any = window as any
+      const clerk = anyWin?.Clerk
+      if (clerk?.session?.getToken) {
+        let token: string | null = null
+        try { token = await clerk.session.getToken({ template: 'backend' }) } catch {}
+        if (!token) {
+          try { token = await clerk.session.getToken() } catch {}
+        }
+        if (token) {
+          extraHeaders['Authorization'] = `Bearer ${token}`
+        }
+      }
+    } catch {}
+  }
+
   // Ensure absolute URL on the server runtime (Node fetch requires absolute URL)
   let url = path
   if (typeof window === 'undefined') {

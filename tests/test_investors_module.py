@@ -7,7 +7,7 @@ from src.api.config import SECRET_KEY, ALGORITHM
 client = TestClient(app)
 
 
-def auth(email: str = "pytest@ngicapitaladvisory.com"):
+def auth(email: str = "lwhitworth@ngicapitaladvisory.com"):
     payload = {"sub": email, "iat": datetime.utcnow().timestamp()}
     token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
     return {"Authorization": f"Bearer {token}"}
@@ -61,4 +61,3 @@ def test_reports_and_rounds():
     assert ac.status_code == 200
     cl = client.get(f"/api/investors/rounds/{rid_round}/contribs", headers=auth())
     assert cl.status_code == 200 and len(cl.json()) >= 1
-

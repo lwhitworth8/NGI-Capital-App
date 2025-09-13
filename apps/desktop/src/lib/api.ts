@@ -136,13 +136,14 @@ class ApiClient {
       (error) => Promise.reject(error)
     )
 
-    // Response interceptor: attempt session bridge + one retry on 401
+    // Response interceptor: attempt session bridge + one retry on 401 (can be disabled)
     this.client.interceptors.response.use(
       (response) => response,
       async (error) => {
         const status = error?.response?.status
         const original: any = error?.config || {}
-        if (typeof window !== 'undefined' && status === 401 && !original.__retried401) {
+        const bridgeDisabled = (process.env.NEXT_PUBLIC_DISABLE_SESSION_BRIDGE || '0').toLowerCase() === '1'
+        if (typeof window !== 'undefined' && status === 401 && !original.__retried401 && !bridgeDisabled) {
           try {
             // Ask backend to set HttpOnly session cookie using current Authorization
             const auth = (original.headers?.Authorization || original.headers?.authorization) as string | undefined
@@ -254,35 +255,7 @@ class ApiClient {
 
   // Authentication endpoints
   async login(credentials: LoginRequest): Promise<LoginResponse> {
-    console.log('Attempting login with URL:', `${API_BASE_URL}/auth/login`)
-    console.log('Credentials:', { email: credentials.email, password: '***' })
-    
-    try {
-      const response = await this.client.post('/auth/login', credentials)
-      console.log('Login response received:', response.data)
-      
-      const data = response.data
-      // Establish HttpOnly cookie session
-      try {
-        if (data?.access_token) {
-          await this.client.post('/auth/session', { access_token: data.access_token })
-        }
-      } catch (e) {
-        console.warn('Failed to establish cookie session', e)
-      }
-      // Normalize the response to always have partner object
-      if (!data.partner && data.partner_name) {
-        data.partner = {
-          name: data.partner_name,
-          email: credentials.email,
-          ownership_percentage: data.ownership_percentage || 50
-        }
-      }
-      return data
-    } catch (error) {
-      console.error('Login failed:', error)
-      throw error
-    }
+    throw new Error('Password login disabled; please sign in with Clerk')
   }
 
   // Profile endpoint (maps /auth/me to Partner)
@@ -312,18 +285,9 @@ class ApiClient {
   }
 
   // Password reset & profile preferences
-  async requestPasswordReset(email: string): Promise<void> {
-    await this.client.post('/auth/request-password-reset', { email })
-  }
-
-  async resetPassword(token: string, newPassword: string): Promise<void> {
-    await this.client.post('/auth/reset-password', { token, new_password: newPassword })
-  }
-
-  async changePassword(currentPassword: string, newPassword: string): Promise<{ message: string }> {
-    const res = await this.client.post('/auth/change-password', { current_password: currentPassword, new_password: newPassword })
-    return res.data
-  }
+  async requestPasswordReset(_email: string): Promise<void> { throw new Error('Password reset is managed by Clerk') }
+  async resetPassword(_token: string, _newPassword: string): Promise<void> { throw new Error('Password reset is managed by Clerk') }
+  async changePassword(_currentPassword: string, _newPassword: string): Promise<{ message: string }> { throw new Error('Password change is managed by Clerk') as any }
 
   async getPreferences(): Promise<{ theme: 'light'|'dark'|'system' }> {
     const res = await this.client.get('/preferences')
@@ -1136,4 +1100,5 @@ export async function accountingGetUnpostedEntries(entityId: number): Promise<{ 
 export async function accountingPostBatchEntries(options: { entity_id?: number; entry_ids?: number[]; start_date?: string; end_date?: string }): Promise<{ posted: number }> {
   return apiClient.request('POST', '/accounting/journal-entries/post-batch', options)
 }
+
 

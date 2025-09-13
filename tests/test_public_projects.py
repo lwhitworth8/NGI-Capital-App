@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 from sqlalchemy import text as sa_text
 from src.api.main import app
+from tests.helpers_auth import auth_headers
 from src.api.database import get_db
 
 client = TestClient(app)
@@ -23,6 +24,8 @@ def seed_projects(db):
     db.commit()
 
 def test_public_projects_list_and_detail():
+    # Ensure advisory tables are created
+    client.get('/api/advisory/projects', headers=auth_headers('lwhitworth@ngicapitaladvisory.com'))
     db = next(get_db())
     try:
         seed_projects(db)
@@ -58,4 +61,3 @@ def test_public_projects_list_and_detail():
     # Detail for draft should be 404
     rd2 = client.get('/api/public/projects/3')
     assert rd2.status_code == 404
-

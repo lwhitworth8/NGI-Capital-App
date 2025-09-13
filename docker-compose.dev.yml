@@ -31,6 +31,12 @@ services:
       - ADMIN_EMAILS=${ADMIN_EMAILS}
       - DISABLE_ADVISORY_AUTH=${DISABLE_ADVISORY_AUTH:-1}
       - DEFAULT_ADMIN_EMAIL=${DEFAULT_ADMIN_EMAIL:-admin@ngicapitaladvisory.com}
+      # Open non-accounting modules in dev for frictionless admin UX
+      - OPEN_NON_ACCOUNTING=${OPEN_NON_ACCOUNTING:-1}
+      # Relax accounting guard in dev
+      - DISABLE_ACCOUNTING_GUARD=${DISABLE_ACCOUNTING_GUARD:-1}
+      # Allow env admin allowlist fallback in dev
+      - ENABLE_ENV_ADMIN_FALLBACK=${ENABLE_ENV_ADMIN_FALLBACK:-1}
     networks:
       - ngi-network
     healthcheck:

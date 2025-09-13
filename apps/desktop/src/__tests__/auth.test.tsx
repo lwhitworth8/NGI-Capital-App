@@ -18,6 +18,22 @@ jest.mock('../lib/api', () => ({
   },
 }));
 
+// Mock Clerk hooks for Clerk-only flow
+const openSignInMock = jest.fn();
+const signOutMock = jest.fn();
+jest.mock('@clerk/nextjs', () => ({
+  // Simulate a signed-in user by default; tests can override by mocking getCurrentUser
+  useUser: () => ({
+    isLoaded: true,
+    user: {
+      firstName: 'Andre',
+      lastName: 'Nurmamade',
+      primaryEmailAddress: { emailAddress: 'anurmamade@ngicapitaladvisory.com' },
+    },
+  }),
+  useClerk: () => ({ openSignIn: openSignInMock, signOut: signOutMock }),
+}));
+
 // Spy on real localStorage (jsdom) to assert calls
 const setItemSpy = jest.spyOn(Storage.prototype, 'setItem');
 const removeItemSpy = jest.spyOn(Storage.prototype, 'removeItem');
@@ -76,21 +92,13 @@ describe('Authentication', () => {
     expect(screen.getByTestId('user-name')).toHaveTextContent('No User');
   });
 
-  it('handles successful login', async () => {
-    const mockToken = 'mock-jwt-token';
+  it('hydrates user from Clerk + backend profile (no password login)', async () => {
     const mockUser = {
       id: 1,
       email: 'anurmamade@ngicapitaladvisory.com',
       name: 'Andre Nurmamade',
       ownership_percentage: 50,
     };
-
-    (apiClient.login as jest.Mock).mockResolvedValue({
-      access_token: mockToken,
-      partner_name: mockUser.name,
-      ownership_percentage: mockUser.ownership_percentage,
-    });
-
     (apiClient.getCurrentUser as jest.Mock).mockResolvedValue(mockUser);
 
     render(
@@ -101,20 +109,16 @@ describe('Authentication', () => {
       </QueryClientProvider>
     );
 
-    const loginButton = screen.getByText('Login');
-    fireEvent.click(loginButton);
-
     await waitFor(() => {
       expect(screen.getByTestId('auth-status')).toHaveTextContent('Authenticated');
       expect(screen.getByTestId('user-name')).toHaveTextContent('Andre Nurmamade');
     });
 
-    expect(setItemSpy).toHaveBeenCalledWith('auth_token', mockToken);
+    // user profile persisted
+    expect(setItemSpy).toHaveBeenCalledWith('user', expect.any(String));
   });
 
   it('handles logout', async () => {
-    window.localStorage.setItem('auth_token', 'mock-token');
-    
     const mockUser = {
       id: 1,
       email: 'anurmamade@ngicapitaladvisory.com',
@@ -144,15 +148,14 @@ describe('Authentication', () => {
       expect(screen.getByTestId('user-name')).toHaveTextContent('No User');
     });
 
-    expect(removeItemSpy).toHaveBeenCalledWith('auth_token');
+    expect(removeItemSpy).toHaveBeenCalledWith('user');
+    expect(signOutMock).toHaveBeenCalled();
   });
 
   it('restricts access to partner emails only', async () => {
     const invalidEmail = 'test@gmail.com';
     
-    (apiClient.login as jest.Mock).mockRejectedValue(
-      new Error('Access restricted to NGI Capital partners')
-    );
+    (apiClient.login as jest.Mock).mockImplementation(() => { throw new Error('Password login disabled; please sign in with Clerk') });
 
     render(
       <QueryClientProvider client={queryClient}>
@@ -162,14 +165,14 @@ describe('Authentication', () => {
       </QueryClientProvider>
     );
 
-    const loginButton = screen.getByText('Login');
+    const loginButton = screen.getByText('Login'); // calls openSignIn in Clerk-only mode
     fireEvent.click(loginButton);
 
     await waitFor(() => {
       expect(screen.getByTestId('auth-status')).toHaveTextContent('Not Authenticated');
     });
 
-    expect(apiClient.login).toHaveBeenCalled();
+    expect(openSignInMock).toHaveBeenCalled();
   });
 });
 

@@ -86,12 +86,7 @@ export default function IncomeStatementPage() {
 
   const loadEntities = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/entities', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetch('/api/entities');
       if (response.ok) {
         const data = await response.json();
         setEntities(data.entities || []);
@@ -128,15 +123,7 @@ export default function IncomeStatementPage() {
   const fetchIncomeStatement = async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch(
-        `/api/financial-reporting/gl/income-statement?entity_id=${selectedEntity}&period=${period}&fiscal_year=2024`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
-      );
+      const response = await fetch(`/api/financial-reporting/gl/income-statement?entity_id=${selectedEntity}&period=${period}&fiscal_year=2024`);
       if (response.ok) {
         const result = await response.json();
         // For now, no data since nothing is in the system yet

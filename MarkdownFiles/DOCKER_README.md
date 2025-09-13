@@ -2,6 +2,11 @@
 
 This document provides instructions for running the NGI Capital application using Docker.
 
+Auth Update (Clerk-only)
+- Legacy password-based login and cookie bridge are removed.
+- Use Clerk for sign-in; ensure `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `CLERK_ISSUER`, and `CLERK_JWKS_URL` are set.
+- Any "Default Credentials" referenced elsewhere are deprecated and should not be used.
+
 ## Prerequisites
 
 - Docker Desktop (Windows/Mac) or Docker Engine (Linux)
@@ -64,15 +69,12 @@ The application consists of the following services:
 - **API Documentation**: http://localhost:8001/docs
 - **Health Check**: http://localhost:8001/health
 
-## Login Credentials
+## Authentication
 
-- **Andre Nurmamade**
-  - Email: anurmamade@ngicapitaladvisory.com
-  - Password: TempPassword123!
-
-- **Landon Whitworth**
-  - Email: lwhitworth@ngicapitaladvisory.com
-  - Password: TempPassword123!
+Use Clerk for sign-in. There are no in-app passwords.
+Ensure these env vars are set in `.env` or your compose environment:
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`
+- `CLERK_ISSUER`, `CLERK_JWKS_URL`, `CLERK_AUDIENCE`
 
 ## Common Commands
 

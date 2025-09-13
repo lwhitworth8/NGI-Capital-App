@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 os.environ.setdefault("DISABLE_ADVISORY_AUTH", "1")
 
 from src.api.main import app  # noqa: E402
+from tests.helpers_auth import auth_headers  # noqa: E402
 from src.api.database import get_db  # noqa: E402
 from sqlalchemy import text as sa_text  # noqa: E402
 
@@ -51,7 +52,11 @@ def _seed_project_and_student():
 
 def _create_task(pid: int, sid: int) -> int:
     # Admin create task then assign
-    res = client.post(f"/api/advisory/projects/{pid}/tasks", json={"title": "Do Work", "priority": "med", "assignees": [sid]})
+    res = client.post(
+        f"/api/advisory/projects/{pid}/tasks",
+        json={"title": "Do Work", "priority": "med", "assignees": [sid]},
+        headers=auth_headers("lwhitworth@ngicapitaladvisory.com"),
+    )
     assert res.status_code == 200, res.text
     return int(res.json().get("id") or 0)
 
@@ -88,7 +93,10 @@ def test_public_my_projects_flow_with_header_email():
     tres = client.post(f"/api/public/projects/{pid}/timesheets/2025-01-05/entries", json={"task_id": tid, "day": "Sun", "hours": 1}, headers={"X-Student-Email": email})
     assert tres.status_code == 200, tres.text
     # Verify present in admin list
-    al = client.get(f"/api/advisory/projects/{pid}/timesheets")
+    al = client.get(
+        f"/api/advisory/projects/{pid}/timesheets",
+        headers=auth_headers("lwhitworth@ngicapitaladvisory.com"),
+    )
     assert al.status_code == 200
     found = False
     for r in al.json():
@@ -99,4 +107,3 @@ def test_public_my_projects_flow_with_header_email():
         if found:
             break
     assert found
-

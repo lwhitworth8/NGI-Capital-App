@@ -12,6 +12,19 @@ if root_str not in sys.path:
 
 _SERVER_PROC = None
 
+# Shared auth helpers for tests
+def make_token(email: str) -> str:
+    """Build a local HS256 token accepted by the test Clerk shim."""
+    try:
+        from jose import jwt  # type: ignore
+        from src.api.config import SECRET_KEY, ALGORITHM
+        return jwt.encode({"sub": email}, SECRET_KEY, algorithm=ALGORITHM)
+    except Exception:
+        return f"clerk:{email}"
+
+def auth_headers(email: str) -> dict:
+    return {"Authorization": f"Bearer {make_token(email)}"}
+
 def _wait_for_health(base_url: str, timeout_seconds: int = 20) -> bool:
     try:
         import requests
@@ -49,6 +62,13 @@ def pytest_sessionstart(session):
     env = os.environ.copy()
     env.setdefault("ENV", "development")
     env.setdefault("ALLOW_ALL_HOSTS", "1")
+    # Enable local JWT fallback in Clerk verification for tests
+    env.setdefault("ALLOW_LOCAL_TEST_JWT", "1")
+    env.setdefault("ENABLE_ENV_ADMIN_FALLBACK", "1")
+    env.setdefault(
+        "ALLOWED_ADVISORY_ADMINS",
+        "lwhitworth@ngicapitaladvisory.com,anurmamade@ngicapitaladvisory.com",
+    )
     env["DATABASE_PATH"] = str(db_path)
     env.setdefault("SECRET_KEY", "testing-secret-key")
 
@@ -85,6 +105,42 @@ def pytest_sessionstart(session):
             pass
         # Continue without raising to allow in-process tests to run
         return
+
+
+def pytest_configure(config):
+    """Global monkeypatch of Clerk verification for tests.
+    Accepts tokens of form 'clerk:<email>' and HS256 tokens using SECRET_KEY.
+    """
+    import importlib
+    import types
+    from jose import jwt as _jwt  # type: ignore
+    from src.api.config import SECRET_KEY
+    import src.api.auth_deps as auth_deps
+    import src.api.clerk_auth as clerk_auth
+    # Ensure env allowlist for admin gating in tests
+    os.environ.setdefault("ENABLE_ENV_ADMIN_FALLBACK", "1"); os.environ.setdefault("DISABLE_ACCOUNTING_GUARD","1")
+    os.environ.setdefault(
+        "ALLOWED_ADVISORY_ADMINS",
+        "lwhitworth@ngicapitaladvisory.com,anurmamade@ngicapitaladvisory.com",
+    )
+
+    def _claims_from_token(token: str):
+        if not isinstance(token, str):
+            return None
+        if token.startswith("clerk:"):
+            em = token.split(":", 1)[1]
+            return {"sub": em, "email": em}
+        try:
+            return _jwt.decode(token, SECRET_KEY, algorithms=["HS256"])  # type: ignore
+        except Exception:
+            return None
+
+    def _verify(token: str):
+        return _claims_from_token(token)
+
+    # Install lightweight shims
+    setattr(auth_deps, "verify_clerk_jwt", _verify)
+    setattr(clerk_auth, "verify_clerk_jwt", _verify)
 
 def pytest_sessionfinish(session, exitstatus):
     """Tear down the spawned API server if we started one."""

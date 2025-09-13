@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { apiClient } from './api'
 import { Partner } from '@/types'
 import { toast } from 'sonner'
+import { useUser, useClerk } from '@clerk/nextjs'
 
 interface AuthContextType {
   user: Partner | null
@@ -32,72 +33,55 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<Partner | null>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
+  const { user: clerkUser, isLoaded } = useUser()
+  const { openSignIn, signOut } = useClerk()
 
   useEffect(() => {
-    // Initialize from server session (cookie-based)
-    const initAuth = async () => {
+    const hydrate = async () => {
       try {
-        // Prefer getCurrentUser if available (tests mock this); fall back to getProfile
-        const anyApi: any = apiClient as any
-        const profile = anyApi.getCurrentUser ? await anyApi.getCurrentUser() : await apiClient.getProfile()
-        setUser(profile)
-        localStorage.setItem('user', JSON.stringify(profile))
-      } catch (error) {
-        // Not authenticated
-        localStorage.removeItem('user')
+        if (isLoaded && clerkUser) {
+          // Normalize Clerk -> Partner-like shape for existing UI
+          const p: Partner = {
+            id: 0 as any,
+            name: `${clerkUser.firstName || ''} ${clerkUser.lastName || ''}`.trim() || (clerkUser.username || 'User'),
+            email: clerkUser.primaryEmailAddress?.emailAddress || '',
+            ownership_percentage: 0 as any,
+          } as any
+          setUser(p)
+          // Optionally enrich from backend /auth/me (Clerk-authenticated)
+          try {
+            const anyApi: any = apiClient as any
+            const profile = anyApi.getCurrentUser ? await anyApi.getCurrentUser() : await apiClient.getProfile()
+            setUser(profile)
+          } catch {}
+        } else if (isLoaded && !clerkUser) {
+          setUser(null)
+        }
       } finally {
-        setLoading(false)
+        if (isLoaded) setLoading(false)
       }
     }
+    hydrate()
+  }, [clerkUser, isLoaded])
 
-    initAuth()
-  }, [])
-
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login = async (_email: string, _password: string): Promise<boolean> => {
+    // Unified auth: defer to Clerk sign-in
     try {
-      setLoading(true)
-      
-      const res = await apiClient.login({ email, password })
-      if ((res as any)?.access_token) {
-        try { localStorage.setItem('auth_token', (res as any).access_token) } catch {}
-        try { (globalThis as any).localStorage?.setItem?.('auth_token', (res as any).access_token) } catch {}
-      }
-      const anyApi: any = apiClient as any
-      const me = anyApi.getCurrentUser ? await anyApi.getCurrentUser() : await apiClient.getProfile()
-      setUser(me)
-      localStorage.setItem('user', JSON.stringify(me))
-
-      toast.success(`Welcome back, ${me.name}!`)
-      return true
-      
-    } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Login failed')
-      return false
-    } finally {
-      setLoading(false)
+      openSignIn?.({})
+      toast.info('Redirecting to secure sign-in...')
+    } catch {
+      // Fallback hard redirect
+      const base = (process.env.NEXT_PUBLIC_STUDENT_BASE_URL || 'http://localhost:3001').replace(/\/$/, '')
+      try { window.location.assign(`${base}/sign-in`) } catch { router.push(`${base}/sign-in`) }
     }
+    return false
   }
 
   const logout = async () => {
-    try {
-      await apiClient.logout()
-    } catch {}
+    try { await apiClient.logout() } catch {}
+    try { await signOut?.({ redirectUrl: (process.env.NEXT_PUBLIC_STUDENT_BASE_URL || 'http://localhost:3001') as string }) } catch {}
     setUser(null)
-    try { localStorage.removeItem('user') } catch {}
-    try { localStorage.removeItem('auth_token') } catch {}
-    try { (globalThis as any).localStorage?.removeItem?.('auth_token') } catch {}
-    // Attempt Clerk sign-out and hard redirect to marketing to avoid loops
-    // Navigate first to marketing to avoid any basePath redirect races
-    const marketing = (process.env.NEXT_PUBLIC_STUDENT_BASE_URL || 'http://localhost:3001') as string
-    try { window.location.replace(marketing) } catch { try { router.replace(marketing) } catch {} }
-    // Best-effort Clerk sign-out (student root also forces sign-out on load)
-    try {
-      const anyWin: any = window as any
-      if (anyWin?.Clerk?.signOut) {
-        await anyWin.Clerk.signOut({ redirectUrl: undefined })
-      }
-    } catch {}
-    toast.info('Logged out successfully')
+    toast.info('Signed out')
   }
 
   const value: AuthContextType = {

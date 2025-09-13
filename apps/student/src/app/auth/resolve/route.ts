@@ -1,58 +1,57 @@
-import { auth, currentUser } from '@clerk/nextjs/server'
+import { auth, currentUser, clerkClient } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
 
-export async function GET(req: Request) {
+export async function GET() {
   const { userId } = await auth()
-  
+
+  const base = (process.env.NEXT_PUBLIC_STUDENT_BASE_URL || 'http://localhost:3001').replace(/\/$/, '')
+  const signInUrl = `${base}/sign-in`
+
   if (!userId) {
-    // Send unauthenticated users to sign-in
-    return NextResponse.redirect('http://localhost:3001/sign-in')
+    return NextResponse.redirect(signInUrl)
   }
 
-  // Get the current user
   const user = await currentUser()
   const email = user?.primaryEmailAddress?.emailAddress?.toLowerCase() || ''
   const domain = email.split('@')[1] || ''
-  
-  // Admin emails - hardcoded for security
-  const adminEmails = [
-    'lwhitworth@ngicapitaladvisory.com',
-    'anurmamade@ngicapitaladvisory.com'
-  ]
-  
-  // Check if user is an admin
-  const isAdmin = adminEmails.includes(email)
-  
+
+  // Admin detection: prefer Clerk metadata set by webhook, then org membership, then env allowlist
+  let isAdmin = String(user?.publicMetadata?.role || '').toUpperCase() === 'PARTNER_ADMIN'
+
+  if (!isAdmin) {
+    const slug = String(process.env.CLERK_ADMIN_ORG_SLUG || '').trim().toLowerCase()
+    if (slug) {
+      try {
+        const memberships = await clerkClient.users.getOrganizationMembershipList({ userId })
+        if (Array.isArray((memberships as any)?.data)) {
+          isAdmin = (memberships as any).data.some((m: any) => String(m?.organization?.slug || '').toLowerCase() === slug)
+        }
+      } catch {
+        // ignore and fall back
+      }
+    }
+  }
+
+  if (!isAdmin) {
+    const admins = (process.env.ADMIN_EMAILS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+    if (email && admins.includes(email)) isAdmin = true
+  }
+
   if (isAdmin) {
-    console.log('[auth/resolve] Admin user detected:', email)
-    // Redirect to desktop app dashboard
-    // The desktop app is served at /admin path by nginx
-    return NextResponse.redirect('http://localhost:3001/admin/dashboard')
+    return NextResponse.redirect(`${base}/admin/dashboard`)
   }
-  
-  // Check if user's domain is allowed for student portal
-  // UC system domains only
-  const allowedDomains = [
-    'berkeley.edu',
-    'ucla.edu',
-    'ucsd.edu',
-    'uci.edu',
-    'ucdavis.edu',
-    'ucsb.edu',
-    'ucsc.edu',
-    'ucr.edu',
-    'ucmerced.edu'
-  ]
-  
+
+  // Student access gate by domain (configurable)
+  const allowedDomains = (process.env.ALLOWED_EMAIL_DOMAINS ||
+    'berkeley.edu,ucla.edu,ucsd.edu,uci.edu,ucdavis.edu,ucsb.edu,ucsc.edu,ucr.edu,ucmerced.edu')
+    .split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+
   if (!domain || !allowedDomains.includes(domain)) {
-    console.warn('[auth/resolve] Blocked non-UC domain:', { email, domain })
-    // User's domain is not allowed
-    return NextResponse.redirect('http://localhost:3001/blocked')
+    console.warn('[auth/resolve] Blocked domain', { email, domain })
+    return NextResponse.redirect(`${base}/blocked`)
   }
-  
-  // Valid student - redirect to projects page in student app
-  console.log('[auth/resolve] Student user detected:', email)
-  return NextResponse.redirect('http://localhost:3001/projects')
+
+  return NextResponse.redirect(`${base}/projects`)
 }

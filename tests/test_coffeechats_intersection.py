@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 os.environ['DISABLE_ADVISORY_AUTH'] = '1'
 
 from src.api.main import app  # noqa: E402
+from tests.helpers_auth import auth_headers
 
 client = TestClient(app)
 
@@ -21,12 +22,12 @@ def test_either_overlay_uses_minimal_grid_and_includes_intersection():
 
     r1 = client.post('/api/advisory/coffeechats/availability', json={
         'start_ts': astart, 'end_ts': aend, 'slot_len_min': 30, 'admin_email': 'anurmamade@ngicapitaladvisory.com'
-    })
+    }, headers=auth_headers('anurmamade@ngicapitaladvisory.com'))
     assert r1.status_code == 200
 
     r2 = client.post('/api/advisory/coffeechats/availability', json={
         'start_ts': lstart, 'end_ts': lend, 'slot_len_min': 15, 'admin_email': 'lwhitworth@ngicapitaladvisory.com'
-    })
+    }, headers=auth_headers('lwhitworth@ngicapitaladvisory.com'))
     assert r2.status_code == 200
 
     res = client.get('/api/public/coffeechats/availability')

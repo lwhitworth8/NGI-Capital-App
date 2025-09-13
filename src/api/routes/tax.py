@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text as sa_text
 
 from ..database import get_db
-from ..auth import require_partner_access
+from ..auth_deps import require_clerk_user as _require_clerk_user
 from fastapi import Depends
 
 
@@ -217,7 +217,7 @@ def _expand_due_dates(obligation: Dict[str, Any], start_date: date, months_ahead
     return dates
 
 
-async def ensure_full_access(partner=Depends(require_partner_access())):
+async def ensure_full_access(partner=Depends(_require_clerk_user)):
     """RBAC: restrict writes to full-access emails in production; relax in tests/dev.
     Mirrors logic in main.py without importing it to avoid circular imports.
     """
@@ -240,7 +240,7 @@ async def ensure_full_access(partner=Depends(require_partner_access())):
 
 
 @router.get("/entities")
-async def list_tax_entities(partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def list_tax_entities(partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     _ensure_schema(db)
     rows = db.execute(sa_text("SELECT id, legal_name, entity_type, domicile, operating_states, tax_election FROM entities WHERE is_active = 1"))
     items = []
@@ -264,7 +264,7 @@ async def list_tax_entities(partner=Depends(require_partner_access()), db: Sessi
 
 
 @router.get("/profile")
-async def tax_profile(entity: int, partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def tax_profile(entity: int, partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     _ensure_schema(db)
     e = db.execute(sa_text("SELECT id, legal_name, entity_type, domicile, operating_states, ein, de_file_number, ca_sos_number, tax_election, converted_from_entity_id, conversion_date FROM entities WHERE id = :id"), {"id": entity}).fetchone()
     if not e:
@@ -295,7 +295,7 @@ async def tax_profile(entity: int, partner=Depends(require_partner_access()), db
 
 
 @router.get("/obligations")
-async def list_obligations(entity: int, partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def list_obligations(entity: int, partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     _ensure_schema(db)
     rows = db.execute(sa_text("SELECT id, jurisdiction, form, frequency, due_rule, calc_method, active FROM tax_obligations WHERE entity_id = :id"), {"id": entity}).fetchall()
     return [
@@ -392,7 +392,7 @@ async def refresh_calendar(entity: int, partner=Depends(ensure_full_access), db:
 
 
 @router.get("/calendar")
-async def get_calendar(entity: int, from_: Optional[str] = Query(None, alias="from"), to: Optional[str] = None, partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def get_calendar(entity: int, from_: Optional[str] = Query(None, alias="from"), to: Optional[str] = None, partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     _ensure_schema(db)
     q = "SELECT id, jurisdiction, form, due_date, filing_id, status FROM tax_calendar WHERE entity_id = :id"
     params = {"id": entity}
@@ -411,7 +411,7 @@ async def get_calendar(entity: int, from_: Optional[str] = Query(None, alias="fr
 
 
 @router.get("/filings")
-async def list_filings(entity: int, year: Optional[int] = None, partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def list_filings(entity: int, year: Optional[int] = None, partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     _ensure_schema(db)
     q = "SELECT id, jurisdiction, form, period_start, period_end, due_date, status, amount, filed_date, confirmation_number FROM tax_filings WHERE entity_id = :id"
     params = {"id": entity}
@@ -489,7 +489,7 @@ async def patch_filing(filing_id: str, payload: Dict[str, Any], partner=Depends(
 
 
 @router.get("/documents")
-async def list_documents(entity: int, year: Optional[int] = None, partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def list_documents(entity: int, year: Optional[int] = None, partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     _ensure_schema(db)
     q = "SELECT id, year, jurisdiction, form, title, file_url, uploaded_at FROM tax_documents WHERE entity_id = :id"
     params = {"id": entity}
@@ -524,7 +524,7 @@ def _get_config(db: Session, key: str) -> Optional[Dict[str, Any]]:
 
 
 @router.post("/calc/de-franchise")
-async def calc_de_franchise(payload: Dict[str, Any], partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def calc_de_franchise(payload: Dict[str, Any], partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     _ensure_schema(db)
     method = (payload.get('method') or '').lower()
     entity_id = int(payload.get('entityId') or 0)
@@ -546,7 +546,7 @@ async def calc_de_franchise(payload: Dict[str, Any], partner=Depends(require_par
 
 
 @router.post("/calc/ca-llc-fee")
-async def calc_ca_llc_fee(payload: Dict[str, Any], partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def calc_ca_llc_fee(payload: Dict[str, Any], partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     _ensure_schema(db)
     cfg = _get_config(db, 'CA_LLC_FEE_TIERS') or {"tiers": [[0,0],[250000,900],[500000,2500],[1000000,6000],[5000000,11000]]}
     inputs = payload.get('revenue') or {}
@@ -564,7 +564,7 @@ async def calc_ca_llc_fee(payload: Dict[str, Any], partner=Depends(require_partn
 # --- Admin config endpoints ---
 
 @router.get("/config/versions")
-async def list_config_versions(partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def list_config_versions(partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     _ensure_schema(db)
     rows = db.execute(sa_text("SELECT id, created_at, notes FROM tax_config_versions ORDER BY created_at DESC"))
     return [{"id": r[0], "createdAt": r[1], "notes": r[2]} for r in rows.fetchall()]
@@ -580,7 +580,7 @@ async def create_config_version(payload: Dict[str, Any], partner=Depends(ensure_
 
 
 @router.get("/config/items")
-async def list_config_items(versionId: Optional[str] = None, partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def list_config_items(versionId: Optional[str] = None, partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     _ensure_schema(db)
     q = "SELECT id, version_id, key, value FROM tax_config_items"
     params: Dict[str, Any] = {}

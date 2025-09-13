@@ -242,11 +242,16 @@ export default function InvestorManagementPage() {
 }
 
 function Kpi({ label, value }: { label: string; value: number }) {
+  const [time, setTime] = useState<string>("")
+  useEffect(() => {
+    // Client-only to avoid hydration mismatch from server time/zone
+    setTime(new Date().toLocaleTimeString())
+  }, [])
   return (
     <div className="rounded-xl border border-border bg-card p-4">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="text-2xl font-semibold tabular-nums">{Number(value || 0).toLocaleString()}</div>
-      <div className="text-[10px] text-muted-foreground mt-1">as of {new Date().toLocaleTimeString()}</div>
+      <div className="text-[10px] text-muted-foreground mt-1">as of {time || '—'}</div>
     </div>
   )
 }

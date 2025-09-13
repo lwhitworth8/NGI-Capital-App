@@ -7,7 +7,7 @@ from src.api.config import SECRET_KEY, ALGORITHM
 client = TestClient(app)
 
 
-def _auth(email: str = "pytest@ngicapitaladvisory.com"):
+def _auth(email: str = "lwhitworth@ngicapitaladvisory.com"):
     payload = {"sub": email, "iat": datetime.utcnow().timestamp()}
     token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
     return {"Authorization": f"Bearer {token}"}

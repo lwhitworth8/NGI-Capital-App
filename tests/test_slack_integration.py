@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 os.environ.setdefault("DISABLE_ADVISORY_AUTH", "1")
 
 from src.api.main import app  # noqa: E402
+from tests.helpers_auth import auth_headers  # noqa: E402
 from src.api.database import get_db  # noqa: E402
 from sqlalchemy import text as sa_text  # noqa: E402
 
@@ -73,7 +74,11 @@ def test_slack_ensure_disabled_returns_false(monkeypatch):
     monkeypatch.delenv("ENABLE_SLACK", raising=False)
     monkeypatch.delenv("SLACK_BOT_TOKEN", raising=False)
     pid = _seed_project()
-    res = client.post(f"/api/advisory/projects/{pid}/slack/ensure", json={"emails": ["test@example.com"]})
+    res = client.post(
+        f"/api/advisory/projects/{pid}/slack/ensure",
+        json={"emails": ["test@example.com"]},
+        headers=auth_headers("lwhitworth@ngicapitaladvisory.com"),
+    )
     assert res.status_code == 200
     body = res.json()
     assert body.get("enabled") is False
@@ -101,7 +106,11 @@ def test_slack_ensure_creates_and_invites(monkeypatch):
     monkeypatch.setattr(slack_mod, "is_enabled", lambda: True)
 
     emails = ["anurmamade@ngicapitaladvisory.com", "lwhitworth@ngicapitaladvisory.com"]
-    res = client.post(f"/api/advisory/projects/{pid}/slack/ensure", json={"emails": emails})
+    res = client.post(
+        f"/api/advisory/projects/{pid}/slack/ensure",
+        json={"emails": emails},
+        headers=auth_headers("lwhitworth@ngicapitaladvisory.com"),
+    )
     assert res.status_code == 200, res.text
     body = res.json()
     assert body.get("enabled") is True
@@ -135,7 +144,11 @@ def test_slack_post_hooks_on_task_creation(monkeypatch):
     pid = _seed_project("PROJ-POST-001")
 
     # Create a task via admin endpoint
-    res = client.post(f"/api/advisory/projects/{pid}/tasks", json={"title": "Slack Test Task", "assignees": []})
+    res = client.post(
+        f"/api/advisory/projects/{pid}/tasks",
+        json={"title": "Slack Test Task", "assignees": []},
+        headers=auth_headers("lwhitworth@ngicapitaladvisory.com"),
+    )
     assert res.status_code == 200, res.text
     # A message should be recorded
     assert any("Slack Test Task" in m[1] for m in messages)

@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 os.environ.setdefault("DISABLE_ADVISORY_AUTH", "1")
 
 from src.api.main import app  # noqa: E402
+from tests.helpers_auth import auth_headers  # noqa: E402
 from src.api.database import get_db  # noqa: E402
 from sqlalchemy import text as sa_text  # noqa: E402
 
@@ -91,7 +92,11 @@ def _create_student(email: str | None = None) -> int:
         "entity_id": 1,
         "status": "active",
     }
-    res = client.post("/api/advisory/students", json=payload)
+    res = client.post(
+        "/api/advisory/students",
+        json=payload,
+        headers=auth_headers("lwhitworth@ngicapitaladvisory.com"),
+    )
     assert res.status_code == 200, res.text
     sid = int(res.json().get("id") or 0)
     assert sid > 0
@@ -109,13 +114,20 @@ def test_plm_create_and_list_tasks():
         "status": "todo",
         "planned_hours": 6,
     }
-    res = client.post(f"/api/advisory/projects/{pid}/tasks", json=t_payload)
+    res = client.post(
+        f"/api/advisory/projects/{pid}/tasks",
+        json=t_payload,
+        headers=auth_headers("lwhitworth@ngicapitaladvisory.com"),
+    )
     assert res.status_code == 200, res.text
     tid = int(res.json().get("id") or 0)
     assert tid > 0
 
     # List tasks and verify
-    res2 = client.get(f"/api/advisory/projects/{pid}/tasks")
+    res2 = client.get(
+        f"/api/advisory/projects/{pid}/tasks",
+        headers=auth_headers("lwhitworth@ngicapitaladvisory.com"),
+    )
     assert res2.status_code == 200
     items = res2.json()
     assert isinstance(items, list)
@@ -130,13 +142,18 @@ def test_plm_submit_url_and_size_guard():
     res = client.post(
         f"/api/advisory/projects/{pid}/tasks",
         json={"title": "Submit Deck", "priority": "high", "status": "review"},
+        headers=auth_headers("lwhitworth@ngicapitaladvisory.com"),
     )
     assert res.status_code == 200, res.text
     tid = int(res.json().get("id") or 0)
 
     # Submit by URL (no file upload in this test)
     payload = {"email": "student2@example.com", "kind": "url", "url": "https://drive.example.com/f/deck.pdf"}
-    res2 = client.post(f"/api/advisory/tasks/{tid}/submit", json=payload)
+    res2 = client.post(
+        f"/api/advisory/tasks/{tid}/submit",
+        json=payload,
+        headers=auth_headers("lwhitworth@ngicapitaladvisory.com"),
+    )
     assert res2.status_code == 200, res2.text
     body = res2.json()
     assert body.get("task_id") == tid
@@ -154,18 +171,29 @@ def test_plm_submit_url_and_size_guard():
 def test_plm_comments_and_meetings():
     pid = _create_project()
     # Create task
-    res = client.post(f"/api/advisory/projects/{pid}/tasks", json={"title": "Comment Task", "priority": "low"})
+    res = client.post(
+        f"/api/advisory/projects/{pid}/tasks",
+        json={"title": "Comment Task", "priority": "low"},
+        headers=auth_headers("lwhitworth@ngicapitaladvisory.com"),
+    )
     assert res.status_code == 200
     tid = int(res.json().get("id") or 0)
 
     # Add a comment (admin)
-    cres = client.post(f"/api/advisory/tasks/{tid}/comments", json={"body": "Please refine section 2"})
+    cres = client.post(
+        f"/api/advisory/tasks/{tid}/comments",
+        json={"body": "Please refine section 2"},
+        headers=auth_headers("lwhitworth@ngicapitaladvisory.com"),
+    )
     assert cres.status_code == 200
     cid = int(cres.json().get("id") or 0)
     assert cid > 0
 
     # List comments
-    lres = client.get(f"/api/advisory/tasks/{tid}/comments")
+    lres = client.get(
+        f"/api/advisory/tasks/{tid}/comments",
+        headers=auth_headers("lwhitworth@ngicapitaladvisory.com"),
+    )
     assert lres.status_code == 200
     comments = lres.json()
     assert any(c.get('id') == cid for c in comments)
@@ -174,13 +202,17 @@ def test_plm_comments_and_meetings():
     mres = client.post(
         f"/api/advisory/projects/{pid}/meetings",
         json={"title": "Kickoff", "start_ts": "2025-01-01T18:00:00Z", "end_ts": "2025-01-01T19:00:00Z", "attendees_emails": ["student@example.com"]},
+        headers=auth_headers("lwhitworth@ngicapitaladvisory.com"),
     )
     assert mres.status_code == 200
     mid = int(mres.json().get("id") or 0)
     assert mid > 0
 
     # List meetings
-    lm = client.get(f"/api/advisory/projects/{pid}/meetings")
+    lm = client.get(
+        f"/api/advisory/projects/{pid}/meetings",
+        headers=auth_headers("lwhitworth@ngicapitaladvisory.com"),
+    )
     assert lm.status_code == 200
     meetings = lm.json()
     assert any(m.get('id') == mid for m in meetings)
@@ -190,7 +222,11 @@ def test_plm_deliverables_and_timesheets_segments():
     pid = _create_project()
     sid = _create_student()
     # Create task, submit URL
-    res = client.post(f"/api/advisory/projects/{pid}/tasks", json={"title": "Deliverable", "priority": "high"})
+    res = client.post(
+        f"/api/advisory/projects/{pid}/tasks",
+        json={"title": "Deliverable", "priority": "high"},
+        headers=auth_headers("lwhitworth@ngicapitaladvisory.com"),
+    )
     assert res.status_code == 200
     tid = int(res.json().get("id") or 0)
     # resolve created student's email from DB
@@ -205,7 +241,10 @@ def test_plm_deliverables_and_timesheets_segments():
     assert res2.status_code == 200
 
     # List deliverables
-    dres = client.get(f"/api/advisory/projects/{pid}/deliverables")
+    dres = client.get(
+        f"/api/advisory/projects/{pid}/deliverables",
+        headers=auth_headers("lwhitworth@ngicapitaladvisory.com"),
+    )
     assert dres.status_code == 200
     dels = dres.json()
     assert any(d.get('task_id') == tid for d in dels)
@@ -222,7 +261,10 @@ def test_plm_deliverables_and_timesheets_segments():
     assert tres.status_code == 200
 
     # Verify segments included in admin timesheets listing
-    lts = client.get(f"/api/advisory/projects/{pid}/timesheets")
+    lts = client.get(
+        f"/api/advisory/projects/{pid}/timesheets",
+        headers=auth_headers("lwhitworth@ngicapitaladvisory.com"),
+    )
     assert lts.status_code == 200
     rows = lts.json()
     found_seg = False

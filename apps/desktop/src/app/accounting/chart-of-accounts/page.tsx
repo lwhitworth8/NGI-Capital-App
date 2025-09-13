@@ -66,12 +66,7 @@ export default function ChartOfAccountsPage() {
 
   const loadEntities = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/entities', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetch('/api/entities');
       if (response.ok) {
         const data = await response.json();
         setEntities(data.entities || []);
@@ -97,18 +92,49 @@ export default function ChartOfAccountsPage() {
     if (!selectedEntity) return;
     
     try {
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch(
-        `/api/financial-reporting/chart-of-accounts?entity_id=${selectedEntity}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
-      );
+      const response = await fetch(`/api/financial-reporting/chart-of-accounts?entity_id=${selectedEntity}`);
       if (response.ok) {
         const data = await response.json();
-        setAccounts(data.accounts || []);
+        const raw = (data && (data.accounts ?? data)) as any;
+        let arr: Account[] = [];
+        if (Array.isArray(raw)) {
+          arr = raw as Account[];
+        } else if (raw && typeof raw === 'object') {
+          const typeFromCode = (code: string): string => {
+            const c = String(code || '').trim();
+            switch (c.charAt(0)) {
+              case '1': return 'Asset';
+              case '2': return 'Liability';
+              case '3': return 'Equity';
+              case '4': return 'Revenue';
+              case '5': return 'Expense';
+              default: return 'Other';
+            }
+          };
+          arr = Object.keys(raw)
+            .sort()
+            .map((k) => {
+              const v = raw[k] || {};
+              const name: string = v.name || v.account_name || k;
+              const nb = String(v.normal_balance || v.normalBalance || '').toLowerCase() === 'credit' ? 'Credit' : 'Debit';
+              const isHeader = String(v.type || '').toLowerCase() === 'header';
+              return {
+                accountNumber: k,
+                accountName: name,
+                accountType: typeFromCode(k),
+                normalBalance: nb as 'Debit' | 'Credit',
+                isActive: true,
+                isHeader,
+                isBankAccount: /checking|savings|bank/i.test(name),
+                children: [],
+                description: v.description || undefined,
+                ascReference: v.asc_reference || undefined,
+              } as Account;
+            });
+        } else {
+          arr = [];
+        }
+        setAccounts(arr);
       } else {
         // No accounts yet - will be populated from documents/Mercury
         setAccounts([]);

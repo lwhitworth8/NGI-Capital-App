@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text as sa_text
 
 from ..database import get_db
-from ..auth import require_partner_access
+from ..auth_deps import require_clerk_user as _require_clerk_user
 
 
 router = APIRouter(prefix="/api", tags=["employees"])
@@ -178,6 +178,7 @@ def _ensure_hr_schema(db: Session) -> None:
         ("currency", "TEXT"),
         ("benefits_json", "TEXT"),
         ("pii_json_encrypted", "TEXT"),
+        ("is_deleted", "INTEGER DEFAULT 0"),
         ("deleted_at", "TEXT"),
         ("created_at", "TEXT"),
         ("updated_at", "TEXT"),
@@ -229,7 +230,7 @@ def _ensure_default_teams(db: Session, entity_id: int) -> None:
 async def list_teams(
     entity: int | None = Query(None),
     entity_id: int | None = Query(None),
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_hr_schema(db)
@@ -259,7 +260,7 @@ async def list_teams(
 @router.post("/teams")
 async def create_team(
     payload: Dict[str, Any],
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_hr_schema(db)
@@ -286,7 +287,7 @@ async def create_team(
 async def add_team_member(
     team_id: int,
     payload: Dict[str, Any],
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_hr_schema(db)
@@ -317,7 +318,7 @@ async def add_team_member(
 async def remove_team_member(
     team_id: int,
     employee_id: int,
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_hr_schema(db)
@@ -333,7 +334,7 @@ async def remove_team_member(
 async def list_projects(
     entity: int | None = Query(None),
     entity_id: int | None = Query(None),
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_hr_schema(db)
@@ -360,7 +361,7 @@ async def list_projects(
 @router.post("/projects")
 async def create_project(
     payload: Dict[str, Any],
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_hr_schema(db)
@@ -394,7 +395,7 @@ async def list_employees(
     type: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
     pageSize: int = Query(100, ge=1, le=500),
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_hr_schema(db)
@@ -466,7 +467,7 @@ async def list_employees(
 @router.post("/employees")
 async def create_employee(
     payload: Dict[str, Any],
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_hr_schema(db)
@@ -546,7 +547,7 @@ async def create_employee(
 async def update_employee(
     emp_id: int,
     payload: Dict[str, Any],
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_hr_schema(db)
@@ -578,7 +579,7 @@ async def update_employee(
 @router.delete("/employees/{emp_id}")
 async def delete_employee(
     emp_id: int,
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_hr_schema(db)
@@ -591,7 +592,7 @@ async def delete_employee(
 async def add_employee_membership(
     emp_id: int,
     payload: Dict[str, Any],
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_hr_schema(db)
@@ -611,7 +612,7 @@ async def add_employee_membership(
 @router.get("/employees/kpis")
 async def employees_kpis(
     entity_id: int,
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_hr_schema(db)
@@ -656,7 +657,7 @@ async def list_employee_todos(
     entity_id: int,
     assignee: int | None = None,
     status: str | None = None,
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_hr_schema(db)
@@ -676,7 +677,7 @@ async def list_employee_todos(
 @router.post("/employee-todos")
 async def create_employee_todo(
     payload: Dict[str, Any],
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_hr_schema(db)
@@ -695,7 +696,7 @@ async def create_employee_todo(
 async def patch_employee_todo(
     task_id: int,
     payload: Dict[str, Any],
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_hr_schema(db)
@@ -715,7 +716,7 @@ async def patch_employee_todo(
 @router.post("/employees/import")
 async def import_employees(
     payload: Dict[str, Any],
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     """
@@ -767,7 +768,7 @@ async def import_employees(
 async def export_employees(
     entity: int | None = Query(None),
     entity_id: int | None = Query(None),
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_hr_schema(db)
@@ -786,3 +787,4 @@ async def export_employees(
     for r in rows:
         w.writerow([r[0], r[1], r[2] or "", r[3] or "", eid])
     return {"csv": out.getvalue()}
+

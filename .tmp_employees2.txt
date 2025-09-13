@@ -1,0 +1,108 @@
+):
+    _ensure_hr_schema(db)
+    eid = int(payload.get('entity_id') or 0)
+    title = (payload.get('title') or '').strip()
+    if not eid or not title:
+        raise HTTPException(status_code=422, detail="entity_id and title required")
+    db.execute(sa_text("INSERT INTO employee_tasks (employee_id, entity_id, title, notes, due_at, status, created_by, created_at, updated_at) VALUES (:emp,:ent,:ti,:no,:due,:st,:cb,datetime('now'),datetime('now'))"),
+               {"emp": payload.get('employee_id'), "ent": eid, "ti": title, "no": payload.get('notes'), "due": payload.get('due_at'), "st": payload.get('status') or 'Open', "cb": partner.get('email') if isinstance(partner, dict) else None})
+    new_id = int(db.execute(sa_text("SELECT last_insert_rowid()")).scalar() or 0)
+    db.commit()
+    return {"id": new_id}
+
+
+@router.patch("/employee-todos/{task_id}")
+async def patch_employee_todo(
+    task_id: int,
+    payload: Dict[str, Any],
+    partner=Depends(require_partner_access()),
+    db: Session = Depends(get_db),
+):
+    _ensure_hr_schema(db)
+    fields = []
+    params: Dict[str, Any] = {"id": task_id}
+    for k in ("title","notes","due_at","status","employee_id"):
+        if k in payload:
+            fields.append(f"{k} = :{k}")
+            params[k] = payload[k]
+    if not fields:
+        return {"message": "no changes"}
+    db.execute(sa_text("UPDATE employee_tasks SET " + ", ".join(fields) + ", updated_at = datetime('now') WHERE id = :id"), params)
+    db.commit()
+    return {"message": "updated"}
+
+
+@router.post("/employees/import")
+async def import_employees(
+    payload: Dict[str, Any],
+    partner=Depends(require_partner_access()),
+    db: Session = Depends(get_db),
+):
+    """
+    Import employees from CSV text. Columns: name, email, type, start, entity, team
+    Accepts payload.csv as string. Dedupe by email.
+    """
+    _ensure_hr_schema(db)
+    csv_text = payload.get("csv")
+    if not isinstance(csv_text, str) or not csv_text.strip():
+        raise HTTPException(status_code=422, detail="csv required")
+    import csv as _csv
+    from io import StringIO as _SIO
+    reader = _csv.DictReader(_SIO(csv_text))
+    created = 0
+    for row in reader:
+        name = (row.get("name") or "").strip()
+        email = (row.get("email") or "").strip().lower()
+        if not name or not email:
+            continue
+        # Skip if exists
+        exists = db.execute(sa_text("SELECT id FROM employees WHERE lower(email) = :em AND (is_deleted = 0 OR is_deleted IS NULL)"), {"em": email}).fetchone()
+        if exists:
+            continue
+        ent = row.get("entity") or payload.get("entity") or payload.get("entity_id")
+        ent_id = _resolve_entity_id(ent, None)
+        team_id = None
+        tname = (row.get("team") or "").strip()
+        if ent_id and tname:
+            tr = db.execute(sa_text("SELECT id FROM teams WHERE entity_id = :e AND lower(name) = :n"), {"e": ent_id, "n": tname.lower()}).fetchone()
+            if tr:
+                team_id = int(tr[0])
+        db.execute(
+            sa_text("INSERT INTO employees (entity_id, name, legal_name, email, employment_type, start_date, team_id, status, created_at, updated_at) VALUES (:e,:n,:n,:em,:tp,:sd,:tid,'active',datetime('now'),datetime('now'))"),
+            {
+                "e": ent_id or 0,
+                "n": name,
+                "em": email,
+                "tp": row.get("type") or None,
+                "sd": row.get("start") or None,
+                "tid": team_id,
+            },
+        )
+        created += 1
+    db.commit()
+    return {"created": created}
+
+
+@router.get("/employees/export")
+async def export_employees(
+    entity: int | None = Query(None),
+    entity_id: int | None = Query(None),
+    partner=Depends(require_partner_access()),
+    db: Session = Depends(get_db),
+):
+    _ensure_hr_schema(db)
+    eid = _resolve_entity_id(entity, entity_id)
+    if not eid:
+        raise HTTPException(status_code=422, detail="entity is required")
+    if _has_table(db, "employee_entity_memberships"):
+        rows = db.execute(sa_text("SELECT e.name, e.email, e.employment_type, e.start_date FROM employees e JOIN employee_entity_memberships m ON m.employee_id = e.id AND m.entity_id = :e WHERE (e.is_deleted = 0 OR e.is_deleted IS NULL)"), {"e": eid}).fetchall()
+    else:
+        rows = db.execute(sa_text("SELECT name, email, employment_type, start_date FROM employees WHERE entity_id = :e AND (is_deleted = 0 OR is_deleted IS NULL)"), {"e": eid}).fetchall()
+    import csv as _csv
+    from io import StringIO as _SIO
+    out = _SIO()
+    w = _csv.writer(out)
+    w.writerow(["name","email","type","start","entity"])
+    for r in rows:
+        w.writerow([r[0], r[1], r[2] or "", r[3] or "", eid])
+    return {"csv": out.getvalue()}

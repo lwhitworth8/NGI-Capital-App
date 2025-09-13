@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text as sa_text
 
 from ..database import get_db
-from ..auth import require_partner_access
+from ..auth_deps import require_clerk_user as _require_clerk_user
 
 
 router = APIRouter(prefix="/api/investor-relations", tags=["investor-relations"])
@@ -63,7 +63,7 @@ def _ensure_ir_schema(db: Session) -> None:
 @router.get("/cap-table")
 async def cap_table(
     entity_id: int = Query(...),
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     """Compute equity balances per member from approved journal entries."""
@@ -100,7 +100,7 @@ async def cap_table(
 @router.post("/outreach")
 async def create_outreach(
     payload: Dict[str, Any],
-    partner=Depends(require_partner_access()),
+    partner=Depends(_require_clerk_user),
     db: Session = Depends(get_db),
 ):
     _ensure_ir_schema(db)
@@ -132,7 +132,7 @@ async def create_outreach(
 
 @router.get("/outreach")
 async def list_outreach(
-    partner=Depends(require_partner_access()), db: Session = Depends(get_db)
+    partner=Depends(_require_clerk_user), db: Session = Depends(get_db)
 ):
     _ensure_ir_schema(db)
     rows = db.execute(
@@ -161,7 +161,7 @@ async def list_outreach(
 
 @router.put("/outreach/{oid}")
 async def update_outreach(
-    oid: int, payload: Dict[str, Any], partner=Depends(require_partner_access()), db: Session = Depends(get_db)
+    oid: int, payload: Dict[str, Any], partner=Depends(_require_clerk_user), db: Session = Depends(get_db)
 ):
     _ensure_ir_schema(db)
     stage = (payload.get("stage") or "").strip()
@@ -173,7 +173,7 @@ async def update_outreach(
 
 
 @router.delete("/outreach/{oid}")
-async def delete_outreach(oid: int, partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def delete_outreach(oid: int, partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     _ensure_ir_schema(db)
     db.execute(sa_text("UPDATE ir_outreach SET is_deleted = 1 WHERE id = :id"), {"id": oid})
     db.commit()
@@ -182,7 +182,7 @@ async def delete_outreach(oid: int, partner=Depends(require_partner_access()), d
 
 @router.post("/communications")
 async def create_comm(
-    payload: Dict[str, Any], partner=Depends(require_partner_access()), db: Session = Depends(get_db)
+    payload: Dict[str, Any], partner=Depends(_require_clerk_user), db: Session = Depends(get_db)
 ):
     _ensure_ir_schema(db)
     investor_id = int(payload.get("investor_id") or 0)
@@ -200,7 +200,7 @@ async def create_comm(
 
 
 @router.get("/communications")
-async def list_comm(partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def list_comm(partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     _ensure_ir_schema(db)
     rows = db.execute(
         sa_text(
@@ -227,7 +227,7 @@ async def list_comm(partner=Depends(require_partner_access()), db: Session = Dep
 
 
 @router.get("/reports/summary")
-async def ir_summary(partner=Depends(require_partner_access()), db: Session = Depends(get_db)):
+async def ir_summary(partner=Depends(_require_clerk_user), db: Session = Depends(get_db)):
     _ensure_ir_schema(db)
     inv_count = int(db.execute(sa_text("SELECT COUNT(*) FROM investors")).scalar() or 0)
     stage_rows = db.execute(
@@ -235,4 +235,3 @@ async def ir_summary(partner=Depends(require_partner_access()), db: Session = De
     ).fetchall()
     pipeline = {str(r[0] or ""): int(r[1] or 0) for r in stage_rows}
     return {"investors": inv_count, "pipeline": pipeline}
-

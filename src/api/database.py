@@ -139,6 +139,36 @@ def get_db():
                 pass
     except Exception:
         pass
+
+    # Harden schema evolution for investor management tables in all environments.
+    # Some older databases created investor_reports without new columns expected by the API.
+    # Ensure the columns exist to prevent OperationalError: no such column: period
+    try:
+        from sqlalchemy import text as _text
+        cols = [r[0] for r in db.execute(_text("SELECT name FROM pragma_table_info('investor_reports')")).fetchall()]
+        def _add_ir(col: str, type_: str):
+            if col not in cols:
+                db.execute(_text(f"ALTER TABLE investor_reports ADD COLUMN {col} {type_}"))
+        # Add columns introduced by the newer investor management module
+        _add_ir('period', 'TEXT')
+        _add_ir('type', 'TEXT')
+        _add_ir('status', 'TEXT')
+        _add_ir('owner_user_id', 'TEXT')
+        _add_ir('current_doc_url', 'TEXT')
+        # Keep due_date in case legacy table missed it (older schema used DATE, either works)
+        if 'due_date' not in cols:
+            db.execute(_text("ALTER TABLE investor_reports ADD COLUMN due_date TEXT"))
+        # Backfill sensible defaults for nulls to satisfy strict client schemas
+        try:
+            db.execute(_text("UPDATE investor_reports SET type = COALESCE(type,'Quarterly') WHERE type IS NULL"))
+            db.execute(_text("UPDATE investor_reports SET status = COALESCE(status,'Draft') WHERE status IS NULL"))
+            # Use YYYY (due year) as a basic period fallback if missing
+            db.execute(_text("UPDATE investor_reports SET period = CASE WHEN period IS NULL OR period = '' THEN COALESCE(strftime('%Y', due_date),'') ELSE period END"))
+        except Exception:
+            pass
+        db.commit()
+    except Exception:
+        pass
     try:
         yield db
     finally:

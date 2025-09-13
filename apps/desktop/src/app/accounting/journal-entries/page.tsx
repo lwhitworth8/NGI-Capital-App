@@ -107,12 +107,7 @@ export default function JournalEntriesPage() {
 
   const loadEntities = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch('/api/entities', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetch('/api/entities');
       if (response.ok) {
         const data = await response.json();
         setEntities(data.entities || []);
@@ -139,15 +134,7 @@ export default function JournalEntriesPage() {
     if (!selectedEntity) return;
     
     try {
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch(
-        `/api/journal-entries?entity_id=${selectedEntity}`,
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-        }
-      );
+      const response = await fetch(`/api/journal-entries?entity_id=${selectedEntity}`);
       if (response.ok) {
         const data = await response.json();
         setEntries(data.entries || []);

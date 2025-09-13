@@ -47,12 +47,7 @@ export default function EntitiesPage() {
 
   const fetchEntities = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch(`${API_URL}/api/entities/`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      const response = await fetch(`${API_URL}/entities`);
       
       if (response.ok) {
         const data = await response.json();

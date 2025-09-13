@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.api.main import app
+from tests.helpers_auth import auth_headers
 from src.api.config import get_database_path
 import sqlite3
 
@@ -73,7 +74,7 @@ def test_documents_processing_creates_balanced_je():
     docs_mod.DocumentProcessor.categorize_document = staticmethod(lambda t, f: "receipts")
     docs_mod.DocumentProcessor.detect_entity = staticmethod(lambda t: "ngi-advisory")
     # Process
-    resp = client.post(f"/api/documents/{doc_id}/process", params={"entity_id": eid})
+    resp = client.post(f"/api/documents/{doc_id}/process", params={"entity_id": eid}, headers=auth_headers('lwhitworth@ngicapitaladvisory.com'))
     assert resp.status_code == 200
     data = resp.json()
     assert data.get("journal_entry_id") is not None
@@ -101,7 +102,11 @@ def test_mercury_sync_inserts_and_matches(monkeypatch):
     docs_mod.DocumentProcessor.extract_text_from_pdf = staticmethod(lambda p: "INVOICE\nFrom: AWS\nTotal: $1,250.00")
     docs_mod.DocumentProcessor.categorize_document = staticmethod(lambda t, f: "receipts")
     docs_mod.DocumentProcessor.detect_entity = staticmethod(lambda t: "ngi-advisory")
-    resp = client.post(f"/api/documents/{doc_id}/process", params={"entity_id": eid})
+    resp = client.post(
+        f"/api/documents/{doc_id}/process",
+        params={"entity_id": eid},
+        headers=auth_headers('lwhitworth@ngicapitaladvisory.com')
+    )
     assert resp.status_code == 200
     je_id = resp.json().get("journal_entry_id"); assert je_id
 
@@ -115,7 +120,7 @@ def test_mercury_sync_inserts_and_matches(monkeypatch):
     monkeypatch.setattr(bank_mod, 'MercuryClient', lambda: _MC())
 
     # Run sync
-    s = client.post("/api/banking/mercury/sync")
+    s = client.post("/api/banking/mercury/sync", headers=auth_headers('lwhitworth@ngicapitaladvisory.com'))
     assert s.status_code == 200
     # Verify at least one txn exists and matched
     con = _conn(); cur = con.cursor()
@@ -137,7 +142,7 @@ def test_reconciliation_unmatched_queue(monkeypatch):
     con.commit()
     cur.execute("INSERT OR IGNORE INTO bank_transactions (bank_account_id, external_transaction_id, transaction_date, amount, description, is_reconciled) VALUES (1,'txn_unmatched',?,?,?,0)", (datetime.utcnow().date().isoformat(), -42.5, 'Coffee shop'))
     con.commit(); con.close()
-    r = client.get('/api/banking/reconciliation/unmatched')
+    r = client.get('/api/banking/reconciliation/unmatched', headers=auth_headers('lwhitworth@ngicapitaladvisory.com'))
     assert r.status_code == 200
     items = r.json()
     assert isinstance(items, list)

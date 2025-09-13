@@ -67,7 +67,7 @@ export default function LoginPage() {
 
       if (data.access_token) {
         // Store user data
-        localStorage.setItem('auth_token', data.access_token);
+        // Legacy token storage removed in Clerk-only mode
         localStorage.setItem('user_name', data.partner_name || 'Partner');
         localStorage.setItem('user_email', email);
         localStorage.setItem('ownership_percentage', String(data.ownership_percentage || 50));

@@ -195,7 +195,7 @@ export default function Sidebar() {
                   if (item.children) {
                     toggleExpanded(item.name);
                   } else {
-                    window.location.href = item.href;
+                    try { router.push(item.href) } catch { window.location.href = item.href }
                   }
                 }}
                 className={`

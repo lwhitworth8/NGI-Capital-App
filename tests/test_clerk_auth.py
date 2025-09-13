@@ -12,7 +12,7 @@ import importlib
 def test_clerk_bearer_auth_me(monkeypatch):
     # Import app
     from src.api.main import app
-    # Patch verify_clerk_jwt to accept our dummy token
+    # Patch verify_clerk_jwt to accept our dummy token (patch auth_deps binding)
     def _fake_verify(token: str):
         # Provide fake claims as Clerk would
         if token == "clerk_dummy_valid":
@@ -24,8 +24,9 @@ def test_clerk_bearer_auth_me(monkeypatch):
                 "iss": "https://sought-seal-92.clerk.accounts.dev",
             }
         return None
-    # Patch the reference used in main.py (since it imports the symbol directly)
-    monkeypatch.setattr("src.api.main.verify_clerk_jwt", _fake_verify, raising=False)
+    # Patch the reference used by unified deps and any older paths
+    monkeypatch.setattr("src.api.auth_deps.verify_clerk_jwt", _fake_verify, raising=False)
+    monkeypatch.setattr("src.api.clerk_auth.verify_clerk_jwt", _fake_verify, raising=False)
 
     client = TestClient(app)
     # Call protected endpoint with fake Clerk token

@@ -7,7 +7,7 @@ from src.api.config import SECRET_KEY, ALGORITHM
 client = TestClient(app)
 
 
-def auth(email: str = "pytest@ngicapitaladvisory.com"):
+def auth(email: str = "lwhitworth@ngicapitaladvisory.com"):
     payload = {"sub": email, "iat": datetime.utcnow().timestamp()}
     token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
     return {"Authorization": f"Bearer {token}"}
@@ -27,4 +27,3 @@ def test_pipeline_stage_filter():
     # only Won column has items
     assert any(col["stage"] == "Won" and len(col["items"]) >= 1 for col in rows)
     assert all((col["stage"] == "Won" and len(col["items"]) >= 1) or len(col["items"]) == 0 for col in rows)
-

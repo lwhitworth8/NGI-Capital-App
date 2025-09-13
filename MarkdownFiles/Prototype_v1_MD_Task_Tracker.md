@@ -72,6 +72,12 @@ Instructions: Every agent must update this tracker after completing work and tes
   - Links:
   - Notes: single workspace; per-project private channels; required scopes; env vars. Follow-up: fully implement Slack integration and test functionality end-to-end in live workspace.
 
+- Security/Auth — Unified Clerk
+  - Status: In Progress
+  - Owner: codex
+  - Links: MarkdownFiles/AuthRefactorClerk/*, src/api/auth_deps.py, src/api/main.py, apps/desktop/src/lib/auth.tsx
+  - Notes: Phase 1 complete (unified deps, router guards, advisory gating); staging flags set; targeted tests pass. Phase 2/3 in progress (desktop cleanup, student verification). Phase 4/5 pending (hard removal, Snyk + docs).
+
 - Student Nav â€“ `MarkdownFiles/StudentApp/Nav.Spec.StudentApp.md`
   - Status: Not Started
   - Owner:
