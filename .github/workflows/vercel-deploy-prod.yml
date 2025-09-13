@@ -1,0 +1,39 @@
+name: Vercel Deploy (Production)
+
+on:
+  push:
+    branches: [ "production" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+
+      - name: Deploy Student (apps/student)
+        working-directory: apps/student
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.STUDENT_VERCEL_PROJECT_ID }}
+        run: |
+          npx vercel@latest pull --yes --environment=production
+          npx vercel@latest deploy --prod --yes
+
+      - name: Deploy Admin (apps/desktop)
+        working-directory: apps/desktop
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.ADMIN_VERCEL_PROJECT_ID }}
+        run: |
+          npx vercel@latest pull --yes --environment=production
+          npx vercel@latest deploy --prod --yes
+
