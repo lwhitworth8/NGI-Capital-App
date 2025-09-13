@@ -20,8 +20,9 @@ export async function GET(req: Request) {
   try {
     const orgSlug = (process.env.CLERK_ADMIN_ORG_SLUG || '').trim().toLowerCase()
     if (orgSlug) {
-      const list = await clerkClient.users.getOrganizationMembershipList({ userId })
-      isAdmin = list.data?.some(m => (m.organization?.slug || '').toLowerCase() === orgSlug) || false
+      const cc: any = typeof (clerkClient as any) === 'function' ? await (clerkClient as any)() : (clerkClient as any)
+      const list = await cc?.users?.getOrganizationMembershipList?.({ userId })
+      isAdmin = !!(list?.data?.some((m: any) => (m?.organization?.slug || '').toLowerCase() === orgSlug))
     }
   } catch {}
   
