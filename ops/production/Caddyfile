@@ -1,0 +1,17 @@
+{
+}
+
+# API domain (use env: API_DOMAIN=api.example.com)
+{$API_DOMAIN} {
+    encode gzip
+    # Proxy all paths to the local FastAPI backend
+    reverse_proxy 127.0.0.1:8001
+}
+
+# Local fallback (for testing without a domain):
+#:80 {
+#    encode gzip
+#    handle_path /api/* {
+#        reverse_proxy 127.0.0.1:8001
+#    }
+#}

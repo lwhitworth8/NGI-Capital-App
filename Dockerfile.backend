@@ -20,7 +20,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY src/ ./src/
-COPY ngi_capital.db ./ngi_capital.db
+
+# Ensure data directory exists for DB volume mount
+RUN mkdir -p /app/data
+
+# Copy scripts for operational tasks (e.g., DB init)
+COPY scripts/ ./scripts/
 
 # Expose port
 EXPOSE 8001

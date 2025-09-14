@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
+// Prefer explicit BACKEND_ORIGIN. In production, default to the public API domain
+// so a missing env on Vercel still points to the correct API.
 const BACKEND_ORIGIN = process.env.BACKEND_ORIGIN || (process.env.NODE_ENV === 'production'
-  ? 'https://internal.ngicapital.com'
+  ? (process.env.NEXT_PUBLIC_API_URL || 'https://api.ngicapitaladvisory.com')
   : 'http://localhost:8001')
 
 // If deploying the Admin app to its own domain (e.g., admin.example.com),

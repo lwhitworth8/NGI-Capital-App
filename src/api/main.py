@@ -893,16 +893,61 @@ async def logout(request: Request, user=Depends(_require_clerk_user_dep)):
 
 @app.get("/api/auth/me", tags=["auth"])
 async def get_current_partner_info(request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Return current principal. In tests or when not open, enforce Clerk auth."""
+    """Return current principal. In tests or when not open, enforce Clerk auth.
+    Also supports env-admin allowlist fallback via X-Admin-Email when enabled.
+    """
     user: dict | None = None
-    # If a Bearer token is provided, always enforce Clerk auth (even in open mode)
     auth = request.headers.get('authorization') or request.headers.get('Authorization') or ''
+    from fastapi import HTTPException as _HTTPException
+    # Helper: env-admin fallback
+    def _env_admin_principal() -> dict | None:
+        try:
+            import os as _os
+            if str(_os.getenv('ENABLE_ENV_ADMIN_FALLBACK','0')).strip().lower() not in ('1','true','yes'):
+                return None
+            hdr = (request.headers.get('X-Admin-Email') or request.headers.get('x-admin-email') or '').strip().lower()
+            if not hdr:
+                return None
+            allowed = set()
+            for var in ('ALLOWED_ADVISORY_ADMINS','ADMIN_EMAILS','ALLOWED_FULL_ACCESS_EMAILS'):
+                raw = _os.getenv(var,'')
+                for e in raw.split(','):
+                    e = e.strip().lower()
+                    if e:
+                        allowed.add(e)
+            if hdr in allowed:
+                return { 'id': hdr, 'email': hdr, 'name': hdr, 'is_authenticated': True }
+        except Exception:
+            return None
+        return None
+    # If a Bearer token is provided, enforce Clerk auth (with fallback on failure)
     if auth.lower().startswith('bearer '):
-        from src.api.auth_deps import require_clerk_user as _rcu  # type: ignore
-        user = await _rcu(request, credentials)
+        try:
+            from src.api.auth_deps import require_clerk_user as _rcu  # type: ignore
+            user = await _rcu(request, credentials)
+        except _HTTPException as ex:
+            if ex.status_code == 401:
+                p = _env_admin_principal()
+                if p:
+                    user = p
+            if not user:
+                raise
     elif _IN_TEST or not _OPEN_NON_ACCOUNTING:
-        from src.api.auth_deps import require_clerk_user as _rcu  # type: ignore
-        user = await _rcu(request, credentials)
+        try:
+            from src.api.auth_deps import require_clerk_user as _rcu  # type: ignore
+            user = await _rcu(request, credentials)
+        except _HTTPException as ex:
+            if ex.status_code == 401:
+                p = _env_admin_principal()
+                if p:
+                    user = p
+            if not user:
+                raise
+    else:
+        # Open mode: still try env fallback for consistent identity
+        p = _env_admin_principal()
+        if p:
+            user = p
     return {
         "id": (user or {}).get("id"),
         "email": (user or {}).get("email"),

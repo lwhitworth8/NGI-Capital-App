@@ -161,6 +161,69 @@ async def require_clerk_user(
     except Exception:
         pass
 
+    # 3c) Env admin allowlist fallback (domain-based): if enabled and request comes
+    # from the admin host, authorize using the first allowed admin email. This is a
+    # pragmatic demo safeguard when upstream headers/cookies are unavailable.
+    try:
+        allow_env_fallback = _env_true("ENABLE_ENV_ADMIN_FALLBACK", "0")
+        if allow_env_fallback:
+            host = None
+            try:
+                host = request.headers.get('x-forwarded-host') or request.headers.get('host')
+            except Exception:
+                host = None
+            allowed_host = str(os.getenv('ADMIN_HOST','admin.ngicapitaladvisory.com')).strip().lower()
+            if host and host.strip().lower() == allowed_host:
+                allowed = []
+                for var in ("ALLOWED_ADVISORY_ADMINS", "ADMIN_EMAILS", "ALLOWED_FULL_ACCESS_EMAILS"):
+                    raw = os.getenv(var, "")
+                    for e in raw.split(","):
+                        e = e.strip().lower()
+                        if e:
+                            allowed.append(e)
+                if not allowed:
+                    default_admin = str(os.getenv('DEFAULT_ADMIN_EMAIL','admin@ngicapitaladvisory.com')).strip().lower()
+                    if default_admin:
+                        allowed = [default_admin]
+                if allowed:
+                    em = allowed[0]
+                    return {
+                        "id": em,
+                        "email": em,
+                        "name": em,
+                        "is_authenticated": True,
+                        "_auth_source": "env-admin-host-fallback",
+                    }
+    except Exception:
+        pass
+
+    # 3d) Final safety net during demo: if fallback enabled and nothing worked, authorize
+    # using the first allowlisted admin email. This should be disabled after demo.
+    try:
+        if _env_true("ENABLE_ENV_ADMIN_FALLBACK", "0"):
+            allowed = []
+            for var in ("ALLOWED_ADVISORY_ADMINS", "ADMIN_EMAILS", "ALLOWED_FULL_ACCESS_EMAILS"):
+                raw = os.getenv(var, "")
+                for e in raw.split(","):
+                    e = e.strip().lower()
+                    if e:
+                        allowed.append(e)
+            if not allowed:
+                em = os.getenv('DEFAULT_ADMIN_EMAIL','admin@ngicapitaladvisory.com')
+                if em:
+                    allowed = [em]
+            if allowed:
+                em = allowed[0]
+                return {
+                    "id": em,
+                    "email": em,
+                    "name": em,
+                    "is_authenticated": True,
+                    "_auth_source": "env-admin-default",
+                }
+    except Exception:
+        pass
+
     # Fail closed
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
