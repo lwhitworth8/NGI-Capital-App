@@ -44,10 +44,10 @@ describe('MarketTicker integration', () => {
     expect(spButtons.length).toBeGreaterThan(1)
     const tenY = await screen.findAllByLabelText(/U\.S\. 10-Year Treasury Yield/i)
     expect(tenY.length).toBeGreaterThan(0)
-    const eurusd = await screen.findAllByLabelText(/EUR\/USD \(Euro ↔ U\.S\. Dollar\)/i)
+    const eurusd = await screen.findAllByLabelText(/EUR\/USD \(Euro ? U\.S\. Dollar\)/i)
     expect(eurusd.length).toBeGreaterThan(0)
 
-    // formatted values (yield as percent with ÷10)
+    // formatted values (yield as percent with ?10)
     expect(screen.getAllByText(/4\.23%/i).length).toBeGreaterThan(0)
 
     // overlay interaction covered by unit tests elsewhere; ensure mapping and formatting present here

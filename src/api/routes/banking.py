@@ -597,6 +597,11 @@ async def create_je_from_txn(payload: Dict[str, Any], db: Session = Depends(get_
 
 @router.get("/reconciliation/stats")
 async def reconciliation_stats(entity_id: Optional[int] = None, year: Optional[int] = None, month: Optional[int] = None, db: Session = Depends(get_db)):
+    # Ensure tables exist to avoid 500s on fresh DBs
+    try:
+        _ensure_bank_tables(db)
+    except Exception:
+        pass
     """Return cleared percentage per account and, if entity_id provided, include overall cleared balance and snapshot percent for the period."""
     rows = db.execute(sa_text("SELECT ba.id, ba.account_name, SUM(CASE WHEN bt.is_reconciled = 1 THEN 1 ELSE 0 END) as cleared, COUNT(bt.id) as total, SUM(CASE WHEN bt.is_reconciled = 1 THEN bt.amount ELSE 0 END) as cleared_amount FROM bank_accounts ba LEFT JOIN bank_transactions bt ON bt.bank_account_id = ba.id GROUP BY ba.id, ba.account_name"), {}).fetchall()
     out = []

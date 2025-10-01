@@ -81,7 +81,8 @@ export type PublicProjectDetail = PublicProject & {
   team_size?: number;
   team_requirements?: string;
   showcase_pdf_url?: string;
-  questions?: Array<{ idx:number; prompt:string }>;
+  applications_close_date?: string;
+  questions?: Array<{ idx:number; type?: 'text'|'mcq'; prompt:string; choices?: string[] }>;
 }
 
 // Coffee chats (public)

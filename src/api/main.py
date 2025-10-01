@@ -821,28 +821,48 @@ async def establish_session(request: Request):
 
 @app.get("/api/preferences", tags=["preferences"])
 async def get_preferences(user=Depends(_require_clerk_user_dep), db=Depends(get_session)):
-    # Ensure table exists
+    # Ensure table and email index exist
     db.execute(sa_text("""
         CREATE TABLE IF NOT EXISTS user_preferences (
             partner_id INTEGER PRIMARY KEY,
             theme TEXT DEFAULT 'system',
-            updated_at TEXT
+            updated_at TEXT,
+            email TEXT
         )
     """))
+    # Backfill column when table exists without email
+    try:
+        db.execute(sa_text("ALTER TABLE user_preferences ADD COLUMN email TEXT"))
+    except Exception:
+        pass
+    try:
+      db.execute(sa_text("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_preferences_email ON user_preferences(email)"))
+    except Exception:
+      pass
     pid = 0
+    email = ''
     try:
         pid = int((user or {}).get('id') or 0)
     except Exception:
         pid = 0
-    if not pid:
+    try:
+        email = str((user or {}).get('email') or '').strip().lower()
+    except Exception:
+        email = ''
+    if not pid and email:
         try:
-            em = str((user or {}).get('email') or '').strip().lower()
-            if em:
-                r = db.execute(sa_text("SELECT id FROM partners WHERE lower(email) = :em"), {"em": em}).fetchone()
-                pid = int(r[0]) if r else 0
+            r = db.execute(sa_text("SELECT id FROM partners WHERE lower(email) = :em"), {"em": email}).fetchone()
+            pid = int(r[0]) if r else 0
         except Exception:
             pid = 0
-    row = db.execute(sa_text("SELECT theme FROM user_preferences WHERE partner_id = :pid"), {"pid": pid}).fetchone() if pid else None
+    row = None
+    if pid:
+        row = db.execute(sa_text("SELECT theme FROM user_preferences WHERE partner_id = :pid"), {"pid": pid}).fetchone()
+    if not row and email:
+        try:
+            row = db.execute(sa_text("SELECT theme FROM user_preferences WHERE lower(email) = :em"), {"em": email}).fetchone()
+        except Exception:
+            row = None
     theme = row[0] if row else 'system'
     return {"theme": theme}
 
@@ -851,26 +871,57 @@ async def set_preferences(payload: dict, user=Depends(_require_clerk_user_dep), 
     theme = (payload.get('theme') or 'system').lower()
     if theme not in ('light','dark','system'):
         raise HTTPException(status_code=422, detail="Invalid theme")
+    # Ensure schema and email index
+    db.execute(sa_text("""
+        CREATE TABLE IF NOT EXISTS user_preferences (
+            partner_id INTEGER PRIMARY KEY,
+            theme TEXT DEFAULT 'system',
+            updated_at TEXT,
+            email TEXT
+        )
+    """))
+    # Backfill column when table exists without email
+    try:
+      db.execute(sa_text("ALTER TABLE user_preferences ADD COLUMN email TEXT"))
+    except Exception:
+      pass
+    try:
+      db.execute(sa_text("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_preferences_email ON user_preferences(email)"))
+    except Exception:
+      pass
     pid = 0
+    email = ''
     try:
         pid = int((user or {}).get('id') or 0)
     except Exception:
         pid = 0
-    if not pid:
+    try:
+        email = str((user or {}).get('email') or '').strip().lower()
+    except Exception:
+        email = ''
+    if not pid and email:
         try:
-            em = str((user or {}).get('email') or '').strip().lower()
-            if em:
-                r = db.execute(sa_text("SELECT id FROM partners WHERE lower(email) = :em"), {"em": em}).fetchone()
-                pid = int(r[0]) if r else 0
+            r = db.execute(sa_text("SELECT id FROM partners WHERE lower(email) = :em"), {"em": email}).fetchone()
+            pid = int(r[0]) if r else 0
         except Exception:
             pid = 0
-    if not pid:
+    ts = datetime.now(timezone.utc).isoformat()
+    if pid:
+        db.execute(sa_text("""
+            INSERT INTO user_preferences (partner_id, theme, updated_at, email)
+            VALUES (:pid, :theme, :ts, NULL)
+            ON CONFLICT(partner_id) DO UPDATE SET theme=excluded.theme, updated_at=excluded.updated_at
+        """), {"pid": pid, "theme": theme, "ts": ts})
+    elif email:
+        # Upsert by email when partner_id is unavailable (Clerk ID strings)
+        db.execute(sa_text("""
+            INSERT INTO user_preferences (partner_id, theme, updated_at, email)
+            VALUES (NULL, :theme, :ts, :em)
+            ON CONFLICT(email) DO UPDATE SET theme=excluded.theme, updated_at=excluded.updated_at
+        """), {"em": email, "theme": theme, "ts": ts})
+    else:
+        # No identity -> accept, but nothing to persist
         return {"message": "Preferences retained for session"}
-    db.execute(sa_text("""
-        INSERT INTO user_preferences (partner_id, theme, updated_at)
-        VALUES (:pid, :theme, :ts)
-        ON CONFLICT(partner_id) DO UPDATE SET theme=excluded.theme, updated_at=excluded.updated_at
-    """), {"pid": pid, "theme": theme, "ts": datetime.now(timezone.utc).isoformat()})
     db.commit()
     return {"message": "Preferences updated"}
 
@@ -893,16 +944,61 @@ async def logout(request: Request, user=Depends(_require_clerk_user_dep)):
 
 @app.get("/api/auth/me", tags=["auth"])
 async def get_current_partner_info(request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Return current principal. In tests or when not open, enforce Clerk auth."""
+    """Return current principal. In tests or when not open, enforce Clerk auth.
+    Also supports env-admin allowlist fallback via X-Admin-Email when enabled.
+    """
     user: dict | None = None
-    # If a Bearer token is provided, always enforce Clerk auth (even in open mode)
     auth = request.headers.get('authorization') or request.headers.get('Authorization') or ''
+    from fastapi import HTTPException as _HTTPException
+    # Helper: env-admin fallback
+    def _env_admin_principal() -> dict | None:
+        try:
+            import os as _os
+            if str(_os.getenv('ENABLE_ENV_ADMIN_FALLBACK','0')).strip().lower() not in ('1','true','yes'):
+                return None
+            hdr = (request.headers.get('X-Admin-Email') or request.headers.get('x-admin-email') or '').strip().lower()
+            if not hdr:
+                return None
+            allowed = set()
+            for var in ('ALLOWED_ADVISORY_ADMINS','ADMIN_EMAILS','ALLOWED_FULL_ACCESS_EMAILS'):
+                raw = _os.getenv(var,'')
+                for e in raw.split(','):
+                    e = e.strip().lower()
+                    if e:
+                        allowed.add(e)
+            if hdr in allowed:
+                return { 'id': hdr, 'email': hdr, 'name': hdr, 'is_authenticated': True }
+        except Exception:
+            return None
+        return None
+    # If a Bearer token is provided, enforce Clerk auth (with fallback on failure)
     if auth.lower().startswith('bearer '):
-        from src.api.auth_deps import require_clerk_user as _rcu  # type: ignore
-        user = await _rcu(request, credentials)
+        try:
+            from src.api.auth_deps import require_clerk_user as _rcu  # type: ignore
+            user = await _rcu(request, credentials)
+        except _HTTPException as ex:
+            if ex.status_code == 401:
+                p = _env_admin_principal()
+                if p:
+                    user = p
+            if not user:
+                raise
     elif _IN_TEST or not _OPEN_NON_ACCOUNTING:
-        from src.api.auth_deps import require_clerk_user as _rcu  # type: ignore
-        user = await _rcu(request, credentials)
+        try:
+            from src.api.auth_deps import require_clerk_user as _rcu  # type: ignore
+            user = await _rcu(request, credentials)
+        except _HTTPException as ex:
+            if ex.status_code == 401:
+                p = _env_admin_principal()
+                if p:
+                    user = p
+            if not user:
+                raise
+    else:
+        # Open mode: still try env fallback for consistent identity
+        p = _env_admin_principal()
+        if p:
+            user = p
     return {
         "id": (user or {}).get("id"),
         "email": (user or {}).get("email"),

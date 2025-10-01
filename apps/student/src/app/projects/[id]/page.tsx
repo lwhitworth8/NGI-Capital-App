@@ -60,8 +60,19 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
             ) : null}
           </div>
           <div className="space-y-4">
-            <ApplyWidget projectId={Number(id)} allowApply={!!p.allow_applications} coffeechat={p.coffeechat_calendly || ''} questions={p.questions || []} />
-            {p.allow_applications ? <CoffeeChatPicker /> : null}
+            <div id="apply">
+            <ApplyWidget
+              projectId={Number(id)}
+              allowApply={!!p.allow_applications && (!p.applications_close_date || (new Date(p.applications_close_date) >= new Date()))}
+              coffeechat={p.coffeechat_calendly || ''}
+              questions={p.questions || []}
+            />
+            </div>
+            {p.allow_applications ? (
+              <div id="coffeechat">
+                <CoffeeChatPicker />
+              </div>
+            ) : null}
           </div>
         </div>
       </div>

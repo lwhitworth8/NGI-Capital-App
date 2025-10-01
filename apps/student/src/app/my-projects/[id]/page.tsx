@@ -113,7 +113,7 @@ export default function ProjectWorkspacePage() {
               <div key={m.id} className="py-2 flex justify-between text-sm border-b last:border-none">
                 <div>
                   <div className="font-medium">{m.title}</div>
-                  <div className="text-muted-foreground">{new Date(m.start_ts).toLocaleString()} – {new Date(m.end_ts).toLocaleString()}</div>
+                  <div className="text-muted-foreground">{new Date(m.start_ts).toLocaleString()} - {new Date(m.end_ts).toLocaleString()}</div>
                 </div>
                 <div>
                   <a className="text-blue-600" href={`https://calendar.google.com/calendar/`} target="_blank">Open in Calendar</a>

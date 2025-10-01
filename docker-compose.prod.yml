@@ -20,8 +20,8 @@ services:
       - ENABLE_ENV_ADMIN_FALLBACK=${ENABLE_ENV_ADMIN_FALLBACK}
       - OPEN_ALL_ADMIN=${OPEN_ALL_ADMIN}
     volumes:
-      # Persist and/or bring your real DB into the container
-      - ./ngi_capital.db:/app/data/ngi_capital.db
+      # Persist DB directory (DB + WAL/SHM) via bind mount
+      - ./data:/app/data
     ports:
       - "8001:8001"
     networks:
@@ -40,9 +40,10 @@ services:
       - CLERK_SIGN_IN_URL=/sign-in
       - CLERK_SIGN_UP_URL=/sign-up
       - NEXT_PUBLIC_STUDENT_BASE_URL=${NEXT_PUBLIC_STUDENT_BASE_URL}
-    command: sh -c "npm ci && npm run build && npm run start -p 3000"
+    command: sh -c "npm ci && npx next build && npx next start -p 3000"
     volumes:
       - ./apps/desktop:/app
+      - ./packages:/packages
     expose:
       - "3000"
     depends_on:
@@ -69,6 +70,7 @@ services:
     command: sh -c "npm ci && npm run build && npx next start -p 3000"
     volumes:
       - ./apps/student:/app
+      - ./packages:/packages
     expose:
       - "3000"
     depends_on:

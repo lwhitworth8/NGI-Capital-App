@@ -519,7 +519,7 @@ export default function JournalEntriesPage() {
                           <h4 className="font-semibold">Journal Entry Lines</h4>
                           <div className="text-sm text-muted-foreground">
                             Created by {entry.createdBy} on {new Date(entry.createdAt).toLocaleString()}
-                            {entry.approvedBy && ` • Approved by ${entry.approvedBy}`}
+                            {entry.approvedBy && ` - Approved by ${entry.approvedBy}`}
                           </div>
                         </div>
                         <table className="w-full">

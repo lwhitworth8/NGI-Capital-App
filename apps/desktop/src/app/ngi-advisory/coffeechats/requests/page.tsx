@@ -29,7 +29,7 @@ export default function AdvisoryCoffeeRequestsPage() {
 
   const act = async (fn: () => Promise<any>) => { setBusy(true); try { await fn(); await load() } finally { setBusy(false) } }
 
-  if (loading) return <div className="p-6">Loading…</div>
+  if (loading) return <div className="p-6">Loading...</div>
 
   return (
     <div className="p-6 space-y-6">
@@ -71,7 +71,7 @@ export default function AdvisoryCoffeeRequestsPage() {
                   <button className="px-2 py-1 rounded border" disabled={busy} onClick={()=>setPropose({ id: i.id, start_ts: i.start_ts, end_ts: i.end_ts })}>Propose</button>
                   <button className="px-2 py-1 rounded border" disabled={busy} onClick={()=>act(()=>advisoryCancelCoffeeRequest(i.id))}>Cancel</button>
                   <button className="px-2 py-1 rounded border" disabled={busy} onClick={()=>act(()=>advisoryCompleteCoffeeRequest(i.id))}>Complete</button>
-                  <button className="px-2 py-1 rounded border" disabled={busy} onClick={()=>act(()=>advisoryNoShowCoffeeRequest(i.id))}>No‑show</button>
+                  <button className="px-2 py-1 rounded border" disabled={busy} onClick={()=>act(()=>advisoryNoShowCoffeeRequest(i.id))}>No?show</button>
                 </td>
               </tr>
             ))}

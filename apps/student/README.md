@@ -11,8 +11,8 @@ npm run dev
 ## Auth & Routing
 - Sign-in/up handled by Clerk components.
 - `GET /auth/resolve` determines role:
-  - Admins (Clerk role/org or `ADMIN_EMAILS`) → redirect to `/admin/dashboard` (desktop app)
-  - Students (email domain in `ALLOWED_EMAIL_DOMAINS`) → redirect to `/projects`
+  - Admins (Clerk role/org or `ADMIN_EMAILS`) ? redirect to `/admin/dashboard` (desktop app)
+  - Students (email domain in `ALLOWED_EMAIL_DOMAINS`) ? redirect to `/projects`
 
 ## Environment
 ```env

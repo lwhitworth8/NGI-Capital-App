@@ -86,7 +86,7 @@ export default function TimesheetsClient({ projectId }: { projectId: number }) {
         </div>
       </div>
       {loading ? (
-        <div className="text-muted-foreground">Loading…</div>
+        <div className="text-muted-foreground">Loading...</div>
       ) : (
         <table className="w-full">
           <thead>
@@ -112,7 +112,7 @@ export default function TimesheetsClient({ projectId }: { projectId: number }) {
                 </td>
                 <td className="py-2">
                   <button className="px-3 py-1 rounded bg-primary text-primary-foreground" disabled={!!saving[d.iso]} onClick={()=>onSaveDay(d.iso)}>
-                    {saving[d.iso] ? 'Saving…' : 'Save'}
+                    {saving[d.iso] ? 'Saving...' : 'Save'}
                   </button>
                 </td>
               </tr>

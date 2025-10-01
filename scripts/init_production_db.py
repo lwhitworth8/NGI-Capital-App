@@ -1,258 +1,240 @@
 """
-Production Database Initialization Script
-=========================================
-Sets up the NGI Capital database with all required tables and initial data.
+Production Database Initialization Script (clean, idempotent)
+Initializes core tables and seed data aligned with current models.py.
 """
 
-import sys
 import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-# Import from our production API
-from src.api.models import Base, Partners, Entities, ChartOfAccounts, BankAccounts
+from src.api.models import (
+    Base,
+    Partners,
+    Entities,
+    ChartOfAccounts,
+    BankAccounts,
+    AccountType,
+    EntityType,
+    TransactionType,
+)
 from src.api.auth import get_password_hash
 
-# Database setup
-DATABASE_URL = "sqlite:///ngi_capital.db"
+
+def _resolve_database_url() -> str:
+    env_url = (os.getenv("DATABASE_URL") or "").strip()
+    if env_url:
+        return env_url
+    env_path = (os.getenv("DATABASE_PATH") or "").strip()
+    if env_path:
+        try:
+            os.makedirs(os.path.dirname(env_path), exist_ok=True)
+        except Exception:
+            pass
+        return env_path if env_path.startswith("sqlite:") else f"sqlite:///{env_path}"
+    # Default: container volume path
+    try:
+        os.makedirs("/app/data", exist_ok=True)
+        return "sqlite:////app/data/ngi_capital.db"
+    except Exception:
+        return "sqlite:///ngi_capital.db"
+
+
+DATABASE_URL = _resolve_database_url()
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-def init_database():
-    """Initialize the database with tables and initial data"""
-    
+
+def ensure_partners(db):
+    seeds = [
+        (
+            "anurmamade@ngicapitaladvisory.com",
+            "Andre Nurmamade",
+            "TempPassword123!",
+            Decimal("50.0"),
+        ),
+        (
+            "lwhitworth@ngicapitaladvisory.com",
+            "Landon Whitworth",
+            "TempPassword123!",
+            Decimal("50.0"),
+        ),
+    ]
+    for email, name, pw, pct in seeds:
+        ex = db.query(Partners).filter(Partners.email == email).first()
+        if not ex:
+            db.add(
+                Partners(
+                    email=email,
+                    name=name,
+                    password_hash=get_password_hash(pw),
+                    ownership_percentage=pct,
+                    capital_account_balance=Decimal("0"),
+                    is_active=True,
+                    created_at=datetime.utcnow(),
+                )
+            )
+            print(f"[OK] Created partner: {name}")
+        else:
+            print(f"  Partner already exists: {name}")
+    db.commit()
+
+
+def ensure_entities(db):
+    ngi = db.query(Entities).filter(Entities.legal_name == "NGI Capital LLC").first()
+    if not ngi:
+        ngi = Entities(
+            legal_name="NGI Capital LLC",
+            entity_type=EntityType.LLC,
+            ein="88-3957014",
+            formation_date=date(2024, 7, 16),
+            is_active=True,
+        )
+        db.add(ngi)
+        db.commit()
+        db.refresh(ngi)
+        print("[OK] Created NGI Capital LLC entity")
+    else:
+        print("  NGI Capital LLC already exists")
+
+    subs = [
+        ("NGI Capital, Inc.", EntityType.CORPORATION),
+        ("The Creator Terminal, Inc.", EntityType.CORPORATION),
+        ("NGI Capital Advisory LLC", EntityType.LLC),
+    ]
+    for name, etype in subs:
+        ex = db.query(Entities).filter(Entities.legal_name == name).first()
+        if not ex:
+            db.add(
+                Entities(
+                    legal_name=name,
+                    entity_type=etype,
+                    parent_entity_id=ngi.id,
+                    is_active=True,
+                )
+            )
+            print(f"[OK] Created entity: {name}")
+        else:
+            print(f"  Entity already exists: {name}")
+    db.commit()
+    return ngi
+
+
+def ensure_coa(db, entity_id: int):
+    accounts = [
+        # code, name, type, normal_balance
+        ("10100", "Cash - Operating", AccountType.ASSET, TransactionType.DEBIT),
+        ("10200", "Cash - Savings", AccountType.ASSET, TransactionType.DEBIT),
+        ("10300", "Accounts Receivable", AccountType.ASSET, TransactionType.DEBIT),
+        ("10400", "Prepaid Expenses", AccountType.ASSET, TransactionType.DEBIT),
+        ("15000", "Equipment", AccountType.ASSET, TransactionType.DEBIT),
+        ("15100", "Accumulated Depreciation", AccountType.ASSET, TransactionType.CREDIT),
+        ("16000", "Intangible Assets", AccountType.ASSET, TransactionType.DEBIT),
+        ("20100", "Accounts Payable", AccountType.LIABILITY, TransactionType.CREDIT),
+        ("20200", "Credit Card Payable", AccountType.LIABILITY, TransactionType.CREDIT),
+        ("20300", "Accrued Expenses", AccountType.LIABILITY, TransactionType.CREDIT),
+        ("20400", "Deferred Revenue", AccountType.LIABILITY, TransactionType.CREDIT),
+        ("25000", "Notes Payable", AccountType.LIABILITY, TransactionType.CREDIT),
+        ("30100", "Partner Capital - Andre", AccountType.EQUITY, TransactionType.CREDIT),
+        ("30200", "Partner Capital - Landon", AccountType.EQUITY, TransactionType.CREDIT),
+        ("30300", "Partner Draws - Andre", AccountType.EQUITY, TransactionType.DEBIT),
+        ("30400", "Partner Draws - Landon", AccountType.EQUITY, TransactionType.DEBIT),
+        ("39000", "Retained Earnings", AccountType.EQUITY, TransactionType.CREDIT),
+        ("40100", "Advisory Fee Revenue", AccountType.REVENUE, TransactionType.CREDIT),
+        ("40200", "Consulting Revenue", AccountType.REVENUE, TransactionType.CREDIT),
+        ("40300", "Product Revenue", AccountType.REVENUE, TransactionType.CREDIT),
+        ("40400", "Investment Income", AccountType.REVENUE, TransactionType.CREDIT),
+        ("40500", "Interest Income", AccountType.REVENUE, TransactionType.CREDIT),
+        ("50100", "Salaries & Wages", AccountType.EXPENSE, TransactionType.DEBIT),
+        ("50200", "Rent Expense", AccountType.EXPENSE, TransactionType.DEBIT),
+        ("50300", "Utilities", AccountType.EXPENSE, TransactionType.DEBIT),
+        ("50400", "Insurance", AccountType.EXPENSE, TransactionType.DEBIT),
+        ("50500", "Professional Fees", AccountType.EXPENSE, TransactionType.DEBIT),
+        ("50600", "Office Supplies", AccountType.EXPENSE, TransactionType.DEBIT),
+        ("50700", "Travel & Entertainment", AccountType.EXPENSE, TransactionType.DEBIT),
+        ("50800", "Marketing & Advertising", AccountType.EXPENSE, TransactionType.DEBIT),
+        ("50900", "Technology & Software", AccountType.EXPENSE, TransactionType.DEBIT),
+        ("51000", "Telephone & Internet", AccountType.EXPENSE, TransactionType.DEBIT),
+        ("51100", "Legal Fees", AccountType.EXPENSE, TransactionType.DEBIT),
+        ("51200", "Accounting Fees", AccountType.EXPENSE, TransactionType.DEBIT),
+        ("59000", "Depreciation Expense", AccountType.EXPENSE, TransactionType.DEBIT),
+        ("59100", "Amortization Expense", AccountType.EXPENSE, TransactionType.DEBIT),
+    ]
+    created = 0
+    for code, name, atype, normal in accounts:
+        ex = (
+            db.query(ChartOfAccounts)
+            .filter(
+                ChartOfAccounts.entity_id == entity_id,
+                ChartOfAccounts.account_code == code,
+            )
+            .first()
+        )
+        if not ex:
+            db.add(
+                ChartOfAccounts(
+                    entity_id=entity_id,
+                    account_code=code,
+                    account_name=name,
+                    account_type=atype,
+                    normal_balance=normal,
+                )
+            )
+            created += 1
+    db.commit()
+    print(f"[OK] Chart of accounts ensured (created {created} accounts)")
+
+
+def ensure_bank_accounts(db, entity_id: int):
+    defs = [
+        ("NGI Capital Operating Account", "checking", "1234", True),
+        ("NGI Capital Savings Account", "savings", "5678", False),
+    ]
+    for name, acct_type, last4, is_primary in defs:
+        ex = (
+            db.query(BankAccounts)
+            .filter(BankAccounts.entity_id == entity_id, BankAccounts.account_name == name)
+            .first()
+        )
+        if not ex:
+            db.add(
+                BankAccounts(
+                    entity_id=entity_id,
+                    bank_name="Mercury Bank",
+                    account_name=name,
+                    account_type=acct_type,
+                    account_number_masked=last4,
+                    routing_number="021000021",
+                    current_balance=Decimal("0"),
+                    is_primary=is_primary,
+                )
+            )
+            print(f"[OK] Created bank account: {name}")
+        else:
+            print(f"  Bank account already exists: {name}")
+    db.commit()
+
+
+def main():
     print("Initializing NGI Capital Production Database...")
     print("=" * 50)
-    
-    # Create all tables
     Base.metadata.create_all(bind=engine)
-    print("[OK] Database tables created")
-    
-    # Create a session
+    print("[OK] Database tables created/verified")
     db = SessionLocal()
-    
     try:
-        # Initialize partners
-        partners = [
-            {
-                "email": "anurmamade@ngicapitaladvisory.com",
-                "name": "Andre Nurmamade",
-                "password": "TempPassword123!",
-                "ownership_percentage": 50.0,
-                "capital_account_balance": 0.0
-            },
-            {
-                "email": "lwhitworth@ngicapitaladvisory.com",
-                "name": "Landon Whitworth",
-                "password": "TempPassword123!",
-                "ownership_percentage": 50.0,
-                "capital_account_balance": 0.0
-            }
-        ]
-        
-        for partner_data in partners:
-            existing = db.query(Partners).filter(Partners.email == partner_data["email"]).first()
-            if not existing:
-                partner = Partners(
-                    email=partner_data["email"],
-                    name=partner_data["name"],
-                    password_hash=get_password_hash(partner_data["password"]),
-                    ownership_percentage=partner_data["ownership_percentage"],
-                    capital_account_balance=partner_data["capital_account_balance"],
-                    is_active=True,
-                    created_at=datetime.utcnow()
-                )
-                db.add(partner)
-                print(f"[OK] Created partner: {partner_data['name']}")
-            else:
-                print(f"  Partner already exists: {partner_data['name']}")
-        
-        db.commit()
-        
-        # Initialize entities
-        ngi_llc = db.query(Entities).filter(Entities.legal_name == "NGI Capital LLC").first()
-        if not ngi_llc:
-            ngi_llc = Entities(
-                legal_name="NGI Capital LLC",
-                entity_type="LLC",
-                ein="88-3957014",
-                formation_date=datetime(2024, 7, 16),
-                state="Delaware",
-                file_number="7816542",
-                registered_agent="Corporate Service Company",
-                registered_address="251 Little Falls Drive, Wilmington, DE 19808",
-                status="active",
-                is_active=True
-            )
-            db.add(ngi_llc)
-            db.commit()
-            db.refresh(ngi_llc)
-            print("[OK] Created NGI Capital LLC entity")
-        else:
-            print("  NGI Capital LLC already exists")
-        
-        # Create subsidiary entities
-        subsidiaries = [
-            {
-                "legal_name": "NGI Capital, Inc.",
-                "entity_type": "C-Corp",
-                "state": "Delaware",
-                "parent_entity_id": ngi_llc.id,
-                "status": "converting"
-            },
-            {
-                "legal_name": "The Creator Terminal, Inc.",
-                "entity_type": "C-Corp",
-                "state": "Delaware",
-                "parent_entity_id": ngi_llc.id,
-                "status": "pre-formation"
-            },
-            {
-                "legal_name": "NGI Capital Advisory LLC",
-                "entity_type": "LLC",
-                "state": "Delaware",
-                "parent_entity_id": ngi_llc.id,
-                "status": "pre-formation"
-            }
-        ]
-        
-        for sub_data in subsidiaries:
-            existing = db.query(Entities).filter(Entities.legal_name == sub_data["legal_name"]).first()
-            if not existing:
-                entity = Entities(**sub_data, is_active=True)
-                db.add(entity)
-                print(f"[OK] Created entity: {sub_data['legal_name']}")
-            else:
-                print(f"  Entity already exists: {sub_data['legal_name']}")
-        
-        db.commit()
-        
-        # Initialize basic chart of accounts
-        accounts = [
-            # Assets (10000-19999)
-            {"account_number": "10100", "account_name": "Cash - Operating", "account_type": "Asset", "account_category": "Current Asset"},
-            {"account_number": "10200", "account_name": "Cash - Savings", "account_type": "Asset", "account_category": "Current Asset"},
-            {"account_number": "10300", "account_name": "Accounts Receivable", "account_type": "Asset", "account_category": "Current Asset"},
-            {"account_number": "10400", "account_name": "Prepaid Expenses", "account_type": "Asset", "account_category": "Current Asset"},
-            {"account_number": "15000", "account_name": "Equipment", "account_type": "Asset", "account_category": "Fixed Asset"},
-            {"account_number": "15100", "account_name": "Accumulated Depreciation", "account_type": "Asset", "account_category": "Contra Asset"},
-            {"account_number": "16000", "account_name": "Intangible Assets", "account_type": "Asset", "account_category": "Intangible Asset"},
-            
-            # Liabilities (20000-29999)
-            {"account_number": "20100", "account_name": "Accounts Payable", "account_type": "Liability", "account_category": "Current Liability"},
-            {"account_number": "20200", "account_name": "Credit Card Payable", "account_type": "Liability", "account_category": "Current Liability"},
-            {"account_number": "20300", "account_name": "Accrued Expenses", "account_type": "Liability", "account_category": "Current Liability"},
-            {"account_number": "20400", "account_name": "Deferred Revenue", "account_type": "Liability", "account_category": "Current Liability"},
-            {"account_number": "25000", "account_name": "Notes Payable", "account_type": "Liability", "account_category": "Long-term Liability"},
-            
-            # Equity (30000-39999)
-            {"account_number": "30100", "account_name": "Partner Capital - Andre", "account_type": "Equity", "account_category": "Partner Capital"},
-            {"account_number": "30200", "account_name": "Partner Capital - Landon", "account_type": "Equity", "account_category": "Partner Capital"},
-            {"account_number": "30300", "account_name": "Partner Draws - Andre", "account_type": "Equity", "account_category": "Partner Draws"},
-            {"account_number": "30400", "account_name": "Partner Draws - Landon", "account_type": "Equity", "account_category": "Partner Draws"},
-            {"account_number": "39000", "account_name": "Retained Earnings", "account_type": "Equity", "account_category": "Retained Earnings"},
-            
-            # Revenue (40000-49999)
-            {"account_number": "40100", "account_name": "Advisory Fee Revenue", "account_type": "Revenue", "account_category": "Operating Revenue"},
-            {"account_number": "40200", "account_name": "Consulting Revenue", "account_type": "Revenue", "account_category": "Operating Revenue"},
-            {"account_number": "40300", "account_name": "Product Revenue", "account_type": "Revenue", "account_category": "Operating Revenue"},
-            {"account_number": "40400", "account_name": "Investment Income", "account_type": "Revenue", "account_category": "Other Revenue"},
-            {"account_number": "40500", "account_name": "Interest Income", "account_type": "Revenue", "account_category": "Other Revenue"},
-            
-            # Expenses (50000-59999)
-            {"account_number": "50100", "account_name": "Salaries & Wages", "account_type": "Expense", "account_category": "Operating Expense"},
-            {"account_number": "50200", "account_name": "Rent Expense", "account_type": "Expense", "account_category": "Operating Expense"},
-            {"account_number": "50300", "account_name": "Utilities", "account_type": "Expense", "account_category": "Operating Expense"},
-            {"account_number": "50400", "account_name": "Insurance", "account_type": "Expense", "account_category": "Operating Expense"},
-            {"account_number": "50500", "account_name": "Professional Fees", "account_type": "Expense", "account_category": "Operating Expense"},
-            {"account_number": "50600", "account_name": "Office Supplies", "account_type": "Expense", "account_category": "Operating Expense"},
-            {"account_number": "50700", "account_name": "Travel & Entertainment", "account_type": "Expense", "account_category": "Operating Expense"},
-            {"account_number": "50800", "account_name": "Marketing & Advertising", "account_type": "Expense", "account_category": "Operating Expense"},
-            {"account_number": "50900", "account_name": "Technology & Software", "account_type": "Expense", "account_category": "Operating Expense"},
-            {"account_number": "51000", "account_name": "Telephone & Internet", "account_type": "Expense", "account_category": "Operating Expense"},
-            {"account_number": "51100", "account_name": "Legal Fees", "account_type": "Expense", "account_category": "Operating Expense"},
-            {"account_number": "51200", "account_name": "Accounting Fees", "account_type": "Expense", "account_category": "Operating Expense"},
-            {"account_number": "59000", "account_name": "Depreciation Expense", "account_type": "Expense", "account_category": "Non-cash Expense"},
-            {"account_number": "59100", "account_name": "Amortization Expense", "account_type": "Expense", "account_category": "Non-cash Expense"}
-        ]
-        
-        for account_data in accounts:
-            existing = db.query(ChartOfAccounts).filter(
-                ChartOfAccounts.account_code == account_data["account_number"]
-            ).first()
-            if not existing:
-                account = ChartOfAccounts(
-                    entity_id=ngi_llc.id,
-                    account_code=account_data["account_number"],
-                    account_name=account_data["account_name"],
-                    account_type=account_data["account_type"],
-                    description=account_data["account_category"],
-                    is_active=True
-                )
-                db.add(account)
-        
-        db.commit()
-        print("[OK] Chart of accounts initialized")
-        
-        # Initialize bank accounts
-        bank_accounts = [
-            {
-                "entity_id": ngi_llc.id,
-                "bank_name": "Mercury Bank",
-                "account_name": "NGI Capital Operating Account",
-                "account_type": "checking",
-                "account_number_last4": "1234",
-                "routing_number": "021000021",
-                "current_balance": 0.0,
-                "is_primary": True
-            },
-            {
-                "entity_id": ngi_llc.id,
-                "bank_name": "Mercury Bank",
-                "account_name": "NGI Capital Savings Account",
-                "account_type": "savings",
-                "account_number_last4": "5678",
-                "routing_number": "021000021",
-                "current_balance": 0.0,
-                "is_primary": False
-            }
-        ]
-        
-        for account_data in bank_accounts:
-            existing = db.query(BankAccounts).filter(
-                BankAccounts.entity_id == account_data["entity_id"],
-                BankAccounts.account_name == account_data["account_name"]
-            ).first()
-            if not existing:
-                bank_account = BankAccounts(**account_data, is_active=True)
-                db.add(bank_account)
-                print(f"[OK] Created bank account: {account_data['account_name']}")
-            else:
-                print(f"  Bank account already exists: {account_data['account_name']}")
-        
-        db.commit()
-        
-        print("\n" + "=" * 50)
-        print("[SUCCESS] Database initialization complete!")
-        print("\nPartner login credentials:")
-        print("  Andre: anurmamade@ngicapitaladvisory.com / TempPassword123!")
-        print("  Landon: lwhitworth@ngicapitaladvisory.com / TempPassword123!")
-        print("\nEntities created:")
-        print("  - NGI Capital LLC (Active)")
-        print("  - NGI Capital, Inc. (Converting)")
-        print("  - The Creator Terminal, Inc. (Pre-formation)")
-        print("  - NGI Capital Advisory LLC (Pre-formation)")
-        
+        ensure_partners(db)
+        ngi = ensure_entities(db)
+        ensure_coa(db, ngi.id)
+        ensure_bank_accounts(db, ngi.id)
+        print("\n[OK] Initialization complete")
     except Exception as e:
-        print(f"\n[ERROR] Error during initialization: {str(e)}")
-        db.rollback()
+        print(f"[ERROR] Initialization failed: {e}")
         raise
     finally:
         db.close()
 
+
 if __name__ == "__main__":
-    init_database()
+    main()

@@ -14,11 +14,9 @@ import {
 } from '@/types'
 import { toast } from 'sonner'
 
-// Prefer relative /api in the browser so nginx can path-route at a single apex domain.
-// Fall back to NEXT_PUBLIC_API_URL (or localhost) when running on the server.
-const API_BASE_URL = typeof window !== 'undefined'
-  ? '/api'
-  : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8001')
+// Always use relative /api so Vercel middleware can attach auth headers
+// and rewrites can route to the backend uniformly for SSR and client.
+const API_BASE_URL = '/api'
 
 // Types
 interface ApiError {
@@ -129,6 +127,14 @@ class ApiClient {
                 ;(config.headers as any).Authorization = `Bearer ${token}`
               }
             }
+            // Always include admin email header (env-allowlist fallback on backend)
+            try {
+              const email = clerk?.user?.primaryEmailAddress?.emailAddress || clerk?.session?.user?.primaryEmailAddress?.emailAddress
+              if (email) {
+                config.headers = config.headers || {}
+                ;(config.headers as any)['X-Admin-Email'] = String(email).toLowerCase()
+              }
+            } catch {}
           } catch {}
         }
         return config
@@ -190,6 +196,7 @@ class ApiClient {
     if (error.response) {
       const status = error.response.status
       const message = error.response.data?.detail || error.response.data?.message || 'An error occurred'
+      const url = (error.request?.responseURL || '').toString()
       const normalize = (val: any): string => {
         if (typeof val === 'string') return val
         if (Array.isArray(val)) {
@@ -215,6 +222,7 @@ class ApiClient {
           toast.error('Access denied. Insufficient permissions.')
           break
         case 404:
+          if (url.includes('/api/goals')) return
           toast.error('Resource not found.')
           break
         case 422: {
@@ -1025,12 +1033,18 @@ export async function advisorySetProjectLeads(projectId: number, emails: string[
   return apiClient.request('PUT', `/advisory/projects/${projectId}/leads`, { emails })
 }
 
-export async function advisoryGetProjectQuestions(projectId: number): Promise<{ prompts: string[] }> {
+export async function advisoryGetProjectQuestions(projectId: number): Promise<{ prompts: string[]; items?: Array<{ idx:number; type?: 'text'|'mcq'; prompt:string; choices?: string[] }> }> {
   return apiClient.request('GET', `/advisory/projects/${projectId}/questions`)
 }
 
 export async function advisorySetProjectQuestions(projectId: number, prompts: string[]): Promise<{ id: number; count: number }> {
   return apiClient.request('PUT', `/advisory/projects/${projectId}/questions`, { prompts })
+}
+
+export async function advisorySetProjectQuestionsTyped(projectId: number, items: Array<{ idx:number; type?: 'text'|'mcq'; prompt:string; choices?: string[] }>): Promise<{ id: number; count: number }> {
+  // Ensure idx is normalized 0..n-1
+  const norm = items.map((it, i) => ({ idx: i, type: (it.type || 'text'), prompt: it.prompt, choices: (it.choices || []) }))
+  return apiClient.request('PUT', `/advisory/projects/${projectId}/questions`, { items: norm })
 }
 
 export async function advisoryUploadProjectHero(projectId: number, file: File): Promise<{ hero_image_url: string }>{

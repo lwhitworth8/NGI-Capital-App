@@ -4,10 +4,10 @@ import Link from 'next/link';
 
 export function ImportantModules(){
   const tiles = [
-    { title:"Finance", kpis:["ARR $—","Cash $—","Open Invoices —"], href:"/finance" },
-    { title:"Sales", kpis:["Pipeline —","Win rate —"], href:"/sales" },
-    { title:"Product", kpis:["Incidents —","Last Release —"], href:"/product" },
-    { title:"People", kpis:["Headcount —","Open roles —"], href:"/people" },
+    { title:"Finance", kpis:["ARR $-","Cash $-","Open Invoices -"], href:"/finance" },
+    { title:"Sales", kpis:["Pipeline -","Win rate -"], href:"/sales" },
+    { title:"Product", kpis:["Incidents -","Last Release -"], href:"/product" },
+    { title:"People", kpis:["Headcount -","Open roles -"], href:"/people" },
   ];
   return (
     <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">

@@ -16,7 +16,7 @@ type Profile = {
   location?: string | null;
 }
 
-type Question = { idx: number; prompt: string }
+type Question = { idx: number; type?: 'text'|'mcq'; prompt: string; choices?: string[] }
 
 export default function ApplyWidget({ projectId, allowApply, coffeechat, questions = [] }: { projectId: number; allowApply: boolean; coffeechat?: string; questions?: Question[] }) {
   const { user } = useUser()
@@ -105,6 +105,24 @@ export default function ApplyWidget({ projectId, allowApply, coffeechat, questio
       {questions && questions.length ? (
         <div className="space-y-3">
           {questions.map((q) => {
+            const qType = (q.type || 'text') as ('text'|'mcq')
+            if (qType === 'mcq' && (q.choices || []).length > 0) {
+              const opts = (q.choices || []).slice(0,12)
+              const sel = answers[String(q.idx)] || ''
+              return (
+                <div key={q.idx}>
+                  <div className="block text-xs text-muted-foreground mb-1">{q.prompt}</div>
+                  <div className="space-y-1">
+                    {opts.map((c, i) => (
+                      <label key={i} className="flex items-center gap-2 text-sm">
+                        <input type="radio" name={`q_${q.idx}`} checked={sel===c} onChange={()=> setAnswers(a => ({ ...a, [String(q.idx)]: c }))} />
+                        <span>{c}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )
+            }
             const val = answers[String(q.idx)] || ''
             const words = val.trim() ? val.trim().split(/\s+/).filter(Boolean).length : 0
             return (

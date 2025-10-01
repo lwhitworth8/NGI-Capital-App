@@ -194,7 +194,7 @@ export default function EntitiesPage() {
                       </div>
                       <div className="text-left flex-1">
                         <h3 className="font-semibold text-foreground">{organizationStructure.root.name}</h3>
-                        <p className="text-xs text-muted-foreground">{organizationStructure.root.type} • {organizationStructure.root.state}</p>
+                        <p className="text-xs text-muted-foreground">{organizationStructure.root.type} - {organizationStructure.root.state}</p>
                       </div>
                     </div>
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -229,7 +229,7 @@ export default function EntitiesPage() {
                           </div>
                           <div className="text-left flex-1">
                             <h3 className="font-semibold text-foreground text-sm">{child.name}</h3>
-                            <p className="text-xs text-muted-foreground">{child.type} • {child.state}</p>
+                            <p className="text-xs text-muted-foreground">{child.type} - {child.state}</p>
                           </div>
                         </div>
                         <div className="flex items-center justify-between text-xs">
@@ -272,7 +272,7 @@ export default function EntitiesPage() {
                   
                   <h3 className="font-semibold text-lg text-foreground mb-1">{name}</h3>
                   <p className="text-sm text-muted-foreground mb-4">
-                    {index === 1 ? 'LLC' : 'C-Corporation'} • Delaware
+                    {index === 1 ? 'LLC' : 'C-Corporation'} - Delaware
                   </p>
 
                   <div className="space-y-2 text-sm">
@@ -312,13 +312,13 @@ export default function EntitiesPage() {
             <div className="flex items-start justify-between mb-6">
               <div>
                 <h2 className="text-2xl font-bold text-foreground">{selectedEntity.legal_name}</h2>
-                <p className="text-muted-foreground">{selectedEntity.entity_type} • {selectedEntity.state}</p>
+                <p className="text-muted-foreground">{selectedEntity.entity_type} - {selectedEntity.state}</p>
               </div>
               <button 
                 onClick={() => setSelectedEntity(null)}
                 className="text-muted-foreground hover:text-foreground"
               >
-                ✕
+                x
               </button>
             </div>
 

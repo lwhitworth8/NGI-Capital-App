@@ -10,9 +10,8 @@ export default function ClientRoot({ children }: { children: React.ReactNode }) 
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="student_theme">
       {onMarketing ? (
-        <div className="min-h-screen grid place-items-center bg-background text-foreground">
-          <main className="w-full max-w-xl px-4">{children}</main>
-        </div>
+        // Marketing route renders its own fixed theme and layout
+        <>{children}</>
       ) : onAuth ? (
         // Allow auth pages (sign-in/up and resolver) to control their own layout
         <div className="min-h-screen bg-background text-foreground">{children}</div>

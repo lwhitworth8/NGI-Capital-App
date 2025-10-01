@@ -47,7 +47,7 @@ export default function BankReconciliationPage(){
           <ul>
             {feed.map(t=> (
               <li key={t.id} className={`p-2 border-t cursor-pointer ${selected?.id===t.id?'bg-blue-50':''}`} onClick={()=>setSelected(t)}>
-                <div className="flex justify-between tabular-nums"><span>{t.date} • {t.description}</span><span>${t.amount.toFixed(2)}</span></div>
+                <div className="flex justify-between tabular-nums"><span>{t.date} - {t.description}</span><span>${t.amount.toFixed(2)}</span></div>
                 <div className="text-xs text-muted-foreground">{t.status}</div>
               </li>
             ))}
@@ -58,11 +58,11 @@ export default function BankReconciliationPage(){
           <div className="p-2 space-y-3">
             <div>
               <div className="text-sm font-medium mb-1">Documents</div>
-              <ul className="text-sm">{sugs.documents?.map((d:any)=>(<li key={d.id} className="tabular-nums">#{d.id} • {d.vendor} • ${Number(d.total||0).toFixed(2)}</li>))}</ul>
+              <ul className="text-sm">{sugs.documents?.map((d:any)=>(<li key={d.id} className="tabular-nums">#{d.id} - {d.vendor} - ${Number(d.total||0).toFixed(2)}</li>))}</ul>
             </div>
             <div>
               <div className="text-sm font-medium mb-1">Journal Entries</div>
-              <ul className="text-sm">{sugs.journal_entries?.map((j:any)=>(<li key={j.id} className="tabular-nums">{j.entry_number} • ${Number(j.total||0).toFixed(2)}</li>))}</ul>
+              <ul className="text-sm">{sugs.journal_entries?.map((j:any)=>(<li key={j.id} className="tabular-nums">{j.entry_number} - ${Number(j.total||0).toFixed(2)}</li>))}</ul>
             </div>
             {selected && (
               <div className="flex gap-2">

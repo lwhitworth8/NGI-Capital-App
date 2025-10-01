@@ -39,7 +39,7 @@ export default function MyProjectsPage() {
   return (
     <div className="p-6">
       <h1 className="text-2xl font-semibold">My Projects</h1>
-      {loading && <div className="text-sm text-muted-foreground mt-2">Loading…</div>}
+      {loading && <div className="text-sm text-muted-foreground mt-2">Loading...</div>}
       {error && <div className="text-sm text-red-600 mt-2">{error}</div>}
       <div className="mt-6">
         <h2 className="text-lg font-medium">Active Projects</h2>

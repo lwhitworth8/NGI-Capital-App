@@ -1,6 +1,6 @@
-﻿/** @type {import('next').NextConfig} */
+/** @type {import('next').NextConfig} */
 const BACKEND_ORIGIN = process.env.BACKEND_ORIGIN || (process.env.NODE_ENV === 'production'
-  ? 'http://backend:8001'
+  ? (process.env.NEXT_PUBLIC_API_URL || 'https://api.ngicapitaladvisory.com')
   : 'http://localhost:8001')
 
 const nextConfig = {

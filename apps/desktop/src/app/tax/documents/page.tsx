@@ -17,7 +17,7 @@ export default function TaxDocumentsPage(){
         <div className="flex items-center gap-2"><a className="px-3 py-1 border rounded" href={`/api/accounting/close/packet?entity_id=${entityId}&year=${year}&month=${month}`} target="_blank">Download Financial Package</a></div>
       </div>
       <div className="rounded-xl border bg-card p-4 overflow-auto">
-        <div className="text-sm font-medium mb-2">Tax Export (Book→Tax shell)</div>
+        <div className="text-sm font-medium mb-2">Tax Export (Book?Tax shell)</div>
         <pre className="text-xs whitespace-pre-wrap">{JSON.stringify(data,null,2)}</pre>
       </div>
     </div>

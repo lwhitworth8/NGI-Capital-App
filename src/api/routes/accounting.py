@@ -1793,7 +1793,11 @@ async def approvals_pending(entity_id: int | None = None, year: int | None = Non
         period_end = f"{year:04d}-{month:02d}-{last:02d}"
         where.append("entry_date >= :sd AND entry_date <= :ed"); params["sd"] = period_start; params["ed"] = period_end
     sql = "SELECT id, entry_number, entity_id, approval_status FROM journal_entries WHERE " + " AND ".join(where)
-    rows = db.execute(_text(sql), params).fetchall()
+    try:
+        rows = db.execute(_text(sql), params).fetchall()
+    except Exception:
+        # If the journal_entries table doesn't exist yet on this DB, return empty
+        return []
     out = []
     req = [e.strip().lower() for e in os.getenv('DUAL_APPROVER_EMAILS', 'lwhitworth@ngicapitaladvisory.com,anurmamade@ngicapitaladvisory.com').split(',') if e.strip()]
     for rid, eno, eid, st in rows:

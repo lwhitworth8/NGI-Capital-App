@@ -73,9 +73,9 @@ export default function FinanceKPICards({ entityId }: Props) {
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {cards.map((it: any, idx: number) => (
         <div key={idx} className="ngi-card-elevated p-5">
-          <div className="text-xs text-muted-foreground">{loading ? 'Loading…' : it.label}</div>
+          <div className="text-xs text-muted-foreground">{loading ? 'Loading...' : it.label}</div>
           <div className="flex items-end justify-between mt-1">
-            <div className="text-2xl font-bold">{loading ? '—' : it.value || '—'}</div>
+            <div className="text-2xl font-bold">{loading ? '-' : it.value || '-'}</div>
             {!loading && (it.series?.length ? (
               <div className="w-24 h-8">
                 <ResponsiveContainer width="100%" height="100%">

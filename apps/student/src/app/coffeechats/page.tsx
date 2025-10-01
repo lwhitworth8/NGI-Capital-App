@@ -41,7 +41,7 @@ export default function CoffeeChatsPage() {
       {myPending && (
         <div className="rounded-xl border border-amber-500/50 bg-amber-500/10 p-4">
           <div className="text-sm font-medium">Pending request</div>
-          <div className="text-sm text-muted-foreground">{new Date(myPending.start_ts).toLocaleString()} – awaiting partner confirmation.</div>
+          <div className="text-sm text-muted-foreground">{new Date(myPending.start_ts).toLocaleString()} - awaiting partner confirmation.</div>
         </div>
       )}
 

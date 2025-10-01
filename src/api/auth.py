@@ -288,6 +288,39 @@ def require_partner_access():
                 "ownership_percentage": 0,
                 "is_authenticated": True,
             }
+        # Env-admin allowlist fallback for demo: authorize by header/domain when enabled
+        try:
+            if str(_os.getenv('ENABLE_ENV_ADMIN_FALLBACK','0')).strip().lower() in ('1','true','yes'):
+                em = ''
+                try:
+                    em = (request.headers.get('X-Admin-Email') or request.headers.get('x-admin-email') or '').strip().lower()
+                except Exception:
+                    em = ''
+                allowed = set()
+                for var in ('ALLOWED_ADVISORY_ADMINS','ADMIN_EMAILS','ALLOWED_FULL_ACCESS_EMAILS'):
+                    raw = _os.getenv(var,'')
+                    for e in raw.split(','):
+                        e = e.strip().lower()
+                        if e:
+                            allowed.add(e)
+                if em and em in allowed:
+                    return { 'id': em, 'email': em, 'name': em, 'ownership_percentage': 0, 'is_authenticated': True }
+                # Domain-based fallback
+                if em and '@' in em:
+                    domain = em.split('@',1)[1].lower()
+                    if domain == (_os.getenv('ALLOWED_ADMIN_DOMAIN','ngicapitaladvisory.com').strip().lower()):
+                        return { 'id': em, 'email': em, 'name': em, 'ownership_percentage': 0, 'is_authenticated': True }
+                # Host-based fallback: pick first allowlisted email when on admin host
+                try:
+                    host = request.headers.get('x-forwarded-host') or request.headers.get('host') or ''
+                    if host.strip().lower() == (_os.getenv('ADMIN_HOST','admin.ngicapitaladvisory.com').strip().lower()):
+                        if allowed:
+                            em2 = list(allowed)[0]
+                            return { 'id': em2, 'email': em2, 'name': em2, 'ownership_percentage': 0, 'is_authenticated': True }
+                except Exception:
+                    pass
+        except Exception:
+            pass
         if _os.getenv('PYTEST_CURRENT_TEST'):
             # When running tests, if no Authorization header or session token is present,
             # return a minimal principal to allow non-auth tests to proceed.

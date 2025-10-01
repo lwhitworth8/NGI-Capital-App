@@ -26,10 +26,10 @@ export function EntityOverview(){
         </div>
       </div>
       <div className="grid sm:grid-cols-2 gap-3 text-sm">
-        <div><div className="text-muted-foreground">Legal Name</div><div>{ent?.legal_name ?? "—"}</div></div>
-        <div><div className="text-muted-foreground">State</div><div>{(ent as any)?.state ?? "—"}</div></div>
-        <div><div className="text-muted-foreground">EIN</div><div>{(ent as any)?.ein ?? "—"}</div></div>
-        <div><div className="text-muted-foreground">Formation Date</div><div>{(ent as any)?.formation_date ?? "—"}</div></div>
+        <div><div className="text-muted-foreground">Legal Name</div><div>{ent?.legal_name ?? "-"}</div></div>
+        <div><div className="text-muted-foreground">State</div><div>{(ent as any)?.state ?? "-"}</div></div>
+        <div><div className="text-muted-foreground">EIN</div><div>{(ent as any)?.ein ?? "-"}</div></div>
+        <div><div className="text-muted-foreground">Formation Date</div><div>{(ent as any)?.formation_date ?? "-"}</div></div>
       </div>
     </Card>
   );
