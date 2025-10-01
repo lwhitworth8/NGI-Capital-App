@@ -19,14 +19,14 @@ ENTITY_STATUS: Dict[str, str] = {
 
 
 def getCurrentFiscalYear(date: datetime) -> int:
-    """Fiscal year runs July 1 – June 30 (FY labeled by end year)."""
+    """Fiscal year runs July 1 - June 30 (FY labeled by end year)."""
     month = date.month
     year = date.year
     return year + 1 if month >= 7 else year
 
 
 def getFiscalYearDates(fiscalYear: int):
-    """Return start/end datetimes for a given FY (July 1 prev year – June 30 FY)."""
+    """Return start/end datetimes for a given FY (July 1 prev year - June 30 FY)."""
     start = datetime(fiscalYear - 1, 7, 1)
     end = datetime(fiscalYear, 6, 30)
     return {"start": start, "end": end}

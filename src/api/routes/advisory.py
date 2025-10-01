@@ -1,4 +1,4 @@
-"""
+﻿"""
 NGI Capital Advisory Management API
 Scope: Projects, Students, Applications, Coffee Chats, Onboarding
 All endpoints restricted to NGI Advisory admins (Andre, Landon).
@@ -132,6 +132,11 @@ def _ensure_tables(db: Session):
         db.execute(sa_text("ALTER TABLE advisory_projects ADD COLUMN showcase_pdf_url TEXT"))
     except Exception:
         pass
+    # Applications open/close dates (for gating apply button)
+    try:
+        db.execute(sa_text("ALTER TABLE advisory_projects ADD COLUMN applications_close_date TEXT"))
+    except Exception:
+        pass
     # Partner/Backer logos (JSON arrays of {name,url})
     try:
         db.execute(sa_text("ALTER TABLE advisory_projects ADD COLUMN partner_logos TEXT"))
@@ -166,10 +171,21 @@ def _ensure_tables(db: Session):
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             project_id INTEGER NOT NULL,
             idx INTEGER NOT NULL,
-            prompt TEXT NOT NULL
+            prompt TEXT NOT NULL,
+            qtype TEXT DEFAULT 'text',
+            choices_json TEXT
         )
         """
     ))
+    # Ensure columns exist for older tables
+    try:
+        db.execute(sa_text("ALTER TABLE advisory_project_questions ADD COLUMN qtype TEXT"))
+    except Exception:
+        pass
+    try:
+        db.execute(sa_text("ALTER TABLE advisory_project_questions ADD COLUMN choices_json TEXT"))
+    except Exception:
+        pass
     # Students
     db.execute(sa_text(
         """
@@ -516,6 +532,7 @@ async def create_project(payload: Dict[str, Any], admin=Depends(require_ngiadvis
         except Exception: return None
     # Generate project code if missing
     if not payload.get("project_code"):
+        # Prefer client_name for code prefix; fall back to project_name
         src = (payload.get("client_name") or payload.get("project_name") or "").upper()
         import re as _re
         letters = ''.join(_re.findall(r'[A-Z0-9]', src))[:3]
@@ -565,7 +582,8 @@ async def create_project(payload: Dict[str, Any], admin=Depends(require_ngiadvis
         'eligibility_notes': ('elig', payload.get('eligibility_notes')),
         'notes_internal': ('notes', payload.get('notes_internal')),
         'is_public': ('isp', 1 if (payload.get('is_public') in (True,1,'1','true')) else 0),
-        'allow_applications': ('allowapp', 1 if (payload.get('allow_applications') in (True,1,'1','true')) else 0),
+        # Default to allow applications unless explicitly disabled
+        'allow_applications': ('allowapp', 1 if (payload.get('allow_applications') in (True,1,'1','true',None)) else 0),
         'coffeechat_calendly': ('cal', payload.get('coffeechat_calendly')),
         'team_size': ('ts', payload.get('team_size')),
         'team_requirements': ('treq', (payload.get('team_requirements') if isinstance(payload.get('team_requirements'), str) else __import__('json').dumps(payload.get('team_requirements') or []))),
@@ -635,7 +653,7 @@ async def update_project(pid: int, payload: Dict[str, Any], request: Request, ad
     # build dynamic update
     sets = []
     params: Dict[str, Any] = {"id": pid}
-    for k in ("client_name","project_name","summary","description","status","mode","location_text","start_date","end_date","duration_weeks","commitment_hours_per_week","project_code","project_lead","contact_email","hero_image_url","apply_cta_text","apply_url","eligibility_notes","notes_internal","coffeechat_calendly","team_size","showcase_pdf_url"):
+    for k in ("client_name","project_name","summary","description","status","mode","location_text","start_date","end_date","duration_weeks","commitment_hours_per_week","project_code","project_lead","contact_email","hero_image_url","apply_cta_text","apply_url","eligibility_notes","notes_internal","coffeechat_calendly","team_size","showcase_pdf_url","applications_close_date"):
         if k in payload:
             sets.append(f"{k} = :{k}"); params[k] = payload[k]
     if "is_public" in payload:
@@ -765,22 +783,67 @@ async def set_project_leads(pid: int, payload: Dict[str, Any], admin=Depends(req
 
 @router.get("/projects/{pid}/questions")
 async def get_project_questions(pid: int, admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
-    rows = db.execute(sa_text("SELECT idx, prompt FROM advisory_project_questions WHERE project_id = :p ORDER BY idx ASC"), {"p": pid}).fetchall()
-    return {"prompts": [r[1] for r in rows]}
+    rows = db.execute(sa_text("SELECT idx, prompt, qtype, choices_json FROM advisory_project_questions WHERE project_id = :p ORDER BY idx ASC"), {"p": pid}).fetchall()
+    # Back-compat: return prompts plus typed items
+    import json as _json
+    items = []
+    prompts = []
+    for r in rows:
+        idx, prompt, qtype, choices_json = r[0], r[1], (r[2] or 'text'), r[3]
+        if isinstance(prompt, str):
+            prompts.append(prompt)
+        choices = []
+        if choices_json:
+            try:
+                j = _json.loads(choices_json)
+                if isinstance(j, list):
+                    choices = [str(x) for x in j if isinstance(x, (str, int, float))]
+            except Exception:
+                choices = []
+        items.append({
+            "idx": int(idx),
+            "type": (str(qtype or 'text').lower() if str(qtype or 'text').lower() in ('text','mcq') else 'text'),
+            "prompt": prompt,
+            "choices": choices,
+        })
+    return {"prompts": prompts, "items": items}
 
 
 @router.put("/projects/{pid}/questions")
 async def set_project_questions(pid: int, payload: Dict[str, Any], admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
-    prompts = payload.get("prompts") or []
-    if not isinstance(prompts, list):
-        raise HTTPException(status_code=422, detail="prompts must be a list")
-    if len(prompts) > 10:
-        raise HTTPException(status_code=422, detail="max 10 prompts")
+    import json as _json
+    items = payload.get("items")
+    prompts = payload.get("prompts")
+    data: list[Dict[str, Any]] = []
+    if isinstance(items, list):
+        for i, it in enumerate(items):
+            if not isinstance(it, dict):
+                continue
+            typ = str(it.get("type") or 'text').lower()
+            if typ not in ("text","mcq"):
+                typ = "text"
+            pr = it.get("prompt")
+            if not isinstance(pr, str) or not pr.strip():
+                continue
+            ch = it.get("choices")
+            choices: list[str] = []
+            if typ == 'mcq' and isinstance(ch, list):
+                choices = [str(x) for x in ch if str(x).strip()][:12]
+            data.append({"idx": i, "prompt": pr.strip(), "type": typ, "choices": choices})
+    elif isinstance(prompts, list):
+        for i, pr in enumerate(prompts):
+            if isinstance(pr, str) and pr.strip():
+                data.append({"idx": i, "prompt": pr.strip(), "type": "text", "choices": []})
+    else:
+        raise HTTPException(status_code=422, detail="questions must be 'items' (typed) or 'prompts' list")
+    if len(data) > 10:
+        raise HTTPException(status_code=422, detail="max 10 questions")
     db.execute(sa_text("DELETE FROM advisory_project_questions WHERE project_id = :p"), {"p": pid})
-    for i, pr in enumerate(prompts):
-        if pr and isinstance(pr, str):
-            db.execute(sa_text("INSERT INTO advisory_project_questions (project_id, idx, prompt) VALUES (:p,:i,:x)"), {"p": pid, "i": i, "x": pr})
-    db.commit(); return {"id": pid, "count": len(prompts)}
+    for it in data:
+        db.execute(sa_text(
+            "INSERT INTO advisory_project_questions (project_id, idx, prompt, qtype, choices_json) VALUES (:p,:i,:x,:t,:c)"
+        ), {"p": pid, "i": int(it["idx"]), "x": it["prompt"], "t": it.get("type") or 'text', "c": _json.dumps(it.get("choices") or [])})
+    db.commit(); return {"id": pid, "count": len(data)}
 
 
 # File uploads for hero/gallery/showcase
@@ -1734,3 +1797,4 @@ async def finalize_onboarding_flow(fid: int, admin=Depends(require_ngiadvisory_a
     except Exception:
         pass
     db.commit(); return {"id": fid, "status": 'onboarded'}
+

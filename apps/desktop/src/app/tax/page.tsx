@@ -70,7 +70,7 @@ export default function TaxDashboardPage() {
     if (!cd) return null
     return (
       <div className="rounded-md bg-blue-50 border border-blue-200 text-blue-800 p-3 text-sm" role="alert">
-        Conversion: {cd}. Switch to post-conversion entity for C‑Corp obligations.
+        Conversion: {cd}. Switch to post-conversion entity for C?Corp obligations.
       </div>
     )
   }, [profile])
@@ -132,8 +132,8 @@ export default function TaxDashboardPage() {
             <div className="ngi-card-elevated p-4">
               <h2 className="font-semibold mb-2">Quick Calculators</h2>
               <div className="space-y-2">
-                <button className="text-sm px-3 py-1 border rounded" onClick={async()=>{ const r=await apiClient.taxCalcDEFranchise({ entityId: entityId!, method:'authorized', inputs:{} }); alert(`DE Franchise (Authorized): $${r.amount}`) }}>DE Franchise – Authorized</button>
-                <button className="text-sm px-3 py-1 border rounded" onClick={async()=>{ const r=await apiClient.taxCalcDEFranchise({ entityId: entityId!, method:'assumed', inputs:{ issuedShares: 1000000, assetValue: 500000 } }); alert(`DE Franchise (Assumed): $${r.amount}`) }}>DE Franchise – Assumed Par</button>
+                <button className="text-sm px-3 py-1 border rounded" onClick={async()=>{ const r=await apiClient.taxCalcDEFranchise({ entityId: entityId!, method:'authorized', inputs:{} }); alert(`DE Franchise (Authorized): $${r.amount}`) }}>DE Franchise - Authorized</button>
+                <button className="text-sm px-3 py-1 border rounded" onClick={async()=>{ const r=await apiClient.taxCalcDEFranchise({ entityId: entityId!, method:'assumed', inputs:{ issuedShares: 1000000, assetValue: 500000 } }); alert(`DE Franchise (Assumed): $${r.amount}`) }}>DE Franchise - Assumed Par</button>
                 <button className="text-sm px-3 py-1 border rounded" onClick={async()=>{ const r=await apiClient.taxCalcCaLlcFee({ entityId: entityId!, year: new Date().getUTCFullYear(), revenue: { total: 800000 } }); alert(`CA LLC Fee: $${r.amount}`) }}>CA LLC Fee</button>
               </div>
             </div>
@@ -169,7 +169,7 @@ export default function TaxDashboardPage() {
             }}>Add</button>
           </div>
           <ul className="text-sm list-disc pl-5">
-            {(docs||[]).map((d:any)=>(<li key={d.id}><a className="text-blue-600 hover:underline" href={d.fileUrl} target="_blank" rel="noreferrer">{d.title}</a> — {d.jurisdiction} {d.form} ({d.year})</li>))}
+            {(docs||[]).map((d:any)=>(<li key={d.id}><a className="text-blue-600 hover:underline" href={d.fileUrl} target="_blank" rel="noreferrer">{d.title}</a> - {d.jurisdiction} {d.form} ({d.year})</li>))}
           </ul>
         </div>
       )}
@@ -215,7 +215,7 @@ function JurisdictionView({ entityId, jurisdiction, filings, onCreate }: { entit
           {filtered.map((f:any)=>(
             <tr key={f.id} className="border-t border-border">
               <td>{f.form}</td>
-              <td className="tabular-nums">{f.periodStart} — {f.periodEnd}</td>
+              <td className="tabular-nums">{f.periodStart} - {f.periodEnd}</td>
               <td className="tabular-nums">{f.dueDate||'-'}</td>
               <td>{f.status}</td>
               <td className="tabular-nums">{typeof f.amount==='number'?`$${f.amount.toFixed(2)}`:'-'}</td>

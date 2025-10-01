@@ -121,8 +121,8 @@ export default function InvestorManagementPage() {
             {reports.past?.map((r:any)=> (
               <div key={r.id} className="border rounded p-2 text-sm flex items-center justify-between">
                 <div>
-                  <div className="font-medium">{r.period} • {r.type}</div>
-                  <div className="text-xs text-muted-foreground">{r.status} • {r.submittedAt ? new Date(r.submittedAt).toLocaleDateString() : '-'}</div>
+                  <div className="font-medium">{r.period} - {r.type}</div>
+                  <div className="text-xs text-muted-foreground">{r.status} - {r.submittedAt ? new Date(r.submittedAt).toLocaleDateString() : '-'}</div>
                 </div>
                 {r.currentDocUrl && <a href={r.currentDocUrl} className="text-blue-600 text-xs hover:underline" target="_blank">Download</a>}
               </div>
@@ -197,7 +197,7 @@ export default function InvestorManagementPage() {
                             setInlineStage(''); setInlineQuery(''); setInlineResults([])
                             setPipeline(await invGetPipeline(entityId))
                           }}>
-                          {r.legal_name} {r.firm ? `• ${r.firm}` : ''}
+                          {r.legal_name} {r.firm ? `- ${r.firm}` : ''}
                         </button>
                       ))}
                       {inlineResults.length===0 && inlineQuery && (
@@ -213,7 +213,7 @@ export default function InvestorManagementPage() {
                 <div key={it.pipelineId} className="bg-card border border-border rounded p-2 mb-2 text-sm"
                      draggable
                      onDragStart={(e)=>{ (window as any).__dragItem = it; e.dataTransfer.setData('text/pid', it.pipelineId) }}>
-                  <div className="font-medium">{it.investor.name} • {it.investor.firm || '-'}</div>
+                  <div className="font-medium">{it.investor.name} - {it.investor.firm || '-'}</div>
                   <div className="text-xs text-muted-foreground">{it.investor.email || '-'}</div>
                   <div className="flex gap-1 mt-2">
                     {['Not Started','Diligence','Pitched','Won','Lost'].map(s=> (
@@ -251,7 +251,7 @@ function Kpi({ label, value }: { label: string; value: number }) {
     <div className="rounded-xl border border-border bg-card p-4">
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="text-2xl font-semibold tabular-nums">{Number(value || 0).toLocaleString()}</div>
-      <div className="text-[10px] text-muted-foreground mt-1">as of {time || '—'}</div>
+      <div className="text-[10px] text-muted-foreground mt-1">as of {time || '-'}</div>
     </div>
   )
 }

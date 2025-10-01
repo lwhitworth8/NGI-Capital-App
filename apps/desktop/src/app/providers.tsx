@@ -27,9 +27,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
               return failureCount < 3
             },
           },
-          mutations: {
-            retry: 1,
-          },
+          mutations: { retry: 1 },
         },
       })
   )
@@ -43,7 +41,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         storageKey="theme_preference"
         disableTransitionOnChange
       >
-        <ClerkProvider 
+        <ClerkProvider
           publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
           signInUrl={`${(process.env.NEXT_PUBLIC_STUDENT_BASE_URL || 'http://localhost:3001').replace(/\/$/, '')}/sign-in`}
           afterSignInUrl="/dashboard"
@@ -88,7 +86,7 @@ function ThemeHydrator() {
         } catch {}
         // 3) Fallback to Clerk metadata if present
         const t = (user?.publicMetadata?.theme as string) || 'system'
-        setTheme((['light','dark','system'] as string[]).includes(t) ? (t as any) : 'system')
+        setTheme((['light', 'dark', 'system'] as string[]).includes(t) ? (t as any) : 'system')
       } catch {}
     })()
   }, [user, setTheme])
@@ -97,10 +95,17 @@ function ThemeHydrator() {
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { isLoaded, isSignedIn } = useUser()
-  if (!isLoaded) return <div className="p-6 text-sm text-muted-foreground">Loading…</div>
-  if (!isSignedIn) return <div className="p-6 text-sm text-muted-foreground">Redirecting to sign in…</div>
+  // Dev/E2E bypass: allow rendering without Clerk in non-production when open flag is enabled
+  const devBypass = (process.env.NODE_ENV !== 'production') && ((process.env.NEXT_PUBLIC_ADVISORY_DEV_OPEN || '1') === '1')
+  if (!isLoaded && devBypass) return <>
+    {children}
+    <Toaster position="top-right" toastOptions={{ duration: 5000 }} />
+  </>
+  if (!isLoaded) return <div className="p-6 text-sm text-muted-foreground">Loading...</div>
+  if (!isSignedIn && !devBypass) return <div className="p-6 text-sm text-muted-foreground">Redirecting to sign in...</div>
   return <>
     {children}
     <Toaster position="top-right" toastOptions={{ duration: 5000 }} />
   </>
 }
+

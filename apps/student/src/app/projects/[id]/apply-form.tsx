@@ -59,7 +59,7 @@ export default function ApplyForm({ projectId }: { projectId: number }) {
       </div>
       <div style={{ display:'flex', gap:8, marginTop:8 }}>
         <button type="submit" disabled={submitting} style={{ border:'1px solid #0ea5e9', color:'#0ea5e9', padding:'8px 12px', borderRadius:8 }}>
-          {submitting ? 'Submitting…' : 'Submit Application'}
+          {submitting ? 'Submitting...' : 'Submit Application'}
         </button>
       </div>
       {message && <div style={{ marginTop:8, fontSize:12, color:'#6b7280' }}>{message}</div>}

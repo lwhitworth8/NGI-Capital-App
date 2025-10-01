@@ -267,7 +267,7 @@ export default function LeadManagerPage() {
         <div className="text-lg font-semibold">Task Comments</div>
         <div className="flex items-center gap-2">
           <select className="px-3 py-2 border rounded bg-background text-sm" value={commentTaskId} onChange={e=>setCommentTaskId(Number(e.target.value)||'')}>
-            <option value="">Select task…</option>
+            <option value="">Select task...</option>
             {tasks.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
           </select>
           <input className="px-3 py-2 border rounded bg-background text-sm w-96" placeholder="Add a comment" value={commentBody} onChange={e=>setCommentBody(e.target.value)} />
@@ -276,7 +276,7 @@ export default function LeadManagerPage() {
         <div className="space-y-2">
           {comments.map((c:any)=> (
             <div key={c.id} className="rounded border border-border bg-card p-2 text-sm">
-              <div className="text-xs text-muted-foreground">{c.author_email || 'Lead'} • {c.created_at}</div>
+              <div className="text-xs text-muted-foreground">{c.author_email || 'Lead'} - {c.created_at}</div>
               <div>{c.body}</div>
             </div>
           ))}

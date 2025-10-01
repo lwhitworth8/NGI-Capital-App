@@ -141,7 +141,7 @@ export default function ApplicationsAdminPage() {
       onClick={() => openDetail(a.id)}
     >
       <div className="text-sm font-medium">{a.first_name} {a.last_name}</div>
-      <div className="text-xs text-muted-foreground">{a.school || '-'} • {a.program || '-'}</div>
+      <div className="text-xs text-muted-foreground">{a.school || '-'} - {a.program || '-'}</div>
       <div className="text-xs text-muted-foreground">{new Date(a.created_at || '').toLocaleString()}</div>
     </div>
   )
@@ -340,20 +340,20 @@ function Timeline({ email }: { email: string }){
   return (
     <div className="space-y-2">
       <div className="text-sm font-medium">Timeline</div>
-      {!items && <div className="text-xs text-muted-foreground">Loading…</div>}
+      {!items && <div className="text-xs text-muted-foreground">Loading...</div>}
       {items && (
         <div className="space-y-2">
           <div>
             <div className="text-xs font-semibold">Coffee Chats</div>
             {(items.coffeechats||[]).map((c,i)=> (
-              <div key={i} className="text-xs text-muted-foreground">{c.status} • {c.scheduled_start}</div>
+              <div key={i} className="text-xs text-muted-foreground">{c.status} - {c.scheduled_start}</div>
             ))}
             {(!items.coffeechats || items.coffeechats.length===0) && <div className="text-xs text-muted-foreground">None</div>}
           </div>
           <div>
             <div className="text-xs font-semibold">Onboarding</div>
             {(items.onboarding||[]).map((o,i)=> (
-              <div key={i} className="text-xs text-muted-foreground">{o.status} • {o.created_at}</div>
+              <div key={i} className="text-xs text-muted-foreground">{o.status} - {o.created_at}</div>
             ))}
             {(!items.onboarding || items.onboarding.length===0) && <div className="text-xs text-muted-foreground">None</div>}
           </div>

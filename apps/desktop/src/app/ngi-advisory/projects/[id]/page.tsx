@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useApp } from '@/lib/context/AppContext'
 import { useAuth } from '@/lib/auth'
-import { advisoryGetProject, advisoryListStudents, advisoryAddAssignment, advisoryUpdateAssignment, advisoryDeleteAssignment } from '@/lib/api'
+import { advisoryGetProject, advisoryListStudents, advisoryAddAssignment, advisoryUpdateAssignment, advisoryDeleteAssignment, apiClient } from '@/lib/api'
 import type { AdvisoryProject, AdvisoryStudent } from '@/types'
 import Link from 'next/link'
 
@@ -19,8 +19,11 @@ export default function AdvisoryProjectDetailPage() {
   const params = useParams<{ id: string }>()
   const id = Number(params?.id || 0)
   const entityId = useMemo(() => Number(state.currentEntity?.id || 0), [state.currentEntity])
+  const [serverEmail, setServerEmail] = useState('')
   const allowed = (() => {
-    if ((process.env.NEXT_PUBLIC_ADVISORY_ALLOW_ALL || '').toLowerCase() === '1') return true
+    if ((process.env.NEXT_PUBLIC_DISABLE_ADVISORY_AUTH || '0') === '1') return true
+    const allowAll = (process.env.NEXT_PUBLIC_ADVISORY_ALLOW_ALL || '').toLowerCase() === '1'
+    const devAllow = process.env.NODE_ENV !== 'production' && (process.env.NEXT_PUBLIC_ADVISORY_DEV_OPEN || '1') === '1'
     const extra = (process.env.NEXT_PUBLIC_ADVISORY_ADMINS || '').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean)
     const allowedSet = new Set<string>([...Array.from(BASE_ALLOWED), ...extra])
     let email = String(user?.email || '')
@@ -33,9 +36,18 @@ export default function AdvisoryProjectDetailPage() {
         try { const u = JSON.parse(localStorage.getItem('user') || 'null'); if (u?.email) email = u.email } catch {}
       }
     }
-    email = (email || '').toLowerCase()
-    return !!email && allowedSet.has(email)
+    const emailLower = (email || '').toLowerCase()
+    const serverLower = String(serverEmail || '').toLowerCase()
+    return allowAll || devAllow || (!!emailLower && allowedSet.has(emailLower)) || (!!serverLower && allowedSet.has(serverLower))
   })()
+
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try { const me = await apiClient.getProfile(); if (alive) setServerEmail(me?.email || '') } catch {}
+    })()
+    return () => { alive = false }
+  }, [])
 
   const [fetching, setFetching] = useState(false)
   const [project, setProject] = useState<(AdvisoryProject & { assignments?: any[] }) | null>(null)
@@ -105,8 +117,8 @@ export default function AdvisoryProjectDetailPage() {
           <div><span className="text-muted-foreground">Lead:</span> {project.project_lead || '-'}</div>
           <div><span className="text-muted-foreground">Contact:</span> {project.contact_email || '-'}</div>
           <div><span className="text-muted-foreground">Mode:</span> {project.mode}</div>
-          <div><span className="text-muted-foreground">Timing:</span> {project.start_date || '-'} → {project.end_date || '-'}</div>
-          <div><span className="text-muted-foreground">Commitment:</span> {project.commitment_hours_per_week || 0} hrs/wk • {project.duration_weeks || 0} wks</div>
+          <div><span className="text-muted-foreground">Timing:</span> {project.start_date || '-'} ? {project.end_date || '-'}</div>
+          <div><span className="text-muted-foreground">Commitment:</span> {project.commitment_hours_per_week || 0} hrs/wk - {project.duration_weeks || 0} wks</div>
         </div>
       </div>
 
@@ -122,7 +134,7 @@ export default function AdvisoryProjectDetailPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-3">
           <select className="px-2 py-2 border rounded bg-background" value={String(newAssign.student_id || '')} onChange={e=>setNewAssign(a=>({ ...a, student_id: Number(e.target.value||0) }))}>
             <option value="">Select student</option>
-            {students.map(s => <option key={s.id} value={s.id}>{s.first_name} {s.last_name} — {s.email}</option>)}
+            {students.map(s => <option key={s.id} value={s.id}>{s.first_name} {s.last_name} - {s.email}</option>)}
           </select>
           <input className="px-2 py-2 border rounded bg-background" placeholder="Role" value={newAssign.role || ''} onChange={e=>setNewAssign(a=>({ ...a, role: e.target.value }))} />
           <input type="number" className="px-2 py-2 border rounded bg-background" placeholder="Hours/week" value={newAssign.hours_planned as any || ''} onChange={e=>setNewAssign(a=>({ ...a, hours_planned: Number(e.target.value||0) }))} />

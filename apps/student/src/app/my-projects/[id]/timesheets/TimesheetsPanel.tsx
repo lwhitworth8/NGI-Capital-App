@@ -149,7 +149,7 @@ export default function TimesheetsPanel({ projectId }: { projectId: number }) {
         </tbody>
       </table>
       <div className="mt-3 text-sm text-muted-foreground">Total: {total}</div>
-      {loading && <div className="text-sm text-muted-foreground mt-2">Loading…</div>}
+      {loading && <div className="text-sm text-muted-foreground mt-2">Loading...</div>}
       {!email && <div className="text-xs text-red-600 mt-2">Email not detected; some actions may fail. Please sign in.</div>}
     </div>
   )

@@ -100,7 +100,7 @@ export function DataTable<T extends Record<string, any>>({
     }
     
     if (value === null || value === undefined) {
-      return <span className="text-gray-400">—</span>;
+      return <span className="text-gray-400">-</span>;
     }
     
     return value?.toString();

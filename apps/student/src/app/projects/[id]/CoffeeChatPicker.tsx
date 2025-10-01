@@ -111,7 +111,7 @@ export default function CoffeeChatPicker() {
       <div className="text-sm font-medium">Coffee Chat</div>
       <div className="text-xs text-muted-foreground">Pick a time (All times PT)</div>
       {loading ? (
-        <div className="text-xs text-muted-foreground">Loading availability…</div>
+        <div className="text-xs text-muted-foreground">Loading availability...</div>
       ) : error ? (
         <div className="text-xs text-red-500">{error}</div>
       ) : (

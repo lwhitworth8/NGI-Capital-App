@@ -115,7 +115,7 @@ export default function AdvisoryStudentsPage() {
     return (
       <div className="p-6">
         <h1 className="text-2xl font-semibold">Students</h1>
-        <p className="text-sm text-muted-foreground mt-2">Loading…</p>
+        <p className="text-sm text-muted-foreground mt-2">Loading...</p>
       </div>
 
     )
@@ -199,7 +199,7 @@ export default function AdvisoryStudentsPage() {
               <tr><td className="p-3 text-sm text-muted-foreground" colSpan={6}>No students found.</td></tr>
             )}
             {listLoading && (
-              <tr><td className="p-3 text-sm text-muted-foreground" colSpan={6}>Loading…</td></tr>
+              <tr><td className="p-3 text-sm text-muted-foreground" colSpan={6}>Loading...</td></tr>
             )}
           </tbody>
         </table>
@@ -279,7 +279,7 @@ export default function AdvisoryStudentsPage() {
                 <h3 className="font-medium">Applications</h3>
                 <div className="mt-2 space-y-1">
                   {(timeline?.applications||[]).map(a => (
-                    <div key={a.id} className="text-xs text-muted-foreground">#{a.id} → P{a.project_id} • {a.status} • {new Date(a.created_at).toLocaleString()}</div>
+                    <div key={a.id} className="text-xs text-muted-foreground">#{a.id} ? P{a.project_id} - {a.status} - {new Date(a.created_at).toLocaleString()}</div>
                   ))}
                   {(!timeline || (timeline.applications||[]).length===0) && <div className="text-xs text-muted-foreground">None</div>}
                 </div>
@@ -288,7 +288,7 @@ export default function AdvisoryStudentsPage() {
                 <h3 className="font-medium">Coffee Chats</h3>
                 <div className="mt-2 space-y-1">
                   {(timeline?.coffeechats||[]).map(c => (
-                    <div key={c.id} className="text-xs text-muted-foreground">{c.provider} {c.status} • {c.scheduled_start ? new Date(c.scheduled_start).toLocaleString() : '-'}</div>
+                    <div key={c.id} className="text-xs text-muted-foreground">{c.provider} {c.status} - {c.scheduled_start ? new Date(c.scheduled_start).toLocaleString() : '-'}</div>
                   ))}
                   {(!timeline || (timeline.coffeechats||[]).length===0) && <div className="text-xs text-muted-foreground">None</div>}
                 </div>
@@ -297,7 +297,7 @@ export default function AdvisoryStudentsPage() {
                 <h3 className="font-medium">Onboarding</h3>
                 <div className="mt-2 space-y-1">
                   {(timeline?.onboarding||[]).map(o => (
-                    <div key={o.id} className="text-xs text-muted-foreground">T{o.template_id} • {o.status} • {new Date(o.created_at).toLocaleString()}</div>
+                    <div key={o.id} className="text-xs text-muted-foreground">T{o.template_id} - {o.status} - {new Date(o.created_at).toLocaleString()}</div>
                   ))}
                   {(!timeline || (timeline.onboarding||[]).length===0) && <div className="text-xs text-muted-foreground">None</div>}
                 </div>
@@ -321,7 +321,7 @@ export default function AdvisoryStudentsPage() {
             <select className="w-full px-3 py-2 border rounded-md bg-background" value={assignProjectId ?? ''} onChange={e=>setAssignProjectId(e.target.value ? Number(e.target.value) : null)}>
               <option value="">Select project</option>
               {projects.map((p:any) => (
-                <option key={p.id} value={p.id}>{p.project_name} • open roles: {p.open_roles ?? '-'}</option>
+                <option key={p.id} value={p.id}>{p.project_name} - open roles: {p.open_roles ?? '-'}</option>
               ))}
             </select>
             <input className="w-full px-3 py-2 border rounded-md bg-background" type="number" placeholder="Hours/week (optional)" value={assignHours ?? ''} onChange={e=>setAssignHours(e.target.value ? Number(e.target.value) : undefined)} />

@@ -8,8 +8,16 @@ export default defineConfig({
     headless: true,
     trace: 'retain-on-failure',
   },
+  webServer: {
+    command: process.platform === 'win32'
+      ? 'node ../../node_modules/next/dist/bin/next dev -p 3001 -H 0.0.0.0'
+      : 'node ../../node_modules/next/dist/bin/next dev -p 3001 -H 0.0.0.0',
+    cwd: './apps/student',
+    port: 3001,
+    timeout: 180000,
+    reuseExistingServer: true,
+  },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
   ],
 })
-

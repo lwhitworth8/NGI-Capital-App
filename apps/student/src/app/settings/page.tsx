@@ -127,6 +127,7 @@ export default function Settings() {
     // Save to backend in background
     const email = user?.primaryEmailAddress?.emailAddress;
     if (email) {
+      // Persist to student profile (DB)
       fetch('/api/public/profile', { 
         method: 'PATCH', 
         headers: {
@@ -137,6 +138,12 @@ export default function Settings() {
       }).catch(err => {
         console.error('Failed to save theme preference:', err);
       });
+      // Also persist to Clerk public metadata so ThemeHydrator won't reset to system
+      fetch('/api/settings/theme', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme: newTheme })
+      }).catch(() => {})
     }
   };
 
@@ -438,7 +445,7 @@ export default function Settings() {
                 <input value={linkedin} onChange={e=>setLinkedin(e.target.value)} className="w-full px-3 py-2 text-sm rounded-md border bg-background" placeholder="https://www.linkedin.com/in/your-handle" />
               </div>
               <div>
-                <label className="block text-xs text-muted-foreground mb-1">GPA (0.0 – 4.0)</label>
+                <label className="block text-xs text-muted-foreground mb-1">GPA (0.0 - 4.0)</label>
                 <input type="number" step="0.01" min={0} max={4} value={gpa} onChange={e=>setGpa(e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-3 py-2 text-sm rounded-md border bg-background" placeholder="e.g., 3.85" />
               </div>
               <div className="md:col-span-2">
@@ -448,7 +455,7 @@ export default function Settings() {
             </div>
             <div className="mt-4">
               <button onClick={saveProfileDetails} disabled={savingProfile} className={`px-4 py-2 rounded-lg text-sm font-medium ${savingProfile ? 'bg-muted text-muted-foreground' : 'bg-primary text-primary-foreground hover:bg-primary/90'}`}>
-                {savingProfile ? 'Saving…' : 'Save Profile'}
+                {savingProfile ? 'Saving...' : 'Save Profile'}
               </button>
             </div>
           </div>

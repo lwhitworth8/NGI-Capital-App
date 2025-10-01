@@ -24,7 +24,7 @@ export default function RevRecPage(){
           <tbody>
             {rows.map((r)=> (
               <tr key={r.id} className="border-t">
-                <td className="p-2">{r.invoice_id || '—'}</td>
+                <td className="p-2">{r.invoice_id || '-'}</td>
                 <td className="p-2">{r.method}</td>
                 <td className="p-2">{r.start_date}</td>
                 <td className="p-2">{r.months}</td>

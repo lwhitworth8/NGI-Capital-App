@@ -162,7 +162,7 @@ export default function ProjectsClient({ initialItems, initialQ = '', initialTag
             </div>
           </a>
         ))}
-        {isLoading && <div style={{ color:'#6b7280', fontSize:13 }}>Loading…</div>}
+        {isLoading && <div style={{ color:'#6b7280', fontSize:13 }}>Loading...</div>}
         {!isLoading && items.length === 0 && <div style={{ color:'#6b7280', fontSize:14 }}>No projects available. Coming soon.</div>}
         <div ref={sentinelRef} />
       </div>

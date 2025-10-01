@@ -66,7 +66,7 @@ export default function FinancialReportingLayout({ children }: { children: React
                   <div>
                     <h1 className="text-2xl font-bold text-foreground">Financial Reporting</h1>
                     <p className="text-sm text-muted-foreground">
-                      GAAP-compliant financial statements • ASC standards • Big 4 audit ready
+                      GAAP-compliant financial statements - ASC standards - Big 4 audit ready
                     </p>
                   </div>
                 </div>

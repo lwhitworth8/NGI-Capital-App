@@ -72,15 +72,15 @@ export default function CapTable({ entityId }: { entityId?: number }) {
       <div className="rounded-xl border border-border bg-card p-4">
         <h2 className="font-semibold mb-1">Summary</h2>
         {loading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <p className="text-sm text-muted-foreground">Loading...</p>
         ) : (
-          <div className="text-sm text-muted-foreground">FD Shares: {data?.summary?.fdShares || '—'}</div>
+          <div className="text-sm text-muted-foreground">FD Shares: {data?.summary?.fdShares || '-'}</div>
         )}
       </div>
 
       {loading ? (
         <div className="rounded-xl border border-border bg-card p-4">
-          <p className="text-sm text-muted-foreground">Loading…</p>
+          <p className="text-sm text-muted-foreground">Loading...</p>
         </div>
       ) : (
         (data?.classes || []).map((cls, idx) => (

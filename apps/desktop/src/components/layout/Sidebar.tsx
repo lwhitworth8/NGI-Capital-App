@@ -145,7 +145,7 @@ export default function Sidebar() {
   // Compute display name matching student UI behavior (avoid middle names)
   const { displayFirstName, displayLastName, userName, userInitials, profileImageUrl } = useMemo(() => {
     if (!isLoaded) {
-      return { displayFirstName: '', displayLastName: '', userName: 'Loading…', userInitials: 'U', profileImageUrl: undefined as any };
+      return { displayFirstName: '', displayLastName: '', userName: 'Loading...', userInitials: 'U', profileImageUrl: undefined as any };
     }
     const rawFirstName = user?.firstName || '';
     const rawLastName = user?.lastName || '';

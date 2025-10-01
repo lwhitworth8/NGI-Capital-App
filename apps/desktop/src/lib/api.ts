@@ -1033,12 +1033,18 @@ export async function advisorySetProjectLeads(projectId: number, emails: string[
   return apiClient.request('PUT', `/advisory/projects/${projectId}/leads`, { emails })
 }
 
-export async function advisoryGetProjectQuestions(projectId: number): Promise<{ prompts: string[] }> {
+export async function advisoryGetProjectQuestions(projectId: number): Promise<{ prompts: string[]; items?: Array<{ idx:number; type?: 'text'|'mcq'; prompt:string; choices?: string[] }> }> {
   return apiClient.request('GET', `/advisory/projects/${projectId}/questions`)
 }
 
 export async function advisorySetProjectQuestions(projectId: number, prompts: string[]): Promise<{ id: number; count: number }> {
   return apiClient.request('PUT', `/advisory/projects/${projectId}/questions`, { prompts })
+}
+
+export async function advisorySetProjectQuestionsTyped(projectId: number, items: Array<{ idx:number; type?: 'text'|'mcq'; prompt:string; choices?: string[] }>): Promise<{ id: number; count: number }> {
+  // Ensure idx is normalized 0..n-1
+  const norm = items.map((it, i) => ({ idx: i, type: (it.type || 'text'), prompt: it.prompt, choices: (it.choices || []) }))
+  return apiClient.request('PUT', `/advisory/projects/${projectId}/questions`, { items: norm })
 }
 
 export async function advisoryUploadProjectHero(projectId: number, file: File): Promise<{ hero_image_url: string }>{

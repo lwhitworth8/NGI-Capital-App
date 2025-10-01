@@ -94,11 +94,11 @@ export default function OnboardingAdminPage() {
             <div className="text-sm font-medium">Create Onboarding Flow</div>
             <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
               <select className="px-3 py-2 border rounded bg-background text-sm" value={form.student_id||''} onChange={e=>setForm(f=>({ ...f, student_id: parseInt(e.target.value||'0',10)||undefined }))} disabled={!form.project_id}>
-                <option value="">Select student (Offer stage)…</option>
+                <option value="">Select student (Offer stage)...</option>
                 {students.filter(s => eligibleEmails.includes((s.email||'').toLowerCase())).map(s => <option key={s.id} value={s.id}>{s.first_name||''} {s.last_name||''} ({s.email})</option>)}
               </select>
               <select className="px-3 py-2 border rounded bg-background text-sm" value={form.project_id||''} onChange={e=>setForm(f=>({ ...f, project_id: parseInt(e.target.value||'0',10)||undefined }))}>
-                <option value="">Project…</option>
+                <option value="">Project...</option>
                 {projects.map(p => <option key={p.id} value={p.id}>{p.project_name}</option>)}
               </select>
               <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={!!form.nda_required} onChange={e=>setForm(f=>({ ...f, nda_required: !!e.target.checked }))} /> NDA required</label>

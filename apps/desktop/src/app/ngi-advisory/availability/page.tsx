@@ -34,7 +34,7 @@ export default function AdvisoryAvailabilityPage() {
     try { await advisoryDeleteCoffeeAvailability(id); await load() } finally { setBusy(false) }
   }
 
-  if (loading) return <div className="p-6">Loading…</div>
+  if (loading) return <div className="p-6">Loading...</div>
 
   return (
     <div className="p-6 space-y-6">

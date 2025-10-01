@@ -42,9 +42,9 @@ export default async function DevHealthPage() {
         <ul style={{ fontSize: 14, lineHeight: '20px' }}>
           {checks.map((c, idx) => (
             <li key={idx}>
-              <span style={{ display:'inline-block', width: 14 }}>{c.status === 'ok' ? '✅' : '❌'}</span>
+              <span style={{ display:'inline-block', width: 14 }}>{c.status === 'ok' ? 'OK' : 'X'}</span>
               <span style={{ marginLeft: 6 }}>{c.name}</span>
-              {c.detail ? <span style={{ opacity: 0.7 }}> — {c.detail}</span> : null}
+              {c.detail ? <span style={{ opacity: 0.7 }}> - {c.detail}</span> : null}
             </li>
           ))}
         </ul>

@@ -203,7 +203,7 @@ async def public_project_detail(pid: int, db: Session = Depends(get_db)):
     _ensure_tables(db)
     row = db.execute(sa_text(
         "SELECT id, project_name, client_name, summary, description, hero_image_url, gallery_urls, tags, partner_badges, backer_badges, allow_applications, coffeechat_calendly, "
-        "status, mode, location_text, start_date, end_date, duration_weeks, commitment_hours_per_week, team_size, team_requirements, showcase_pdf_url "
+        "status, mode, location_text, start_date, end_date, duration_weeks, commitment_hours_per_week, team_size, team_requirements, showcase_pdf_url, applications_close_date "
         "FROM advisory_projects WHERE id = :id AND COALESCE(is_public,1) = 1 AND lower(status) IN ('active','closed')"
     ), {"id": pid}).fetchone()
     if not row:
@@ -217,11 +217,30 @@ async def public_project_detail(pid: int, db: Session = Depends(get_db)):
         "coffeechat_calendly": row[11], "status": row[12], "mode": row[13], "location_text": row[14],
         "start_date": row[15], "end_date": row[16], "duration_weeks": row[17], "commitment_hours_per_week": row[18],
         "team_size": row[19], "team_requirements": row[20], "showcase_pdf_url": row[21],
+        "applications_close_date": row[22],
     }
     # Questions
     try:
-        qrows = db.execute(sa_text("SELECT idx, prompt FROM advisory_project_questions WHERE project_id = :id ORDER BY idx ASC"), {"id": pid}).fetchall()
-        detail["questions"] = [{"idx": r[0], "prompt": r[1]} for r in qrows]
+        qrows = db.execute(sa_text("SELECT idx, prompt, qtype, choices_json FROM advisory_project_questions WHERE project_id = :id ORDER BY idx ASC"), {"id": pid}).fetchall()
+        import json as _json
+        items = []
+        for r in qrows:
+            idx, prompt, qtype, cj = r[0], r[1], (r[2] or 'text'), r[3]
+            choices = []
+            if cj:
+                try:
+                    c = _json.loads(cj)
+                    if isinstance(c, list):
+                        choices = [str(x) for x in c if isinstance(x, (str,int,float))]
+                except Exception:
+                    choices = []
+            items.append({
+                "idx": int(idx),
+                "type": (str(qtype or 'text').lower() if str(qtype or 'text').lower() in ('text','mcq') else 'text'),
+                "prompt": prompt,
+                "choices": choices,
+            })
+        detail["questions"] = items
     except Exception:
         detail["questions"] = []
     return detail
@@ -234,6 +253,44 @@ async def create_public_application(payload: Dict[str, Any], request: Request, d
     email = _extract_student_email(request) or (payload.get("email") if isinstance(payload.get("email"), str) else None)
     if not email or not _check_domain(email, allow_all_for_applications=True):
         raise HTTPException(status_code=403, detail="Student email with allowed domain required")
+    # Enforce applications_open per project settings
+    try:
+        pid = int(payload.get("target_project_id") or 0)
+    except Exception:
+        pid = 0
+    if pid:
+        row = db.execute(sa_text("SELECT allow_applications, applications_close_date FROM advisory_projects WHERE id = :id"), {"id": pid}).fetchone()
+        if row:
+            allow = int(row[0] or 0)
+            close_date = (row[1] or '').strip()
+            if allow == 0:
+                raise HTTPException(status_code=422, detail="Applications closed")
+            if close_date:
+                try:
+                    # Compare dates only (YYYY-MM-DD)
+                    today = datetime.utcnow().date()
+                    cd = datetime.strptime(close_date[:10], "%Y-%m-%d").date()
+                    # Closed on or after close date
+                    if today >= cd:
+                        raise HTTPException(status_code=422, detail="Applications closed")
+                except Exception:
+                    # Fallback: string compare on ISO dates
+                    try:
+                        if close_date[:10] <= datetime.utcnow().strftime('%Y-%m-%d'):
+                            raise HTTPException(status_code=422, detail="Applications closed")
+                    except Exception:
+                        pass
+        # Safety: double-check from DB even if previous row missing/parse failed
+        try:
+            cd_row = db.execute(sa_text("SELECT applications_close_date FROM advisory_projects WHERE id = :id"), {"id": pid}).fetchone()
+            if cd_row and cd_row[0]:
+                cd_str = str(cd_row[0])
+                if cd_str[:10] <= datetime.utcnow().strftime('%Y-%m-%d'):
+                    raise HTTPException(status_code=422, detail="Applications closed")
+        except HTTPException:
+            raise
+        except Exception:
+            pass
     # Ensure student record
     try:
         db.execute(sa_text(

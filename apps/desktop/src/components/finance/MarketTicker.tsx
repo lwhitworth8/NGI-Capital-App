@@ -121,7 +121,7 @@ function Overlay({ title, onClose, metricId, rawSymbol, fredSeries }: { title: s
         </div>
         <div className="h-[420px]">
           {loading ? (
-            <div className="w-full h-full flex items-center justify-center text-muted-foreground">Loading series…</div>
+            <div className="w-full h-full flex items-center justify-center text-muted-foreground">Loading series...</div>
           ) : series.length === 0 ? (
             <div className="w-full h-full rounded bg-gradient-to-t from-blue-500/30 to-blue-300/5" aria-label="No data" />
           ) : (

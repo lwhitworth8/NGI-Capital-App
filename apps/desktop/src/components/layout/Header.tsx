@@ -91,7 +91,7 @@ export function Header({ onSidebarToggle, sidebarCollapsed }: HeaderProps) {
                       >
                         <div className="font-medium">{entity.legal_name}</div>
                         <div className="text-xs text-gray-500 dark:text-gray-400">
-                          {entity.entity_type} • {entity.state}
+                          {entity.entity_type} - {entity.state}
                         </div>
                       </button>
                     ))}

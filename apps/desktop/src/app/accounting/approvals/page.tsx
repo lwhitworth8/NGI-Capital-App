@@ -49,13 +49,13 @@ export default function ApprovalsPage(){
         ]}
         rows={rows}
       />
-      <SidePanel open={open} onClose={()=>setOpen(false)} title={`Approval • ${selected?.refId || ''}`}>
+      <SidePanel open={open} onClose={()=>setOpen(false)} title={`Approval - ${selected?.refId || ''}`}>
         {selected && (
           <div className="text-sm space-y-2">
-            <div>Summary: {selected.summary || '—'}</div>
+            <div>Summary: {selected.summary || '-'}</div>
             <div>Amount: <span className="tabular-nums">${selected.amount.toFixed(2)}</span></div>
-            <div>Required: {selected.requiredApprovers?.join(', ') || '—'}</div>
-            <div>Approvals: {selected.approvals?.map(a=>a.email).join(', ') || '—'}</div>
+            <div>Required: {selected.requiredApprovers?.join(', ') || '-'}</div>
+            <div>Approvals: {selected.approvals?.map(a=>a.email).join(', ') || '-'}</div>
             <div>
               <div className="text-xs text-muted-foreground">Comment</div>
               <textarea className="mt-1 w-full border rounded p-2" rows={3} value={comment} onChange={e=>setComment(e.target.value)} placeholder="Add approval/rejection note" />

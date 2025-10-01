@@ -821,28 +821,48 @@ async def establish_session(request: Request):
 
 @app.get("/api/preferences", tags=["preferences"])
 async def get_preferences(user=Depends(_require_clerk_user_dep), db=Depends(get_session)):
-    # Ensure table exists
+    # Ensure table and email index exist
     db.execute(sa_text("""
         CREATE TABLE IF NOT EXISTS user_preferences (
             partner_id INTEGER PRIMARY KEY,
             theme TEXT DEFAULT 'system',
-            updated_at TEXT
+            updated_at TEXT,
+            email TEXT
         )
     """))
+    # Backfill column when table exists without email
+    try:
+        db.execute(sa_text("ALTER TABLE user_preferences ADD COLUMN email TEXT"))
+    except Exception:
+        pass
+    try:
+      db.execute(sa_text("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_preferences_email ON user_preferences(email)"))
+    except Exception:
+      pass
     pid = 0
+    email = ''
     try:
         pid = int((user or {}).get('id') or 0)
     except Exception:
         pid = 0
-    if not pid:
+    try:
+        email = str((user or {}).get('email') or '').strip().lower()
+    except Exception:
+        email = ''
+    if not pid and email:
         try:
-            em = str((user or {}).get('email') or '').strip().lower()
-            if em:
-                r = db.execute(sa_text("SELECT id FROM partners WHERE lower(email) = :em"), {"em": em}).fetchone()
-                pid = int(r[0]) if r else 0
+            r = db.execute(sa_text("SELECT id FROM partners WHERE lower(email) = :em"), {"em": email}).fetchone()
+            pid = int(r[0]) if r else 0
         except Exception:
             pid = 0
-    row = db.execute(sa_text("SELECT theme FROM user_preferences WHERE partner_id = :pid"), {"pid": pid}).fetchone() if pid else None
+    row = None
+    if pid:
+        row = db.execute(sa_text("SELECT theme FROM user_preferences WHERE partner_id = :pid"), {"pid": pid}).fetchone()
+    if not row and email:
+        try:
+            row = db.execute(sa_text("SELECT theme FROM user_preferences WHERE lower(email) = :em"), {"em": email}).fetchone()
+        except Exception:
+            row = None
     theme = row[0] if row else 'system'
     return {"theme": theme}
 
@@ -851,26 +871,57 @@ async def set_preferences(payload: dict, user=Depends(_require_clerk_user_dep), 
     theme = (payload.get('theme') or 'system').lower()
     if theme not in ('light','dark','system'):
         raise HTTPException(status_code=422, detail="Invalid theme")
+    # Ensure schema and email index
+    db.execute(sa_text("""
+        CREATE TABLE IF NOT EXISTS user_preferences (
+            partner_id INTEGER PRIMARY KEY,
+            theme TEXT DEFAULT 'system',
+            updated_at TEXT,
+            email TEXT
+        )
+    """))
+    # Backfill column when table exists without email
+    try:
+      db.execute(sa_text("ALTER TABLE user_preferences ADD COLUMN email TEXT"))
+    except Exception:
+      pass
+    try:
+      db.execute(sa_text("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_preferences_email ON user_preferences(email)"))
+    except Exception:
+      pass
     pid = 0
+    email = ''
     try:
         pid = int((user or {}).get('id') or 0)
     except Exception:
         pid = 0
-    if not pid:
+    try:
+        email = str((user or {}).get('email') or '').strip().lower()
+    except Exception:
+        email = ''
+    if not pid and email:
         try:
-            em = str((user or {}).get('email') or '').strip().lower()
-            if em:
-                r = db.execute(sa_text("SELECT id FROM partners WHERE lower(email) = :em"), {"em": em}).fetchone()
-                pid = int(r[0]) if r else 0
+            r = db.execute(sa_text("SELECT id FROM partners WHERE lower(email) = :em"), {"em": email}).fetchone()
+            pid = int(r[0]) if r else 0
         except Exception:
             pid = 0
-    if not pid:
+    ts = datetime.now(timezone.utc).isoformat()
+    if pid:
+        db.execute(sa_text("""
+            INSERT INTO user_preferences (partner_id, theme, updated_at, email)
+            VALUES (:pid, :theme, :ts, NULL)
+            ON CONFLICT(partner_id) DO UPDATE SET theme=excluded.theme, updated_at=excluded.updated_at
+        """), {"pid": pid, "theme": theme, "ts": ts})
+    elif email:
+        # Upsert by email when partner_id is unavailable (Clerk ID strings)
+        db.execute(sa_text("""
+            INSERT INTO user_preferences (partner_id, theme, updated_at, email)
+            VALUES (NULL, :theme, :ts, :em)
+            ON CONFLICT(email) DO UPDATE SET theme=excluded.theme, updated_at=excluded.updated_at
+        """), {"em": email, "theme": theme, "ts": ts})
+    else:
+        # No identity -> accept, but nothing to persist
         return {"message": "Preferences retained for session"}
-    db.execute(sa_text("""
-        INSERT INTO user_preferences (partner_id, theme, updated_at)
-        VALUES (:pid, :theme, :ts)
-        ON CONFLICT(partner_id) DO UPDATE SET theme=excluded.theme, updated_at=excluded.updated_at
-    """), {"pid": pid, "theme": theme, "ts": datetime.now(timezone.utc).isoformat()})
     db.commit()
     return {"message": "Preferences updated"}
 

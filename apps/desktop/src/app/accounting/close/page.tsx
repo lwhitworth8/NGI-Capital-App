@@ -25,7 +25,7 @@ export default function ClosePage(){
     <div className="p-6 space-y-4">
       <PageHeader title="Close" rightSlot={<DatePeriodPicker value={{year,month}} onChange={v=>{setYear(v.year); setMonth(v.month)}}/>} />
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Gate title="Bank Reconciled" ok={pass.bank} hint="All accounts reconciled ≥ threshold" />
+        <Gate title="Bank Reconciled" ok={pass.bank} hint="All accounts reconciled ? threshold" />
         <Gate title="Docs Posted" ok={pass.docs} />
         <Gate title="AR/AP Aging OK" ok={pass.aging} />
         <Gate title="RevRec Posted" ok={pass.revrec} />
@@ -44,7 +44,7 @@ function Gate({ title, ok, hint }: { title: string; ok: boolean; hint?: string }
   return (
     <div className={`rounded-xl border p-4 ${ok?'bg-green-50 border-green-200':'bg-red-50 border-red-200'}`}>
       <div className="font-medium">{title}</div>
-      <div className="text-sm text-muted-foreground">{ok? 'Pass' : 'Fail'}{hint? ` — ${hint}`:''}</div>
+      <div className="text-sm text-muted-foreground">{ok? 'Pass' : 'Fail'}{hint? ` - ${hint}`:''}</div>
     </div>
   );
 }

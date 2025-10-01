@@ -4,7 +4,7 @@ describe('labels + formatMetric', () => {
   it('pretty labels map correctly', () => {
     expect(prettyLabel('^GSPC')).toBe("S&P 500")
     expect(prettyLabel('DX-Y.NYB')).toBe('U.S. Dollar Index (DXY)')
-    expect(prettyLabel('EURUSD=X')).toBe('EUR/USD (Euro ↔ U.S. Dollar)')
+    expect(prettyLabel('EURUSD=X')).toBe('EUR/USD (Euro ? U.S. Dollar)')
   })
 
   it('formats yields by dividing by 10 with percent', () => {

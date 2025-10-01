@@ -40,7 +40,7 @@ export default function NotificationsBell({ projectId }: { projectId: number }) 
   return (
     <div className="relative">
       <button className="chip" aria-label="Notifications" onClick={()=>setOpen(o=>!o)}>
-        🔔 {count>0 && <span className="ml-1 text-xs bg-red-600 text-white rounded-full px-1">{count}</span>}
+        ?? {count>0 && <span className="ml-1 text-xs bg-red-600 text-white rounded-full px-1">{count}</span>}
       </button>
       {open && (
         <div className="absolute right-0 mt-2 w-80 bg-card border border-border rounded-xl shadow-lg p-3 z-50">

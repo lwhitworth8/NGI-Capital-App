@@ -8,7 +8,7 @@ services:
              uvicorn src.api.main:app --host 0.0.0.0 --port 8001 --reload --reload-exclude='tests/**' --reload-exclude='*.pyc' --reload-exclude='__pycache__/**'"
     # Publish API on host 8001 and route via nginx on 3001
     ports:
-      - "8001:8001"
+      - "8002:8001"
     volumes:
       - ./:/app
       # Mount your real SQLite DB into the container so API uses it
@@ -152,3 +152,4 @@ services:
 networks:
   ngi-network:
     driver: bridge
+name: ngi-dev
