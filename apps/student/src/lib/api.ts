@@ -7,7 +7,7 @@ export async function spFetch<T>(path: string, opts?: RequestInit): Promise<T> {
   } else if (typeof window === 'undefined') {
     try {
       const { cookies } = await import('next/headers')
-      const c = cookies().get('student_email')?.value
+      const c = (await cookies()).get('student_email')?.value
       if (c) extraHeaders['X-Student-Email'] = c
     } catch {}
   } else {
@@ -49,7 +49,7 @@ export async function spFetch<T>(path: string, opts?: RequestInit): Promise<T> {
       // For non-API internal fetches (rare), build from request headers
       try {
         const { headers } = await import('next/headers')
-        const h = headers()
+        const h = await headers()
         const proto = h.get('x-forwarded-proto') || 'http'
         const host = h.get('x-forwarded-host') || h.get('host') || 'localhost'
         url = `${proto}://${host}${path}`

@@ -95,13 +95,13 @@ function Overlay({ title, onClose, metricId, rawSymbol, fredSeries }: { title: s
     const a = document.createElement('a')
     a.href = url; a.download = `${title.replace(/\s+/g,'_')}.csv`; a.click(); URL.revokeObjectURL(url)
   }
-  const AreaChart = dynamic(() => import('recharts').then(m => m.AreaChart as any), { ssr: false }) as any
-  const Area = dynamic(() => import('recharts').then(m => m.Area as any), { ssr: false }) as any
-  const XAxis = dynamic(() => import('recharts').then(m => m.XAxis as any), { ssr: false }) as any
-  const YAxis = dynamic(() => import('recharts').then(m => m.YAxis as any), { ssr: false }) as any
-  const Tooltip = dynamic(() => import('recharts').then(m => m.Tooltip as any), { ssr: false }) as any
-  const CartesianGrid = dynamic(() => import('recharts').then(m => m.CartesianGrid as any), { ssr: false }) as any
-  const ResponsiveContainer = dynamic(() => import('recharts').then(m => m.ResponsiveContainer as any), { ssr: false }) as any
+  const AreaChart = dynamic(() => import('recharts').then(m => m.AreaChart as any)) as any
+  const Area = dynamic(() => import('recharts').then(m => m.Area as any)) as any
+  const XAxis = dynamic(() => import('recharts').then(m => m.XAxis as any)) as any
+  const YAxis = dynamic(() => import('recharts').then(m => m.YAxis as any)) as any
+  const Tooltip = dynamic(() => import('recharts').then(m => m.Tooltip as any)) as any
+  const CartesianGrid = dynamic(() => import('recharts').then(m => m.CartesianGrid as any)) as any
+  const ResponsiveContainer = dynamic(() => import('recharts').then(m => m.ResponsiveContainer as any)) as any
 
   // brand colors
   const stroke = 'var(--primary, #2563eb)'

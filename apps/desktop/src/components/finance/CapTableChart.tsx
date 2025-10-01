@@ -4,13 +4,13 @@ import React, { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { apiClient } from '@/lib/api';
 
-const ResponsiveContainer = dynamic(() => import('recharts').then(m => m.ResponsiveContainer as any), { ssr:false }) as any
-const BarChart = dynamic(() => import('recharts').then(m => m.BarChart as any), { ssr:false }) as any
-const Bar = dynamic(() => import('recharts').then(m => m.Bar as any), { ssr:false }) as any
-const XAxis = dynamic(() => import('recharts').then(m => m.XAxis as any), { ssr:false }) as any
-const YAxis = dynamic(() => import('recharts').then(m => m.YAxis as any), { ssr:false }) as any
-const Tooltip = dynamic(() => import('recharts').then(m => m.Tooltip as any), { ssr:false }) as any
-const Legend = dynamic(() => import('recharts').then(m => m.Legend as any), { ssr:false }) as any
+const ResponsiveContainer = dynamic(() => import('recharts').then(m => m.ResponsiveContainer as any)) as any
+const BarChart = dynamic(() => import('recharts').then(m => m.BarChart as any)) as any
+const Bar = dynamic(() => import('recharts').then(m => m.Bar as any)) as any
+const XAxis = dynamic(() => import('recharts').then(m => m.XAxis as any)) as any
+const YAxis = dynamic(() => import('recharts').then(m => m.YAxis as any)) as any
+const Tooltip = dynamic(() => import('recharts').then(m => m.Tooltip as any)) as any
+const Legend = dynamic(() => import('recharts').then(m => m.Legend as any)) as any
 
 interface Props { entityId?: number }
 

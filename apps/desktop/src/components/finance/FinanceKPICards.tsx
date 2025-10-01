@@ -9,9 +9,9 @@ interface Props { entityId?: number }
 type Trend = 'up'|'down'|'flat'|null
 interface KpiItem { label: string; value: string; trend: Trend; series?: number[]; asOf?: string }
 
-const ResponsiveContainer = dynamic(() => import('recharts').then(m => m.ResponsiveContainer as any), { ssr: false }) as any
-const AreaChart = dynamic(() => import('recharts').then(m => m.AreaChart as any), { ssr: false }) as any
-const Area = dynamic(() => import('recharts').then(m => m.Area as any), { ssr: false }) as any
+const ResponsiveContainer = dynamic(() => import('recharts').then(m => m.ResponsiveContainer as any)) as any
+const AreaChart = dynamic(() => import('recharts').then(m => m.AreaChart as any)) as any
+const Area = dynamic(() => import('recharts').then(m => m.Area as any)) as any
 
 export default function FinanceKPICards({ entityId }: Props) {
   const [items, setItems] = useState<KpiItem[]>([])

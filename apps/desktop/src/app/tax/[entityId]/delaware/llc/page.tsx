@@ -2,7 +2,7 @@
 
 import React from 'react';
 
-export default function DelawareLLCTaxPage({ params }: { params: { entityId: string } }) {
+export default function DelawareLLCTaxPage() {
   return (
     <div className="p-6 space-y-4">
       <h1 className="text-2xl font-semibold">Delaware LLC Filing</h1>

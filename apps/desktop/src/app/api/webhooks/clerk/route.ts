@@ -41,7 +41,7 @@ function verifyWebhookSignature(payload: string, headers: Headers): boolean {
 export async function POST(req: Request) {
   try {
     const payload = await req.text()
-    const headersList = headers()
+    const headersList = await headers()
     
     // Verify webhook signature
     if (!verifyWebhookSignature(payload, headersList)) {
