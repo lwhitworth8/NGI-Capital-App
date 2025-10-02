@@ -72,3 +72,9 @@ structlog==24.4.0
 # Additional utilities
 click==8.1.8
 rich==14.0.0
+
+# Animation Engine for Learning Module (3Blue1Brown-style lessons)
+manim>=0.18.1,<1
+# Required for Manim rendering
+pycairo>=1.27.0
+# FFmpeg required for video rendering (install via system package manager)

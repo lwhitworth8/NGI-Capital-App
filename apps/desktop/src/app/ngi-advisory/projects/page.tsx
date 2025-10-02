@@ -6,6 +6,10 @@ import { useAuth } from '@/lib/auth'
 import { advisoryListProjects, advisoryCreateProject, advisoryUpdateProject, apiClient, advisoryGetProjectLeads, advisorySetProjectLeads, advisoryGetProjectQuestions, advisorySetProjectQuestions, advisorySetProjectQuestionsTyped, advisoryUploadProjectHero, advisoryUploadProjectShowcase, advisoryGetProjectLogos, advisoryUploadProjectLogo, advisoryGetKnownClients, advisoryGetProject } from '@/lib/api'
 import type { AdvisoryProject } from '@/types'
 import { toast } from 'sonner'
+import { motion } from 'framer-motion'
+import ModernProjectCard from '@/components/advisory/ModernProjectCard'
+import ImageCropModal from '@/components/advisory/ImageCropModal'
+import ProjectDetailModal from '@/components/advisory/ProjectDetailModal'
 
 // Known client registry (name -> logo URL). Add files under `apps/desktop/public/clients/`.
 const KNOWN_CLIENTS: Record<string, string> = {
@@ -39,6 +43,7 @@ export default function AdvisoryProjectsPage() {
   const [filterStatus, setFilterStatus] = useState<'all'|'draft'|'active'|'closed'>('all')
   const [search, setSearch] = useState('')
   const [searchDebounced, setSearchDebounced] = useState('')
+  const [sortBy, setSortBy] = useState<'newest'|'name'|'client'>('newest')
   const [showDesigner, setShowDesigner] = useState(false)
   const [editing, setEditing] = useState<AdvisoryProject | null>(null)
   const [form, setForm] = useState<Partial<AdvisoryProject>>({
@@ -69,18 +74,31 @@ export default function AdvisoryProjectsPage() {
   const [uploadingHero, setUploadingHero] = useState(false)
   // (gallery removed)
   const [uploadingShowcase, setUploadingShowcase] = useState(false)
-  const [cropOpen, setCropOpen] = useState(false)
-  const [cropSrc, setCropSrc] = useState<string | null>(null)
-  const [cropZoom, setCropZoom] = useState(1)
-  const [cropX, setCropX] = useState(0)
-  const [cropY, setCropY] = useState(0)
+  const [cropModalOpen, setCropModalOpen] = useState(false)
+  const [cropImageSrc, setCropImageSrc] = useState<string>('')
   const [pendingHeroBlob, setPendingHeroBlob] = useState<Blob | null>(null)
   const [knownClients, setKnownClients] = useState<{ name: string; slug: string; logo_url: string }[]>([])
-  // In-place student-style preview overlay
-  const [preview, setPreview] = useState<AdvisoryProject | null>(null)
+  // Modern full-view preview modal
+  const [previewProject, setPreviewProject] = useState<AdvisoryProject | null>(null)
 
   const [authCheckLoading, setAuthCheckLoading] = useState(true)
   const [serverEmail, setServerEmail] = useState('')
+  
+  // Sorted and filtered projects
+  const displayedProjects = useMemo(() => {
+    let filtered = [...projects];
+    
+    // Sort
+    if (sortBy === 'newest') {
+      filtered.sort((a, b) => (b.id || 0) - (a.id || 0));
+    } else if (sortBy === 'name') {
+      filtered.sort((a, b) => (a.project_name || '').localeCompare(b.project_name || ''));
+    } else if (sortBy === 'client') {
+      filtered.sort((a, b) => (a.client_name || '').localeCompare(b.client_name || ''));
+    }
+    
+    return filtered;
+  }, [projects, sortBy])
   const allowed = (() => {
     if ((process.env.NEXT_PUBLIC_DISABLE_ADVISORY_AUTH || '0') === '1') return true
     const allowAll = (process.env.NEXT_PUBLIC_ADVISORY_ALLOW_ALL || '').toLowerCase() === '1'
@@ -368,35 +386,120 @@ export default function AdvisoryProjectsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-3">
+    <div className="p-6 space-y-8">
+      {/* Modern Header */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="flex flex-col gap-6"
+      >
         <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">NGI Capital Advisory Projects</h1>
-          <div className="flex items-center gap-2">
-            <select aria-label="Filter status" className="px-3 py-2 border rounded-md bg-background" value={filterStatus} onChange={e=>setFilterStatus(e.target.value as any)}>
-              <option value="all">All</option>
-              <option value="draft">Draft</option>
-              <option value="active">Active</option>
+          <div>
+            <h1 className="text-4xl font-bold tracking-tight text-foreground bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              NGI Capital Advisory
+            </h1>
+            <p className="text-sm text-muted-foreground mt-2">Manage institutional advisory projects and opportunities</p>
+          </div>
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold shadow-lg hover:shadow-xl transition-all"
+            onClick={openNew}
+          >
+            + New Project
+          </motion.button>
+        </div>
+
+        {/* Filters and Sorting */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Status Filter */}
+          <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-muted/50 border border-border">
+            <span className="text-sm font-medium text-muted-foreground">Status:</span>
+            <select
+              aria-label="Filter status"
+              className="bg-transparent text-sm font-medium text-foreground border-none outline-none cursor-pointer"
+              value={filterStatus}
+              onChange={e => setFilterStatus(e.target.value as any)}
+            >
+              <option value="all">All Projects</option>
+              <option value="active">Active Only</option>
+              <option value="draft">Drafts</option>
               <option value="closed">Closed</option>
             </select>
-            <input aria-label="Search projects" className="px-3 py-2 border rounded-md bg-background w-64" placeholder="Search projects" value={search} onChange={e=>setSearch(e.target.value)} />
-            <button className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700" onClick={openNew}>+ New Project</button>
+          </div>
+
+          {/* Sort Control */}
+          <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-muted/50 border border-border">
+            <span className="text-sm font-medium text-muted-foreground">Sort by:</span>
+            <select
+              aria-label="Sort projects"
+              className="bg-transparent text-sm font-medium text-foreground border-none outline-none cursor-pointer"
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value as any)}
+            >
+              <option value="newest">Newest First</option>
+              <option value="name">Project Name</option>
+              <option value="client">Client Name</option>
+            </select>
+          </div>
+
+          {/* Search */}
+          <div className="flex-1 min-w-[200px] max-w-md">
+            <input
+              aria-label="Search projects"
+              className="w-full px-4 py-2 rounded-xl border border-border bg-background focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              placeholder="Search projects..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+
+          {/* Results count */}
+          <div className="ml-auto text-sm text-muted-foreground">
+            {displayedProjects.length} {displayedProjects.length === 1 ? 'project' : 'projects'}
           </div>
         </div>
-      </div>
+      </motion.div>
 
-      {/* List */}
+      {/* Projects List with Animation */}
       {listLoading ? (
-        <div className="text-sm text-muted-foreground">Loading projects...</div>
-      ) : (
-        <div className="w-full grid grid-cols-1 gap-4">
-          {projects.map(p => (
-            <ProjectCard key={p.id} p={p} onEdit={() => openEdit(p)} onPreview={() => setPreview(p)} />
-          ))}
-          {projects.length === 0 && (
-            <div className="text-sm text-muted-foreground">No projects yet.</div>
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      ) : displayedProjects.length === 0 ? (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex flex-col items-center justify-center py-16 text-center"
+        >
+          <div className="text-4xl mb-4">📋</div>
+          <h3 className="text-xl font-semibold text-foreground mb-2">No projects found</h3>
+          <p className="text-sm text-muted-foreground mb-6">
+            {search || filterStatus !== 'all'
+              ? 'Try adjusting your filters or search terms'
+              : 'Get started by creating your first project'}
+          </p>
+          {!search && filterStatus === 'all' && (
+            <button
+              onClick={openNew}
+              className="px-6 py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-colors"
+            >
+              Create First Project
+            </button>
           )}
+        </motion.div>
+      ) : (
+        <div className="w-full grid grid-cols-1 gap-5">
+          {displayedProjects.map((p, idx) => (
+            <ModernProjectCard
+              key={p.id}
+              project={p}
+              onEdit={() => openEdit(p)}
+              onPreview={() => setPreviewProject(p)}
+              index={idx}
+            />
+          ))}
         </div>
       )}
 
@@ -592,59 +695,59 @@ export default function AdvisoryProjectsPage() {
                 <div className="mt-3 space-y-2">
                   <div className="text-sm font-medium">Media</div>
                   <div className="flex items-center gap-2 text-sm">
-                    <label className="px-3 py-2 border rounded-md cursor-pointer">
-                      Upload Hero
+                    <label className="px-3 py-2 border rounded-md cursor-pointer hover:bg-muted transition-colors">
+                      {uploadingHero ? 'Uploading...' : '📸 Upload Hero Image'}
                       <input
                         type="file"
                         accept="image/*"
                         className="hidden"
+                        disabled={uploadingHero}
                         onChange={async e=>{
                           const file = e.currentTarget.files?.[0]; if (!file) return
-                          // Immediate local preview
-                          let revoke: (() => void) | null = null
-                          try {
-                            const localUrl = URL.createObjectURL(file)
-                            revoke = () => { try { URL.revokeObjectURL(localUrl) } catch {} }
-                            setForm(f => ({ ...f, hero_image_url: localUrl }))
-                          } catch {}
-                          // Upload in background if editing
-                          if (editing) {
-                            setUploadingHero(true)
-                            try {
-                              const res = await advisoryUploadProjectHero(editing.id, file)
-                              setForm(f => ({ ...f, hero_image_url: (res as any).hero_image_url }))
-                              toast.success('Hero uploaded')
-                              if (revoke) revoke()
-                            } catch (err:any) {
-                              toast.error(String(err?.message || 'Hero upload failed'))
-                            } finally { setUploadingHero(false) }
-                          } else {
-                            // New draft: keep file to upload on save
-                            setPendingHeroBlob(file)
-                            toast.info('Hero will upload after saving')
-                          }
-                          // Allow re-selecting the same file
+                          // Open crop modal
+                          const localUrl = URL.createObjectURL(file)
+                          setCropImageSrc(localUrl)
+                          setCropModalOpen(true)
+                          // Reset input
                           try { e.currentTarget.value = '' } catch {}
                         }}
                       />
                     </label>
-                    {uploadingHero && <span>Uploading...</span>}
                   </div>
                   {editing && (
                     <>
-                      {/* Gallery removed in V1 simplification */}
+                      {/* Showcase PDF/PowerPoint for closed projects */}
                       <div className="flex items-center gap-2 text-sm">
-                        <label className="px-3 py-2 border rounded-md cursor-pointer">
-                          Upload Showcase PDF (when closed)
-                          <input type="file" accept="application/pdf" className="hidden" onChange={async e=>{
-                            const file = e.target.files?.[0]; if (!file || !editing) return
-                            setUploadingShowcase(true)
-                            try { const res = await advisoryUploadProjectShowcase(editing.id, file); setForm(f=>({ ...f, showcase_pdf_url: (res as any).showcase_pdf_url })) }
-                            catch (err:any) { toast.error(String(err?.message || 'Showcase upload failed')) }
-                            finally { setUploadingShowcase(false) }
-                          }} />
+                        <label className="px-3 py-2 border rounded-md cursor-pointer hover:bg-muted transition-colors">
+                          {uploadingShowcase ? 'Uploading...' : '📄 Upload Showcase (PDF/PPT)'}
+                          <input
+                            type="file"
+                            accept="application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                            className="hidden"
+                            disabled={uploadingShowcase}
+                            onChange={async e=>{
+                              const file = e.target.files?.[0]; if (!file || !editing) return
+                              setUploadingShowcase(true)
+                              try {
+                                const res = await advisoryUploadProjectShowcase(editing.id, file);
+                                setForm(f=>({ ...f, showcase_pdf_url: (res as any).showcase_pdf_url }))
+                                toast.success('Showcase uploaded successfully')
+                              }
+                              catch (err:any) { toast.error(String(err?.message || 'Showcase upload failed')) }
+                              finally { setUploadingShowcase(false) }
+                            }}
+                          />
                         </label>
-                        {uploadingShowcase && <span>Uploading...</span>}
+                        {form.showcase_pdf_url && (
+                          <a
+                            href={form.showcase_pdf_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-600 hover:underline"
+                          >
+                            View current
+                          </a>
+                        )}
                       </div>
                     </>
                   )}
@@ -691,11 +794,48 @@ export default function AdvisoryProjectsPage() {
           </div>
         </div>
       )}
-      {/* In-place overlay preview (admin-rendered, student-style) */}
-      {!!preview && (
-        <ProjectOverlay project={preview} onClose={() => setPreview(null)} />
-      )}
-      {/* Crop disabled: direct upload/preview path used */}
+      {/* Modern Modals */}
+      <ImageCropModal
+        isOpen={cropModalOpen}
+        imageUrl={cropImageSrc}
+        onClose={() => {
+          setCropModalOpen(false);
+          if (cropImageSrc) URL.revokeObjectURL(cropImageSrc);
+          setCropImageSrc('');
+        }}
+        onConfirm={async (croppedBlob) => {
+          setCropModalOpen(false);
+          if (cropImageSrc) URL.revokeObjectURL(cropImageSrc);
+          setCropImageSrc('');
+          
+          // Upload cropped image
+          if (editing) {
+            setUploadingHero(true);
+            try {
+              const file = new File([croppedBlob], 'hero.jpg', { type: 'image/jpeg' });
+              const res = await advisoryUploadProjectHero(editing.id, file);
+              setForm(f => ({ ...f, hero_image_url: (res as any).hero_image_url }));
+              toast.success('Hero image uploaded successfully');
+            } catch (err: any) {
+              toast.error(String(err?.message || 'Hero upload failed'));
+            } finally {
+              setUploadingHero(false);
+            }
+          } else {
+            // For new projects, store blob to upload on save
+            setPendingHeroBlob(croppedBlob);
+            const localUrl = URL.createObjectURL(croppedBlob);
+            setForm(f => ({ ...f, hero_image_url: localUrl }));
+            toast.info('Hero image will be uploaded when you save the project');
+          }
+        }}
+        aspectRatio={16 / 9}
+      />
+      
+      <ProjectDetailModal
+        project={previewProject}
+        onClose={() => setPreviewProject(null)}
+      />
     </div>
   )
 }
