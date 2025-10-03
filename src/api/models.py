@@ -17,6 +17,18 @@ from sqlalchemy.sql import func
 
 Base = declarative_base()
 
+# Import Learning Module models (they use the same Base)
+# This ensures all models are registered with SQLAlchemy metadata
+def register_learning_models():
+    """Import learning models to register them with SQLAlchemy"""
+    try:
+        from . import models_learning
+    except ImportError:
+        pass  # Learning models not yet available
+
+# Register at module load time
+register_learning_models()
+
 # Enums for various status fields
 class ApprovalStatus(PyEnum):
     PENDING = "pending"

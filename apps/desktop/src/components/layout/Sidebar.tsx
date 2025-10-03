@@ -25,6 +25,7 @@ import {
   BadgeCheck,
   Archive,
   LogOut,
+  BookOpen,
 } from 'lucide-react';
 import { useUser, useClerk } from '@clerk/nextjs';
 import { useApp } from '@/lib/context/AppContext';
@@ -81,6 +82,8 @@ const navigation: NavItem[] = [
       { name: 'Student Project Lead Manager', href: '/ngi-advisory/lead-manager' },
     ]
   },
+  // 9. Learning Center
+  { name: 'Learning Center', href: '/learning', icon: BookOpen },
 ];
 
 export default function Sidebar() {

@@ -3,7 +3,7 @@
 import React from 'react';
 import dynamic from 'next/dynamic';
 
-const MetricsTicker = dynamic(() => import('@/components/metrics/MetricsTicker'), { ssr: false });
+const MetricsTicker = dynamic(() => import('@/components/metrics/MetricsTicker'));
 
 export default function StockTicker() {
   return (

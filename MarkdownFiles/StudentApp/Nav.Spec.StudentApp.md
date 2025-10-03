@@ -3,7 +3,7 @@
 ## 1) Top Navigation (Header)
 - Projects: `/projects` (acts as home for students)
 - Applications: `/applications` (Clerk-gated, signed-in)
-- Learning: `/learning` (public, Coming Soon placeholder)
+- Learning: `/learning` (public; company picker + modules)
 - My Projects: `/my-projects` (Clerk-gated; visible only when the student has at least one active project after onboarding)
 - Account: Clerk user menu (Sign in / Sign out / Profile)
 
@@ -23,4 +23,5 @@ Notes
 
 ## 4) Telemetry
 - Track nav_click events with { route, position } for basic analytics.
+- Learning emits module and activity events per Appendix.Telemetry.Events.md.
 

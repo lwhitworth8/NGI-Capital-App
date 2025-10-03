@@ -56,6 +56,8 @@ from src.api.routes import time_utils
 from src.api.routes import finance as finance_routes
 from src.api.routes import tax as tax_routes
 from src.api.routes import metrics as metrics_routes
+from src.api.routes import learning as learning_routes
+from src.api.routes import learning_admin as learning_admin_routes  # NGI Learning Module (Sprint 1)
 try:
     from src.api.auth_deps import require_admin as _require_admin_dep, require_clerk_user as _require_clerk_user_dep  # type: ignore
 except Exception:
@@ -1335,6 +1337,10 @@ app.include_router(metrics_routes.router)
 # NGI Advisory admin router and public API
 app.include_router(advisory_routes.router, prefix="/api/advisory", tags=["advisory"])  # type: ignore
 app.include_router(advisory_public_routes.router, prefix="/api/public", tags=["advisory-public"])  # type: ignore
+
+# NGI Learning Module (Sprint 1 - Student-facing)
+app.include_router(learning_routes.router, tags=["learning"])  # type: ignore
+app.include_router(learning_admin_routes.router, tags=["learning_admin"])  # type: ignore
 
 # Coffee chats and PLM
 app.include_router(coffeechats_internal_routes.router, prefix="/api", tags=["coffeechats"])  # type: ignore

@@ -1,3 +1,4 @@
+// All UC system domains + NGI Capital admin domain
 export const allowedDomains = (process.env.ALLOWED_EMAIL_DOMAINS || 'berkeley.edu,ucla.edu,ucsd.edu,uci.edu,ucdavis.edu,ucsb.edu,ucsc.edu,ucr.edu,ucmerced.edu,ngicapitaladvisory.com')
   .split(',')
   .map(s => s.trim().toLowerCase())

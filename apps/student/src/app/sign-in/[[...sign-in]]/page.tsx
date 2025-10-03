@@ -1,15 +1,42 @@
 "use client"
 
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 import Link from 'next/link'
-import { SignIn, useSignIn } from '@clerk/nextjs'
+import { useRouter } from 'next/navigation'
+import { SignIn, useSignIn, useUser, useClerk } from '@clerk/nextjs'
 
 export default function SignInPage() {
   const { signIn, isLoaded } = useSignIn()
+  const { isSignedIn, user } = useUser()
+  const { signOut } = useClerk()
+  const router = useRouter()
 
-  const onGoogle = useCallback(async () => {
+  // If already signed in, redirect to appropriate dashboard
+  useEffect(() => {
+    if (isLoaded && isSignedIn && user) {
+      const email = user.primaryEmailAddress?.emailAddress || ''
+      
+      // Check if admin email
+      if (email.endsWith('@ngicapitaladvisory.com')) {
+        window.location.href = 'http://localhost:3001/admin/dashboard'
+      } else {
+        router.push('/projects')
+      }
+    }
+  }, [isLoaded, isSignedIn, user, router])
+
+  // If there's a stale session, sign out first
+  const handleGoogleSignIn = useCallback(async () => {
     try {
       if (!isLoaded) return
+      
+      // If user is somehow signed in, sign them out first
+      if (isSignedIn) {
+        await signOut()
+        // Wait a bit for sign out to complete
+        await new Promise(resolve => setTimeout(resolve, 500))
+      }
+      
       await signIn?.authenticateWithRedirect({
         strategy: 'oauth_google',
         redirectUrl: '/auth/resolve',
@@ -18,7 +45,9 @@ export default function SignInPage() {
     } catch (e) {
       console.error('Google sign-in failed', e)
     }
-  }, [isLoaded, signIn])
+  }, [isLoaded, signIn, isSignedIn, signOut])
+
+  const onGoogle = handleGoogleSignIn
 
   return (
     <div className="relative min-h-screen w-full bg-gradient-to-b from-black via-black via-60% to-[#0b1e47] flex flex-col overflow-hidden">

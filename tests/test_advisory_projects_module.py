@@ -294,3 +294,178 @@ def test_publish_without_leads_allowed_when_disabled_env(monkeypatch):
     }
     r_pub = client.put(f"/api/advisory/projects/{pid}", json=patch, headers=admin_headers())
     assert r_pub.status_code == 200
+
+
+def test_multi_client_partner_logos():
+    """Test creating/updating projects with multiple clients using partner_logos array with Clearbit URLs"""
+    os.environ.pop('PYTEST_CURRENT_TEST', None)
+    _clear_projects()
+    
+    # Create project with multiple clients using Clearbit URLs
+    payload = {
+        "project_name": "Multi-Client Project",
+        "client_name": "Goldman Sachs, JPMorgan",  # Backward compatible field
+        "summary": "A project with multiple client partners for testing purposes.",
+        "status": "draft",
+        "partner_logos": [
+            {"name": "Goldman Sachs", "logo": "https://logo.clearbit.com/goldmansachs.com"},
+            {"name": "JPMorgan", "logo": "https://logo.clearbit.com/jpmorganchase.com"}
+        ]
+    }
+    r1 = client.post("/api/advisory/projects", json=payload, headers=admin_headers())
+    print(f"Create with partner_logos response: {r1.status_code} - {r1.json() if r1.status_code != 200 else 'OK'}")
+    assert r1.status_code == 200
+    
+    # Get project and verify partner_logos
+    r_list = client.get("/api/advisory/projects", headers=admin_headers())
+    assert r_list.status_code == 200
+    project = r_list.json()[0]
+    pid = int(project["id"])
+    
+    # Verify partner_logos are stored and returned correctly
+    r_get = client.get(f"/api/advisory/projects/{pid}", headers=admin_headers())
+    assert r_get.status_code == 200
+    data = r_get.json()
+    print(f"Retrieved project data: {data}")
+    assert "partner_logos" in data
+    assert isinstance(data["partner_logos"], list)
+    assert len(data["partner_logos"]) == 2
+    assert data["partner_logos"][0]["name"] == "Goldman Sachs"
+    assert "clearbit.com" in data["partner_logos"][0]["logo"]
+    
+    # Update with different clients (simulating frontend edit flow)
+    update_payload = {
+        "partner_logos": [
+            {"name": "BlackRock", "logo": "https://logo.clearbit.com/blackrock.com"},
+            {"name": "UC Investments", "logo": "/clients/uc-investments.svg"}
+        ]
+    }
+    r_update = client.put(f"/api/advisory/projects/{pid}", json=update_payload, headers=admin_headers())
+    print(f"Update partner_logos response: {r_update.status_code} - {r_update.json() if r_update.status_code != 200 else 'OK'}")
+    assert r_update.status_code == 200
+    
+    # Verify update
+    r_get2 = client.get(f"/api/advisory/projects/{pid}", headers=admin_headers())
+    data2 = r_get2.json()
+    assert len(data2["partner_logos"]) == 2
+    assert data2["partner_logos"][0]["name"] == "BlackRock"
+
+
+def test_team_requirements_majors():
+    """Test creating/updating projects with team_requirements (majors)"""
+    os.environ.pop('PYTEST_CURRENT_TEST', None)
+    _clear_projects()
+    
+    # Create project with team requirements
+    payload = {
+        "project_name": "Engineering Project",
+        "client_name": "UC Berkeley",
+        "summary": "A project requiring specific majors for student applications.",
+        "status": "draft",
+        "team_requirements": ["Computer Science", "Electrical Engineering", "Business Administration"]
+    }
+    r1 = client.post("/api/advisory/projects", json=payload, headers=admin_headers())
+    assert r1.status_code == 200
+    
+    # Get project and verify team_requirements
+    r_list = client.get("/api/advisory/projects", headers=admin_headers())
+    assert r_list.status_code == 200
+    project = r_list.json()[0]
+    pid = int(project["id"])
+    
+    # Verify team_requirements are stored
+    r_get = client.get(f"/api/advisory/projects/{pid}", headers=admin_headers())
+    assert r_get.status_code == 200
+    data = r_get.json()
+    assert "team_requirements" in data
+
+
+def test_full_project_update_workflow():
+    """Test the complete project update workflow as the frontend does it"""
+    os.environ.pop('PYTEST_CURRENT_TEST', None)
+    _clear_projects()
+    
+    # Step 1: Create a draft project with all new fields
+    create_payload = {
+        "project_name": "Comprehensive Test Project",
+        "client_name": "Goldman Sachs, JPMorgan",
+        "summary": "A comprehensive test project to validate all frontend functionality works.",
+        "description": "This is a detailed description that meets the minimum 50 character requirement for publishing projects to active status.",
+        "status": "draft",
+        "mode": "hybrid",
+        "team_size": 4,
+        "duration_weeks": 12,
+        "commitment_hours_per_week": 10,
+        "start_date": "2025-09-01",
+        "end_date": "2025-12-01",
+        "location_text": "San Francisco, CA",
+        "eligibility_notes": "Open to all UC students",
+        "notes_internal": "Internal admin notes",
+        "partner_logos": [
+            {"name": "Goldman Sachs", "logo": "https://logo.clearbit.com/goldmansachs.com"},
+            {"name": "JPMorgan", "logo": "https://logo.clearbit.com/jpmorganchase.com"}
+        ],
+        "team_requirements": ["Computer Science", "Economics", "Business Administration"],
+        "allow_applications": 1
+    }
+    r1 = client.post("/api/advisory/projects", json=create_payload, headers=admin_headers())
+    print(f"Create response: {r1.status_code} - {r1.json()}")
+    assert r1.status_code == 200
+    
+    # Get project ID
+    r_list = client.get("/api/advisory/projects", headers=admin_headers())
+    assert r_list.status_code == 200
+    projects = r_list.json()
+    assert len(projects) >= 1
+    pid = int(projects[0]["id"])
+    
+    # Step 2: Add project leads (required for publishing)
+    r_leads = client.put(
+        f"/api/advisory/projects/{pid}/leads",
+        json={"emails": ["anurmamade@ngicapitaladvisory.com"]},
+        headers=admin_headers()
+    )
+    print(f"Leads response: {r_leads.status_code}")
+    assert r_leads.status_code == 200
+    
+    # Step 3: Add application questions
+    r_questions = client.put(
+        f"/api/advisory/projects/{pid}/questions",
+        json={"items": [
+            {"type": "text", "prompt": "Why are you interested in this project?"},
+            {"type": "mcq", "prompt": "What is your year?", "choices": ["Freshman", "Sophomore", "Junior", "Senior"]}
+        ]},
+        headers=admin_headers()
+    )
+    print(f"Questions response: {r_questions.status_code}")
+    assert r_questions.status_code == 200
+    
+    # Step 4: Update project to active (publish)
+    update_payload = {
+        "status": "active",
+        "client_name": "Goldman Sachs, JPMorgan, BlackRock",
+        "partner_logos": [
+            {"name": "Goldman Sachs", "logo": "https://logo.clearbit.com/goldmansachs.com"},
+            {"name": "JPMorgan", "logo": "https://logo.clearbit.com/jpmorganchase.com"},
+            {"name": "BlackRock", "logo": "https://logo.clearbit.com/blackrock.com"}
+        ],
+        "team_requirements": ["Computer Science", "Economics"]
+    }
+    r_update = client.put(f"/api/advisory/projects/{pid}", json=update_payload, headers=admin_headers())
+    print(f"Update response: {r_update.status_code} - {r_update.json() if r_update.status_code != 200 else 'OK'}")
+    assert r_update.status_code == 200
+    
+    # Step 5: Verify all fields were saved correctly
+    r_get = client.get(f"/api/advisory/projects/{pid}", headers=admin_headers())
+    assert r_get.status_code == 200
+    data = r_get.json()
+    assert data["status"] == "active"
+    assert data["client_name"] == "Goldman Sachs, JPMorgan, BlackRock"
+    assert "partner_logos" in data
+    assert "team_requirements" in data
+    
+    # Step 6: Verify it appears in public listing
+    r_public = client.get("/api/public/projects")
+    assert r_public.status_code == 200
+    public_projects = r_public.json()
+    assert any(p.get("id") == pid for p in public_projects)

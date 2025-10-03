@@ -40,6 +40,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const hydrate = async () => {
       try {
         if (isLoaded && clerkUser) {
+          console.log('AuthProvider: Loading user data for', clerkUser.primaryEmailAddress?.emailAddress)
+          
           // Normalize Clerk -> Partner-like shape for existing UI
           const p: Partner = {
             id: 0 as any,
@@ -48,17 +50,30 @@ export function AuthProvider({ children }: AuthProviderProps) {
             ownership_percentage: 0 as any,
           } as any
           setUser(p)
-          // Optionally enrich from backend /auth/me (Clerk-authenticated)
+          
+          // Enrich from backend /auth/me (Clerk-authenticated)
           try {
             const anyApi: any = apiClient as any
             const profile = anyApi.getCurrentUser ? await anyApi.getCurrentUser() : await apiClient.getProfile()
-            setUser(profile)
-          } catch {}
+            if (profile && profile.email) {
+              console.log('AuthProvider: Successfully loaded backend profile')
+              setUser(profile)
+            }
+          } catch (err) {
+            console.warn('AuthProvider: Could not load backend profile, using Clerk data', err)
+            // Keep the Clerk-based user object if backend fails
+          }
         } else if (isLoaded && !clerkUser) {
+          console.log('AuthProvider: No Clerk user, clearing state')
           setUser(null)
         }
+      } catch (err) {
+        console.error('AuthProvider: Hydration error', err)
+        setUser(null)
       } finally {
-        if (isLoaded) setLoading(false)
+        if (isLoaded) {
+          setLoading(false)
+        }
       }
     }
     hydrate()

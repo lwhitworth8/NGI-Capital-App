@@ -83,7 +83,7 @@ export default function MarketingHomepage() {
                   <span className="absolute bottom-[-4px] left-0 w-full h-0.5 bg-blue-500 transform scale-x-0 group-hover:scale-x-100 transition-transform" />
                 </a>
                 <a href="#learning" onClick={onNavClick('learning')} className="hover:text-blue-400 transition-colors relative group">
-                  NGI Learning (Coming Soon)
+                  NGI Learning Center (Coming Soon)
                   <span className="absolute bottom-[-4px] left-0 w-full h-0.5 bg-blue-500 transform scale-x-0 group-hover:scale-x-100 transition-transform" />
                 </a>
                 <a href="#incubator" onClick={onNavClick('incubator')} className="hover:text-blue-400 transition-colors relative group">
@@ -123,7 +123,7 @@ export default function MarketingHomepage() {
           <nav aria-label="Section Navigation" className="flex justify-center gap-8 text-sm">
             {[
               { id: 'projects', label: 'NGI Capital Advisory' },
-              { id: 'learning', label: 'NGI Learning (Coming Soon)' },
+              { id: 'learning', label: 'NGI Learning Center (Coming Soon)' },
               { id: 'incubator', label: 'NGI Fund (Coming Soon)' },
             ].map((item) => (
               <a
@@ -290,7 +290,7 @@ export default function MarketingHomepage() {
               Coming Soon
             </div>
             <h2 className="text-3xl md:text-4xl font-bold tracking-tight">
-              NGI Learning
+              NGI Learning Center
             </h2>
             <p className="mt-2 text-base text-zinc-300 leading-relaxed">
             Develop the real-world skills institutional investors require. Expand your knowledge to get ahead of the gap.

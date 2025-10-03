@@ -1,14 +1,14 @@
-# Student Learning – Open Questions
+# Student Learning — Open Questions (V1)
 
-- Final copy tweaks for subtext (tone and length).
-- Whether to enable page_view telemetry now or add later with the broader Learning launch.
+Open
+- Coach guardrails: where to prevent over‑revealing answers vs. guidance tone.
+- Leaderboard privacy: per‑company minimum N to display distribution (e.g., N≥5)?
+- Validator thresholds: revenue tie tolerance (±1% vs ±2%) and how strict per company.
+- Disclaimers: exact copy for “educational only” modal and acceptance storage location.
 
----
-## Resolved Decisions (V1)
-- Subtext: We are building a focused learning experience for analysts. Stay tuned in upcoming releases.
-- Telemetry: page_view disabled by default in V1 (enable later with global analytics).
+Resolved (V1)
+- Curated company picker (10 companies) and Excel‑only workflow.
+- Activities A1–A5 + Capstone; validators gate feedback; unlimited resubmits.
+- Coaching persona: “Project Lead”; feedback latency target < 60s.
+- Progress: bars, streaks (≥15m or activity), milestones; reset after 8 inactive days.
 
----
-## Resolved Decisions (V1)
-- Subtext: We are building a focused learning experience for analysts. Stay tuned in upcoming releases.
-- Telemetry: page_view disabled by default in V1 (enable later with global analytics).

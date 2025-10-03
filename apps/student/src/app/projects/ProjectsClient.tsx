@@ -4,13 +4,16 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { PublicProject } from '@/lib/api'
 import { useRouter, usePathname } from 'next/navigation'
 import { postEvent } from '@/lib/telemetry'
+import ModernProjectCard from '@/components/projects/ModernProjectCard'
+import { StudentProjectModal } from '@/components/projects/StudentProjectModal'
 
-export default function ProjectsClient({ initialItems, initialQ = '', initialTags = [], initialMode = '', initialLocation = '', initialSort = 'newest', pageSize = 20 }: { initialItems: PublicProject[]; initialQ?: string; initialTags?: string[]; initialMode?: string; initialLocation?: string; initialSort?: 'newest'|'name'|'applied'; pageSize?: number }) {
+export default function ProjectsClient({ initialItems, initialQ = '', initialTags = [], initialMode = '', initialLocation = '', initialSort = 'newest', pageSize = 20 }: { initialItems: PublicProject[]; initialQ?: string; initialTags?: string[]; initialMode?: string; initialLocation?: string; initialSort?: 'newest'|'name'|'applied'|'oldest'; pageSize?: number }) {
   const router = useRouter()
   const pathname = usePathname()
   // Filters/state
   const [q, setQ] = useState(initialQ)
-  const [sort, setSort] = useState<'newest'|'name'|'applied'>(initialSort as any)
+  const [sort, setSort] = useState<'newest'|'name'|'applied'|'oldest'>(initialSort as any)
+  const [statusFilter, setStatusFilter] = useState<'all'|'active'|'closed'>('all')
   const [activeTags, setActiveTags] = useState<string[]>(initialTags)
   const [mode, setMode] = useState<string>(initialMode)
   const [location, setLocation] = useState<string>(initialLocation)
@@ -106,66 +109,120 @@ export default function ProjectsClient({ initialItems, initialQ = '', initialTag
 
   const toggleTag = (t: string) => setActiveTags(prev => prev.includes(t) ? prev.filter(x=>x!==t) : [...prev, t])
 
-  return (
-    <div aria-label="Projects list" role="region">
-      <div className="flex items-center justify-between gap-3">
-        <div className="title">Projects</div>
-        <div className="flex items-center gap-2">
-          <input aria-label="Search projects" className="search" placeholder="Search projects" value={pendingQ} onChange={e=>setPendingQ(e.target.value)} />
-          <select aria-label="Sort projects" className="search" value={sort} onChange={e=>setSort(e.target.value as any)}>
-            <option value="newest">Newest</option>
-            <option value="name">Name</option>
-            <option value="applied">Most Applied</option>
-          </select>
-        </div>
-      </div>
+  const [selectedProject, setSelectedProject] = useState<PublicProject | null>(null)
 
-      {/* Filters panel */}
-      <div className="mt-3 flex flex-col gap-3">
-        {!!allTags.length && (
-          <div className="flex gap-2 flex-wrap">
-            {allTags.map(t => (
-              <button key={t} aria-pressed={activeTags.includes(t)} onClick={()=>toggleTag(t)} className={`chip ${activeTags.includes(t) ? 'ring-2 ring-[hsl(var(--ring))]' : ''}`}>{t}</button>
+  // Filter items by status
+  const filteredItems = items.filter(item => {
+    if (statusFilter === 'all') return true;
+    return (item.status || 'active').toLowerCase() === statusFilter;
+  });
+
+  return (
+    <>
+      <div aria-label="Projects list" role="region" className="p-6 space-y-8">
+        {/* Modern Header - Matching Admin Style */}
+        <div className="flex flex-col gap-6">
+          <div className="flex items-center justify-between">
+            <h1 className="text-4xl font-bold tracking-tight text-foreground">
+              NGI Capital Advisory
+            </h1>
+          </div>
+
+          {/* Filters and Sorting - Matching Admin Style */}
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Status Filter */}
+            <div className="relative">
+              <select
+                aria-label="Filter status"
+                className="appearance-none pl-4 pr-10 py-2.5 rounded-xl bg-background border border-border text-sm font-medium text-foreground cursor-pointer hover:bg-accent transition-colors focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:outline-none"
+                value={statusFilter}
+                onChange={e => setStatusFilter(e.target.value as any)}
+              >
+                <option value="all" className="bg-background text-foreground">All Projects</option>
+                <option value="active" className="bg-background text-foreground">Open</option>
+                <option value="closed" className="bg-background text-foreground">Closed</option>
+              </select>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
+
+            {/* Sort Control */}
+            <div className="relative">
+              <select
+                aria-label="Sort projects"
+                className="appearance-none pl-4 pr-10 py-2.5 rounded-xl bg-background border border-border text-sm font-medium text-foreground cursor-pointer hover:bg-accent transition-colors focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:outline-none"
+                value={sort}
+                onChange={e => setSort(e.target.value as any)}
+              >
+                <option value="newest" className="bg-background text-foreground">Newest First</option>
+                <option value="oldest" className="bg-background text-foreground">Oldest First</option>
+                <option value="name" className="bg-background text-foreground">Project Name</option>
+              </select>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
+
+            {/* Search */}
+            <div className="flex-1 min-w-[200px] max-w-md">
+              <input
+                aria-label="Search projects"
+                className="w-full px-4 py-2.5 rounded-xl border border-border bg-card focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                placeholder="Search projects..."
+                value={pendingQ}
+                onChange={e => setPendingQ(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { setQ(pendingQ); } }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Projects List with Animation - Matching Admin Style */}
+        {isLoading && items.length === 0 ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          </div>
+        ) : filteredItems.length === 0 && !isLoading ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="text-4xl mb-4">📋</div>
+            <h3 className="text-xl font-semibold text-foreground mb-2">No projects found</h3>
+            <p className="text-sm text-muted-foreground">
+              {pendingQ || statusFilter !== 'all'
+                ? 'Try adjusting your filters or search terms'
+                : 'Check back soon for new opportunities'}
+            </p>
+          </div>
+        ) : (
+          <div className="w-full grid grid-cols-1 gap-5">
+            {filteredItems.map((p, idx) => (
+              <ModernProjectCard
+                key={p.id}
+                project={p}
+                onPreview={() => setSelectedProject(p)}
+                index={idx}
+              />
             ))}
           </div>
         )}
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-muted-foreground">Mode</label>
-          <select aria-label="Filter by mode" className="search" value={mode} onChange={e=>setMode(e.target.value)}>
-            <option value="">Any</option>
-            <option value="remote">Remote</option>
-            <option value="in_person">In person</option>
-            <option value="hybrid">Hybrid</option>
-          </select>
-          <label className="text-xs text-muted-foreground">Location</label>
-          <input aria-label="Filter by location" className="search" placeholder="e.g., Berkeley" value={location} onChange={e=>setLocation(e.target.value)} />
-          <button aria-label="Clear filters" className="chip" onClick={()=>{ setActiveTags([]); setMode(''); setLocation(''); setPendingQ('') }}>Clear</button>
-        </div>
-      </div>
-
-      <div style={{ marginTop: 16, display:'flex', flexDirection:'column', gap: 12 }}>
-        {items.map(p => (
-          <a key={p.id} href={`/projects/${p.id}`} className="card" style={{ textDecoration:'none', color:'inherit' }}>
-            <div className="thumb">
-              {p.hero_image_url ? <img src={p.hero_image_url} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : null}
-            </div>
-            <div style={{ flex:1 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                <div style={{ fontWeight:700 }}>{p.project_name}</div>
-                <span className="status" aria-label={`status ${(p.status||'active').toLowerCase()==='closed' ? 'Completed' : 'Active'}`}>{(p.status||'active').toLowerCase()==='closed' ? 'Completed' : 'Active'}</span>
-              </div>
-              <div style={{ fontSize:13, color:'var(--muted, #6b7280)' }}>{p.summary}</div>
-              <div style={{ display:'flex', gap:6, marginTop:6, flexWrap:'wrap' }}>
-                {(p.partner_badges||[]).slice(0,2).map((b,i)=>(<span key={i} className="chip">{b}</span>))}
-                {(p.backer_badges||[]).slice(0,2).map((b,i)=>(<span key={`b-${i}`} className="chip">{b}</span>))}
-              </div>
-            </div>
-          </a>
-        ))}
-        {isLoading && <div style={{ color:'#6b7280', fontSize:13 }}>Loading...</div>}
-        {!isLoading && items.length === 0 && <div style={{ color:'#6b7280', fontSize:14 }}>No projects available. Coming soon.</div>}
+        {isLoading && items.length > 0 && (
+          <div className="flex items-center justify-center py-6">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+          </div>
+        )}
         <div ref={sentinelRef} />
       </div>
-    </div>
+
+      {/* Student Project Detail Modal */}
+      <StudentProjectModal
+        isOpen={!!selectedProject}
+        project={selectedProject}
+        onClose={() => setSelectedProject(null)}
+      />
+    </>
   )
 }

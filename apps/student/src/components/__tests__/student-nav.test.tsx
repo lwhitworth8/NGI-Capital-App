@@ -42,7 +42,7 @@ describe('StudentSidebar navigation per spec', () => {
   it('shows public Projects and Learning for signed-out users and hides Applications/My Projects', async () => {
     render(<StudentSidebar />)
     expect(await screen.findByText('Projects')).toBeInTheDocument()
-    expect(screen.getByText('Learning')).toBeInTheDocument()
+    expect(screen.getByText('Learning Center')).toBeInTheDocument()
     expect(screen.queryByText('Applications')).toBeNull()
     expect(screen.queryByText('My Projects')).toBeNull()
   })

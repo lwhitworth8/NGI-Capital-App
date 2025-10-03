@@ -185,18 +185,36 @@ class ApiClient {
   }
 
   private handleApiError(error: any): void {
+    const url = (error.request?.responseURL || '').toString()
+    const status = error.response?.status
+    
+    // Suppress errors for optional/placeholder endpoints that may not be implemented yet
+    const optionalEndpoints = [
+      '/transactions/pending',
+      '/transactions/recent',
+      '/api/goals',
+      '/dashboard/metrics',
+      '/approvals',
+      'pending-approvals'
+    ]
+    const isOptionalEndpoint = optionalEndpoints.some(endpoint => url.includes(endpoint))
+    
+    if (isOptionalEndpoint) {
+      // Completely suppress optional endpoint errors
+      return
+    }
+    
     console.error('API Error Details:', {
       message: error.message,
       code: error.code,
       response: error.response?.data,
       status: error.response?.status,
-      request: error.request?.responseURL
+      request: url,
+      fullError: error
     })
     
     if (error.response) {
-      const status = error.response.status
       const message = error.response.data?.detail || error.response.data?.message || 'An error occurred'
-      const url = (error.request?.responseURL || '').toString()
       const normalize = (val: any): string => {
         if (typeof val === 'string') return val
         if (Array.isArray(val)) {
@@ -222,7 +240,6 @@ class ApiClient {
           toast.error('Access denied. Insufficient permissions.')
           break
         case 404:
-          if (url.includes('/api/goals')) return
           toast.error('Resource not found.')
           break
         case 422: {
@@ -1050,19 +1067,104 @@ export async function advisorySetProjectQuestionsTyped(projectId: number, items:
 export async function advisoryUploadProjectHero(projectId: number, file: File): Promise<{ hero_image_url: string }>{
   const form = new FormData()
   form.append('file', file)
-  return apiClient.request('POST', `/advisory/projects/${projectId}/hero`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  
+  // Use native fetch for uploads to avoid axios Content-Type issues
+  const headers: any = {}
+  if (typeof window !== 'undefined') {
+    try {
+      const anyWin: any = window as any
+      const clerk = anyWin.Clerk
+      if (clerk?.session?.getToken) {
+        let token: string | null = null
+        try { token = await clerk.session.getToken({ template: 'backend' }) } catch {}
+        if (!token) { try { token = await clerk.session.getToken() } catch {} }
+        if (token) {
+          headers.Authorization = `Bearer ${token}`
+        }
+      }
+    } catch {}
+  }
+  
+  const response = await fetch(`/api/advisory/projects/${projectId}/hero`, {
+    method: 'POST',
+    headers, // Don't set Content-Type - browser auto-sets with boundary
+    body: form,
+  })
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Upload failed' }))
+    throw new Error(error.detail || `Upload failed with status ${response.status}`)
+  }
+  
+  return response.json()
 }
 
 export async function advisoryUploadProjectGallery(projectId: number, file: File): Promise<{ gallery_urls: string[] }>{
   const form = new FormData()
   form.append('file', file)
-  return apiClient.request('POST', `/advisory/projects/${projectId}/gallery`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  
+  const headers: any = {}
+  if (typeof window !== 'undefined') {
+    try {
+      const anyWin: any = window as any
+      const clerk = anyWin.Clerk
+      if (clerk?.session?.getToken) {
+        let token: string | null = null
+        try { token = await clerk.session.getToken({ template: 'backend' }) } catch {}
+        if (!token) { try { token = await clerk.session.getToken() } catch {} }
+        if (token) {
+          headers.Authorization = `Bearer ${token}`
+        }
+      }
+    } catch {}
+  }
+  
+  const response = await fetch(`/api/advisory/projects/${projectId}/gallery`, {
+    method: 'POST',
+    headers,
+    body: form,
+  })
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Upload failed' }))
+    throw new Error(error.detail || `Upload failed with status ${response.status}`)
+  }
+  
+  return response.json()
 }
 
 export async function advisoryUploadProjectShowcase(projectId: number, file: File): Promise<{ showcase_pdf_url: string }>{
   const form = new FormData()
   form.append('file', file)
-  return apiClient.request('POST', `/advisory/projects/${projectId}/showcase`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  
+  const headers: any = {}
+  if (typeof window !== 'undefined') {
+    try {
+      const anyWin: any = window as any
+      const clerk = anyWin.Clerk
+      if (clerk?.session?.getToken) {
+        let token: string | null = null
+        try { token = await clerk.session.getToken({ template: 'backend' }) } catch {}
+        if (!token) { try { token = await clerk.session.getToken() } catch {} }
+        if (token) {
+          headers.Authorization = `Bearer ${token}`
+        }
+      }
+    } catch {}
+  }
+  
+  const response = await fetch(`/api/advisory/projects/${projectId}/showcase`, {
+    method: 'POST',
+    headers,
+    body: form,
+  })
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Upload failed' }))
+    throw new Error(error.detail || `Upload failed with status ${response.status}`)
+  }
+  
+  return response.json()
 }
 
 // Logos (partner/backer)
@@ -1079,7 +1181,35 @@ export async function advisoryUploadProjectLogo(projectId: number, kind: 'partne
   const form = new FormData()
   form.append('file', file)
   if (name) form.append('name', name)
-  return apiClient.request('POST', `/advisory/projects/${projectId}/logos/${encodeURIComponent(kind)}`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  
+  const headers: any = {}
+  if (typeof window !== 'undefined') {
+    try {
+      const anyWin: any = window as any
+      const clerk = anyWin.Clerk
+      if (clerk?.session?.getToken) {
+        let token: string | null = null
+        try { token = await clerk.session.getToken({ template: 'backend' }) } catch {}
+        if (!token) { try { token = await clerk.session.getToken() } catch {} }
+        if (token) {
+          headers.Authorization = `Bearer ${token}`
+        }
+      }
+    } catch {}
+  }
+  
+  const response = await fetch(`/api/advisory/projects/${projectId}/logos/${encodeURIComponent(kind)}`, {
+    method: 'POST',
+    headers,
+    body: form,
+  })
+  
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: 'Upload failed' }))
+    throw new Error(error.detail || `Upload failed with status ${response.status}`)
+  }
+  
+  return response.json()
 }
 
 export async function advisoryListOnboardingTemplates(): Promise<{ id: number; name: string; description?: string }[]> {

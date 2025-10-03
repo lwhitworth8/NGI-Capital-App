@@ -555,7 +555,10 @@ async def create_project(payload: Dict[str, Any], admin=Depends(require_ngiadvis
     except Exception:
         existing = set()
     # Map desired column -> parameter key & value
-    now_iso = datetime.utcnow().isoformat()
+    # Use PST/Los Angeles time instead of UTC
+    from datetime import timezone, timedelta
+    pst = timezone(timedelta(hours=-8))  # PST is UTC-8
+    now_iso = datetime.now(pst).isoformat()
     kv = {
         'entity_id': ('eid', (int(payload.get('entity_id') or 0) or None)),
         'client_name': ('client', payload.get('client_name')),
@@ -609,7 +612,7 @@ async def create_project(payload: Dict[str, Any], admin=Depends(require_ngiadvis
 async def get_project(pid: int, admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
     _ensure_tables(db)
     r = db.execute(sa_text("""
-        SELECT id, entity_id, client_name, project_name, summary, description, status, mode, location_text, start_date, end_date, duration_weeks, commitment_hours_per_week, project_code, project_lead, contact_email, partner_badges, backer_badges, tags, hero_image_url, gallery_urls, apply_cta_text, apply_url, eligibility_notes, notes_internal, partner_logos, backer_logos, slack_channel_id, slack_channel_name
+        SELECT id, entity_id, client_name, project_name, summary, description, status, mode, location_text, start_date, end_date, duration_weeks, commitment_hours_per_week, project_code, project_lead, contact_email, partner_badges, backer_badges, tags, hero_image_url, gallery_urls, apply_cta_text, apply_url, eligibility_notes, notes_internal, partner_logos, backer_logos, slack_channel_id, slack_channel_name, team_requirements, team_size, showcase_pdf_url, is_public, allow_applications, coffeechat_calendly, applications_close_date, created_at, updated_at
         FROM advisory_projects WHERE id = :id
     """), {"id": pid}).fetchone()
     if not r:
@@ -631,6 +634,9 @@ async def get_project(pid: int, admin=Depends(require_ngiadvisory_admin()), db: 
         "apply_cta_text": r[21], "apply_url": r[22], "eligibility_notes": r[23], "notes_internal": r[24],
         "partner_logos": _json_load(r[25]), "backer_logos": _json_load(r[26]),
         "slack_channel_id": r[27], "slack_channel_name": r[28],
+        "team_requirements": _json_load(r[29]), "team_size": r[30], "showcase_pdf_url": r[31],
+        "is_public": bool(r[32]), "allow_applications": bool(r[33]), "coffeechat_calendly": r[34],
+        "applications_close_date": r[35], "created_at": r[36], "updated_at": r[37],
     }
     # Load assignments
     rows_a = db.execute(sa_text("""
@@ -668,7 +674,10 @@ async def update_project(pid: int, payload: Dict[str, Any], request: Request, ad
             except Exception:
                 params[col] = None
             sets.append(f"{col} = :{col}")
-    sets.append("updated_at = :ua"); params["ua"] = datetime.utcnow().isoformat()
+    # Use PST/Los Angeles time instead of UTC
+    from datetime import timezone, timedelta
+    pst = timezone(timedelta(hours=-8))  # PST is UTC-8
+    sets.append("updated_at = :ua"); params["ua"] = datetime.now(pst).isoformat()
     # team_requirements JSON
     if "team_requirements" in payload:
         try:

@@ -62,7 +62,7 @@ export default function StudentSidebar() {
     }
     
     baseItems.push(
-      { name: 'Learning', href: '/learning', icon: BookOpen }
+      { name: 'Learning Center', href: '/learning', icon: BookOpen }
     )
     
     return baseItems

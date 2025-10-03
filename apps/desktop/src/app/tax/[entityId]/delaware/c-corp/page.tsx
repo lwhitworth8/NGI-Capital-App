@@ -2,7 +2,7 @@
 
 import React from 'react';
 
-export default function DelawareCCorpTaxPage({ params }: { params: { entityId: string } }) {
+export default function DelawareCCorpTaxPage() {
   return (
     <div className="p-6 space-y-4">
       <h1 className="text-2xl font-semibold">Delaware C-Corp Filing</h1>

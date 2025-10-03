@@ -480,6 +480,7 @@ def _ensure_student_profile_cols(db: Session) -> None:
         "ALTER TABLE advisory_students ADD COLUMN linkedin_url TEXT",
         "ALTER TABLE advisory_students ADD COLUMN gpa REAL",
         "ALTER TABLE advisory_students ADD COLUMN location TEXT",
+        "ALTER TABLE advisory_students ADD COLUMN uc_investments_academy TEXT",
         # grad_year exists in base schema but keep safe add
         "ALTER TABLE advisory_students ADD COLUMN grad_year INTEGER",
         # Some test schemas may lack these base columns
@@ -502,7 +503,7 @@ async def get_profile(request: Request, db: Session = Depends(get_db)):
     if not email or not _check_domain(email):
         raise HTTPException(status_code=403, detail="Student email with allowed domain required")
     row = db.execute(sa_text(
-        "SELECT id, first_name, last_name, email, school, program, grad_year, phone, linkedin_url, gpa, location, resume_url, theme, learning_notify, created_at, updated_at "
+        "SELECT id, first_name, last_name, email, school, program, grad_year, phone, linkedin_url, gpa, location, resume_url, theme, learning_notify, uc_investments_academy, created_at, updated_at "
         "FROM advisory_students WHERE lower(email) = :em"
     ), {"em": email.lower()}).fetchone()
     if not row:
@@ -513,7 +514,7 @@ async def get_profile(request: Request, db: Session = Depends(get_db)):
         ), {"em": email})
         db.commit()
         row = db.execute(sa_text(
-            "SELECT id, first_name, last_name, email, school, program, grad_year, phone, linkedin_url, gpa, location, resume_url, theme, learning_notify, created_at, updated_at "
+            "SELECT id, first_name, last_name, email, school, program, grad_year, phone, linkedin_url, gpa, location, resume_url, theme, learning_notify, uc_investments_academy, created_at, updated_at "
             "FROM advisory_students WHERE lower(email) = :em"
         ), {"em": email.lower()}).fetchone()
     return {
@@ -531,8 +532,9 @@ async def get_profile(request: Request, db: Session = Depends(get_db)):
         "resume_url": row[11],
         "theme": row[12],
         "learning_notify": bool(row[13] or 0),
-        "created_at": row[14],
-        "updated_at": row[15],
+        "uc_investments_academy": row[14],
+        "created_at": row[15],
+        "updated_at": row[16],
     }
 
 
@@ -550,6 +552,16 @@ async def update_profile(payload: Dict[str, Any], request: Request, db: Session 
         if key in payload:
             fields.append(f"{key} = :{key}")
             params[key] = payload[key]
+    
+    # UC Investments Academy - handle explicitly to allow "no" as a valid value
+    if "uc_investments_academy" in payload:
+        val = payload.get("uc_investments_academy")
+        if val is not None and val != "":
+            fields.append("uc_investments_academy = :uc_investments_academy")
+            params["uc_investments_academy"] = val
+        else:
+            # Explicitly set to NULL if empty or null
+            fields.append("uc_investments_academy = NULL")
     # Boolean-ish
     if "learning_notify" in payload:
         fields.append("learning_notify = :ln")
@@ -600,8 +612,30 @@ async def update_profile(payload: Dict[str, Any], request: Request, db: Session 
     if not fields:
         return {"message": "no changes"}
     fields.append("updated_at = datetime('now')")
-    db.execute(sa_text("UPDATE advisory_students SET " + ", ".join(fields) + " WHERE lower(email) = :em"), params)
+    
+    # Debug logging
+    import sys
+    print(f"[PROFILE UPDATE] Email: {email}", file=sys.stderr)
+    print(f"[PROFILE UPDATE] Fields being updated: {fields}", file=sys.stderr)
+    print(f"[PROFILE UPDATE] Params: {params}", file=sys.stderr)
+    if "uc_investments_academy" in params:
+        print(f"[PROFILE UPDATE] UC Academy value: '{params['uc_investments_academy']}'", file=sys.stderr)
+    if "phone" in params:
+        print(f"[PROFILE UPDATE] Phone value: '{params['phone']}'", file=sys.stderr)
+    
+    sql = "UPDATE advisory_students SET " + ", ".join(fields) + " WHERE lower(email) = :em"
+    print(f"[PROFILE UPDATE] SQL: {sql}", file=sys.stderr)
+    
+    db.execute(sa_text(sql), params)
     db.commit()
+    
+    # Verify the update
+    verify_row = db.execute(sa_text(
+        "SELECT phone, uc_investments_academy FROM advisory_students WHERE lower(email) = :em"
+    ), {"em": email.lower()}).fetchone()
+    if verify_row:
+        print(f"[PROFILE UPDATE] Verified in DB - Phone: '{verify_row[0]}', UC Academy: '{verify_row[1]}'", file=sys.stderr)
+    
     return {"message": "updated"}
 
 

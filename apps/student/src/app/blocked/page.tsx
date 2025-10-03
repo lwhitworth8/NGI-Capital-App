@@ -33,7 +33,8 @@ export default async function Blocked() {
     <main className="min-h-screen flex items-center justify-center bg-background text-foreground p-6">
       <div className="max-w-md w-full text-center space-y-4">
         <h1 className="text-2xl font-semibold">Access Restricted</h1>
-        <p className="text-muted-foreground">Only UC Berkeley students can access the student portal.</p>
+        <p className="text-muted-foreground">Only UC system students can access the student portal.</p>
+        <p className="text-muted-foreground text-sm">Accepted domains: @berkeley.edu, @ucla.edu, @ucsd.edu, @uci.edu, @ucdavis.edu, @ucsb.edu, @ucsc.edu, @ucr.edu, @ucmerced.edu</p>
         <p className="text-muted-foreground">Please sign in with your UC email address via Google.</p>
         <p className="text-muted-foreground text-sm mt-4">NGI Capital admins should use the admin portal.</p>
         <a href="/" className="inline-block mt-2 underline">Return to homepage</a>

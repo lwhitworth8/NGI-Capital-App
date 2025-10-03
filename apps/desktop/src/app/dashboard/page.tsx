@@ -1,5 +1,5 @@
 import dynamic from "next/dynamic";
-const MetricsTicker = dynamic(() => import("@/components/metrics/MetricsTicker"), { ssr:false });
+const MetricsTicker = dynamic(() => import("@/components/metrics/MetricsTicker"), { loading: () => <div className="h-12" /> });
 
 import { EntityOverview } from "@/components/home/EntityOverview";
 import { ImportantModules } from "@/components/home/ImportantModules";

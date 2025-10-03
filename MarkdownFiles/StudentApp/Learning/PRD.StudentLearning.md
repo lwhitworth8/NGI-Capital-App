@@ -1,26 +1,35 @@
-# Student Learning – PRD (Coming Soon Placeholder)
+# Student Learning — PRD (V1)
 
 ## 0) Context & Goal
-Provide a simple, on-brand placeholder page in the student portal for the future Learning module. It communicates “Student Learning — Coming Soon” with a brief sentence and no interactive elements or data collection.
+Deliver a self‑paced Learning Center that combines breadth across Business Foundations and Accounting with a deep Finance & Valuation track. Students select one of 10 curated US‑listed companies, download an Excel banker package, complete activities (A1–A5) and a capstone (model + memo + deck), receive coaching gated by validators, and build a portfolio aligned to NGI Advisory standards.
 
 ## 1) Scope (V1)
-- Single page at /learning.
-- Minimal content: headline + short subtext. No CTAs, no forms, no links, no email capture.
-- Theming and layout consistent with the rest of the student app (typography, spacing, colors, dark mode).
+- Route `/learning`: modules list, curated company picker, Excel package download.
+- Activities A1–A5 + Capstone submission and versioning.
+- Coaching side panel (“Project Lead”) and contextual hints.
+- Progress bars, streaks, time invested, milestones with “MD notes”.
+- Leaderboard showing anonymized price target distribution post‑capstone.
 
 ## 2) Out of Scope (V1)
-- Curriculum details, roadmap, signups, social links, FAQs.
-- Any backend or analytics beyond a basic page view.
+- Cohorts, Slack, oral defense, Google Sheets, arbitrary ticker selection (curated 10 only), public rubric exposure.
 
 ## 3) Requirements
-- Heading: “Student Learning — Coming Soon”.
-- Subtext: One line describing that the Learning module will launch in a future release.
-- Visual: Optional subtle gradient/spotlight background consistent with app theme.
-- Responsive: Looks good on desktop; degrades gracefully on mobile.
-- Accessibility: Proper heading level, contrast, and focus handling; no interactive controls present.
+- Company Picker: 10 companies (BUD, COST, SHOP, TSLA, UBER, ABNB, DE, GE, KO, GSBD). Persist selection; allow re‑download after refresh.
+- Activities: 
+  - A1: import/standardize + Drivers Map
+  - A2: WC & Debt schedules + CF reconcile
+  - A3: drivers + 5‑year projections
+  - A4: DCF + sensitivities + sanity checks
+  - A5: public comps + short peer memo
+- Capstone: model + 1–2 page memo + 3–5 slide deck + football field; submission accepts `.xlsx` + `.pdf`.
+- Coaching: validators must pass before feedback; unlimited resubmits with delta view.
+- Integrity: block high‑confidence AI finals (model/memo/deck) with guidance to revise.
+- Progress & Streaks: tick on ≥15m focused work or activity completion; reset after 8 inactive days.
+- Telemetry: emit lesson_view, activity_start, validator_pass/fail, submission_create, feedback_issued, resubmit, streak_tick, time_spent (no PII beyond user_id).
+- Accessibility: keyboard‑only flows, focus states, SR labels; chart alt text; theme support.
+- Disclaimer: “Educational only, not investment advice” acceptance modal on first module entry.
 
-## 4) Telemetry (Optional)
-- Track a page_view event for /learning (if standard page analytics are in place). No PII captured.
+## 4) Success Criteria
+- Students pick a company, download a package, complete A1–A5 and Capstone, receive validator‑gated feedback, and see their anonymized target on the leaderboard.
+- Admins review artifacts and see talent signal in the Desktop app; moderation tools function.
 
-## 5) Success Criteria
-- Page renders consistently across themes; contains no CTAs or input; communicates “Coming Soon” clearly.
