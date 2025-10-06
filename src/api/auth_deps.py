@@ -63,6 +63,19 @@ async def require_clerk_user(
     force_clerk_only = _env_true("FORCE_CLERK_ONLY", "0")
     legacy_ok = _env_true("ENABLE_LEGACY_AUTH", "0") or _env_true("ALLOW_LEGACY_JWT", "0")
 
+    # Pytest convenience: allow explicit admin bypass header without verifying tokens.
+    try:
+        if os.getenv('PYTEST_CURRENT_TEST') and request.headers.get('X-Test-Admin-Bypass') == '1':
+            return {
+                "id": 0,
+                "email": os.getenv('TEST_ADMIN_EMAIL', 'lwhitworth@ngicapitaladvisory.com'),
+                "name": "Test Admin",
+                "is_authenticated": True,
+                "_auth_source": "pytest-admin-bypass",
+            }
+    except Exception:
+        pass
+
     token: Optional[str] = None
 
     # Test-mode convenience: if running under pytest and no Authorization/cookie is present,
