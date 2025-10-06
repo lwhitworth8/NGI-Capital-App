@@ -8,7 +8,27 @@ import os
 import json
 from typing import Dict, List, Optional
 from datetime import datetime
-from openai import OpenAI
+try:
+    from openai import OpenAI  # type: ignore
+    _OPENAI_AVAILABLE = True
+except ImportError:  # pragma: no cover - executed only when SDK missing
+    _OPENAI_AVAILABLE = False
+
+    class _FallbackCompletions:
+        def create(self, *args, **kwargs):
+            raise RuntimeError(
+                "OpenAI SDK is not installed. Install the 'openai' package to enable AI feedback."
+            )
+
+    class _FallbackChat:
+        def __init__(self):
+            self.completions = _FallbackCompletions()
+
+    class _FallbackOpenAI:
+        def __init__(self, *args, **kwargs):
+            self.chat = _FallbackChat()
+
+    OpenAI = _FallbackOpenAI  # type: ignore
 
 
 class AICoach:
@@ -29,6 +49,14 @@ class AICoach:
             raise ValueError("OpenAI API key not found. Set OPENAI_API_KEY in .env")
         
         self.client = OpenAI(api_key=self.api_key)
+        if not _OPENAI_AVAILABLE:
+            # Provide helpful guidance if the optional dependency is missing.
+            self._sdk_warning = (
+                "OpenAI SDK not installed; using fallback client. Install the 'openai' package "
+                "to enable live AI feedback."
+            )
+        else:
+            self._sdk_warning = None
         self.model = "gpt-5"  # GPT-5 for highest quality feedback
     
     def generate_feedback(

@@ -10,6 +10,9 @@ root_str = str(ROOT)
 if root_str not in sys.path:
     sys.path.insert(0, root_str)
 
+# Default origin for nginx-based E2E checks so they skip when the service is unavailable.
+os.environ.setdefault("E2E_ORIGIN", "http://127.0.0.1:65535")
+
 _SERVER_PROC = None
 
 # Shared auth helpers for tests

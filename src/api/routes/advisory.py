@@ -449,6 +449,13 @@ def _validate_required_on_publish(db: Session, payload: Dict[str, Any], project_
     if status not in ("active", "closed"):
         return  # Only enforce on publish
 
+    # Leads must exist unless explicitly skipped by caller
+    if (not skip_leads) and (project_id is not None):
+        row = db.execute(sa_text("SELECT COUNT(1) FROM advisory_project_leads WHERE project_id = :p"), {"p": int(project_id)}).fetchone()
+        cnt = int(row[0] or 0) if row else 0
+        if cnt < 1:
+            raise HTTPException(status_code=422, detail="at least one project lead required to publish")
+
     # Required fields on publish
     name = payload.get("project_name")
     client = payload.get("client_name")
@@ -507,14 +514,6 @@ def _validate_required_on_publish(db: Session, payload: Dict[str, Any], project_
     sd = _parse(start_date); ed = _parse(end_date)
     if sd and ed and ed < sd:
         raise HTTPException(status_code=422, detail="end_date must be >= start_date to publish")
-
-    # Leads must exist (can be disabled in dev via env)
-    # Leads must exist unless explicitly skipped by caller
-    if (not skip_leads) and (project_id is not None):
-        row = db.execute(sa_text("SELECT COUNT(1) FROM advisory_project_leads WHERE project_id = :p"), {"p": int(project_id)}).fetchone()
-        cnt = int(row[0] or 0) if row else 0
-        if cnt < 1:
-            raise HTTPException(status_code=422, detail="at least one project lead required to publish")
 
 
 @router.post("/projects")
@@ -602,9 +601,14 @@ async def create_project(payload: Dict[str, Any], admin=Depends(require_ngiadvis
     values_list = ", ".join([f":{kv[c][0]}" for c in use_cols])
     if not use_cols:
         raise HTTPException(status_code=500, detail="advisory_projects table has no usable columns")
-    db.execute(sa_text(f"INSERT INTO advisory_projects ({col_list}) VALUES ({values_list})"), param_map)
+    result = db.execute(sa_text(f"INSERT INTO advisory_projects ({col_list}) VALUES ({values_list})"), param_map)
+    rid = getattr(result, "lastrowid", None)
     db.commit()
-    rid = db.execute(sa_text("SELECT last_insert_rowid()")).scalar()
+    if not rid:
+        rid = db.execute(
+            sa_text("SELECT id FROM advisory_projects WHERE project_code = :pc ORDER BY id DESC LIMIT 1"),
+            {"pc": payload.get("project_code")},
+        ).scalar()
     return {"id": int(rid or 0)}
 
 
