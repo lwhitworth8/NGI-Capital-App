@@ -135,7 +135,7 @@ export default function LeadManagerPage() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center gap-3">
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">Student Project Lead Manager</h1>
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">Project Center</h1>
       </div>
       <div className="flex items-center gap-3">
         <select className="px-3 py-2 border rounded bg-background text-sm" value={projectId} onChange={e=>setProjectId(Number(e.target.value)||'')}>

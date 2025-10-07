@@ -12,7 +12,7 @@ import io
 from sqlalchemy.orm import Session
 from sqlalchemy import text as sa_text
 
-from src.api.database import get_db
+from src.api.database_async import get_async_db
 from pathlib import Path
 import json as _jsonlib
 from .accounting import income_statement as _is, balance_sheet as _bs, cash_flow as _cf
@@ -60,7 +60,7 @@ async def preview(
     period: str = Query(..., description="YYYY-MM (start of period)"),
     period_type: str = Query('monthly', pattern='^(monthly|quarterly|annual)$'),
     type: str = Query('IS', pattern='^(IS|BS|CF|EQUITY|NOTES)$'),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_async_db),
 ):
     start, end = _period_start_end(period, period_type)
     if type == 'IS':
@@ -98,7 +98,7 @@ async def export_financials(
     period: str,
     period_type: str = Query('monthly', pattern='^(monthly|quarterly|annual)$'),
     format: str = Query('pdf', pattern='^(pdf|xlsx)$'),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_async_db),
 ):
     start, end = _period_start_end(period, period_type)
     isd = await _is(entity_id=entity_id, start_date=start, end_date=end, current_user=None, db=db)  # type: ignore

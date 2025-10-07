@@ -5,6 +5,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { AdvisoryProject } from "@/types";
 import { X, Calendar, Clock, Users, MapPin, FileText, Download, Eye, Send, Briefcase } from "lucide-react";
 import { ShowcaseViewer } from "./ShowcaseViewer";
+import { CoffeeChatsPanel } from "./CoffeeChatsPanel";
+import { ApplicationsPanel } from "./ApplicationsPanel";
 
 interface ProjectDetailModalProps {
   project: AdvisoryProject | null;
@@ -12,7 +14,6 @@ interface ProjectDetailModalProps {
 }
 
 const KNOWN_CLIENTS: Record<string, string> = {
-  "UC Endowment": "/clients/uc-endowment.svg",
   "UC Investments": "/clients/uc-investments.svg",
   "Liverpool FC": "https://logo.clearbit.com/liverpoolfc.com",
   "Fenway Sports Group": "https://logo.clearbit.com/fenway-sports.com",
@@ -38,6 +39,8 @@ const KNOWN_CLIENTS: Record<string, string> = {
 
 export default function ProjectDetailModal({ project, onClose }: ProjectDetailModalProps) {
   const [showShowcase, setShowShowcase] = useState(false);
+  const [showCoffeePanel, setShowCoffeePanel] = useState(false);
+  const [showAppsPanel, setShowAppsPanel] = useState(false);
   const [projectLeads, setProjectLeads] = useState<string[]>([]);
 
   // Fetch project leads
@@ -389,9 +392,8 @@ export default function ProjectDetailModal({ project, onClose }: ProjectDetailMo
                     )}
                   </div>
 
-                  {/* Right: Action Sidebar */}
+                  {/* Right: Admin Action Sidebar */}
                   <div className="space-y-4">
-                    {/* Coffee Chat Section */}
                     <motion.div
                       initial={{ opacity: 0, x: 20 }}
                       animate={{ opacity: 1, x: 0 }}
@@ -400,34 +402,31 @@ export default function ProjectDetailModal({ project, onClose }: ProjectDetailMo
                     >
                       <h3 className="text-base font-bold text-foreground mb-2 flex items-center gap-2">
                         <Calendar className="w-4 h-4 text-blue-600" />
-                        Coffee Chat
+                        Admin Actions
                       </h3>
-                      <p className="text-xs text-foreground/80 mb-3">
-                        Schedule a 15-minute chat with project leads
-                      </p>
-                      <button className="w-full px-4 py-2.5 rounded-lg bg-background border border-border text-foreground text-sm font-medium hover:bg-accent transition-colors">
-                        View Times
-                      </button>
-                    </motion.div>
+                      <p className="text-xs text-foreground/80 mb-3">Open project modals for Coffee Chats and Applications.</p>
+                      <div className="grid grid-cols-1 gap-2">
+                        <button
+                          onClick={() => setShowCoffeePanel(true)}
+                          className="w-full px-4 py-2.5 text-center rounded-lg bg-background border border-border text-foreground text-sm font-medium hover:bg-accent transition-colors"
+                        >
+                          Open Coffee Chats
+                        </button>
+                        <button
+                          onClick={() => setShowAppsPanel(true)}
+                          className="w-full px-4 py-2.5 text-center rounded-lg bg-background border border-border text-foreground text-sm font-medium hover:bg-accent transition-colors"
+                        >
+                          Open Applications
+                        </button>
+                      </div>
+          </motion.div>
 
-                    {/* Apply Button */}
-                    <motion.div
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.6 }}
-                      className="p-5 rounded-xl bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950/20 dark:to-green-950/30 border border-border"
-                    >
-                      <h3 className="text-base font-bold text-foreground mb-2 flex items-center gap-2">
-                        <Send className="w-4 h-4 text-green-600" />
-                        Apply Now
-                      </h3>
-                      <p className="text-xs text-foreground/80 mb-3">
-                        Submit your application for this project
-                      </p>
-                      <button className="w-full px-4 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition-colors">
-                        Start Application
-                      </button>
-                    </motion.div>
+          {showCoffeePanel && (
+            <CoffeeChatsPanel projectId={project.id} onClose={() => setShowCoffeePanel(false)} />
+          )}
+          {showAppsPanel && (
+            <ApplicationsPanel projectId={project.id} onClose={() => setShowAppsPanel(false)} />
+          )}
                   </div>
                 </div>
               </div>
@@ -447,4 +446,5 @@ export default function ProjectDetailModal({ project, onClose }: ProjectDetailMo
     </AnimatePresence>
   );
 }
+
 

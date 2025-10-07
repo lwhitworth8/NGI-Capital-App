@@ -639,6 +639,8 @@ export default function AdvisoryProjectsPage() {
             'project_code', 'project_lead', 'contact_email', 'hero_image_url', 'apply_cta_text',
             'apply_url', 'eligibility_notes', 'notes_internal', 'coffeechat_calendly', 'team_size',
             'showcase_pdf_url', 'applications_close_date', 'is_public', 'allow_applications',
+            // Compensation fields
+            'default_hourly_rate', 'pay_currency', 'compensation_notes',
             'partner_badges', 'backer_badges', 'tags', 'gallery_urls', 'partner_logos', 'backer_logos'
           ]
           
@@ -864,7 +866,8 @@ export default function AdvisoryProjectsPage() {
                           <input type="file" accept="image/*" className="hidden" onChange={async (e)=>{
                             const file = e.target.files?.[0]; if (!file) return
                             try {
-                              const res = await advisoryUploadProjectLogo(editing.id, 'partner', file, newPartnerName || undefined)
+                              const pid = editing?.id; if (!pid) return
+                              const res = await advisoryUploadProjectLogo(pid, 'partner', file, newPartnerName || undefined)
                               setSelectedClients(((res as any).partner_logos || []) as any)
                               setNewPartnerName('')
                             } catch { toast.error('Failed to upload client logo') }
@@ -980,7 +983,7 @@ export default function AdvisoryProjectsPage() {
                         </label>
                         {form.showcase_pdf_url && (
                           <a
-                            href={form.showcase_pdf_url}
+                            href={form.showcase_pdf_url || undefined}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-xs text-blue-600 hover:underline"

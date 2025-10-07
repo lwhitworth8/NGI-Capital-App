@@ -1,28 +1,38 @@
 const path = require('path');
 
-const swcJest = (() => { try { return require.resolve('@swc/jest') } catch { return '@swc/jest' } })();
-
 module.exports = {
   testEnvironment: 'jsdom',
   roots: ['<rootDir>/src'],
   testMatch: ['**/__tests__/**/*.{ts,tsx}', '**/*.test.{ts,tsx}'],
   transform: {
-    '^.+\\.(t|j)sx?$': [swcJest, {
+    '^.+\\.(t|j)sx?$': ['@swc/jest', {
       jsc: {
-        parser: { syntax: 'typescript', tsx: true },
-        transform: { react: { runtime: 'automatic' } },
+        parser: {
+          syntax: 'typescript',
+          tsx: true,
+          decorators: true,
+        },
+        transform: {
+          react: {
+            runtime: 'automatic',
+          },
+        },
       },
-      module: { type: 'commonjs' },
     }],
   },
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
+    '\\.(jpg|jpeg|png|gif|svg)$': '<rootDir>/__mocks__/fileMock.js',
   },
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',
     '!src/**/*.d.ts',
     '!src/**/*.stories.tsx',
+  ],
+  testPathIgnorePatterns: ['/node_modules/', '/.next/'],
+  transformIgnorePatterns: [
+    'node_modules/(?!(lucide-react|@radix-ui)/)',
   ],
 };

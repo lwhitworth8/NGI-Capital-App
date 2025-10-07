@@ -21,7 +21,7 @@ import sqlite3
 from src.api.config import get_database_path
 from sqlalchemy.orm import Session
 from sqlalchemy import text as sa_text
-from src.api.database import get_db
+from src.api.database_async import get_async_db
 import os
 
 # Document processing libraries (best-effort imports)
@@ -789,7 +789,7 @@ async def upload_documents(files: List[UploadFile] = File(...)):
     }
 
 @router.post("/{document_id}/process")
-async def process_document(document_id: str, entity_id: int | None = Query(None), db: Session = Depends(get_db)):
+async def process_document(document_id: str, entity_id: int | None = Query(None), db: Session = Depends(get_async_db)):
     """
     Process a document to extract data and populate database
     """
@@ -1402,7 +1402,7 @@ async def process_document(document_id: str, entity_id: int | None = Query(None)
         )
 
 @router.get("/")
-async def get_documents(category: Optional[str] = None, doc_type: Optional[str] = None, limit: int = 100, db: Session = Depends(get_db)):
+async def get_documents(category: Optional[str] = None, doc_type: Optional[str] = None, limit: int = 100, db: Session = Depends(get_async_db)):
     """List documents with metadata if available"""
     # If called directly by tests (db unresolved), fall back to filesystem scan
     if not hasattr(db, 'execute'):
@@ -1466,7 +1466,7 @@ async def get_documents(category: Optional[str] = None, doc_type: Optional[str] 
 
 
 @router.get("/{document_id}")
-async def get_document(document_id: str, db: Session = Depends(get_db)):
+async def get_document(document_id: str, db: Session = Depends(get_async_db)):
     _ensure_doc_tables(db)
     row = db.execute(sa_text(
         "SELECT id, doc_type, vendor, invoice_number, issue_date, due_date, currency, subtotal, tax, total, raw_text, metadata_json, journal_entry_id, created_at, updated_at FROM doc_metadata WHERE id = :id"
@@ -1493,7 +1493,7 @@ async def get_document(document_id: str, db: Session = Depends(get_db)):
 
 
 @router.patch("/{document_id}/metadata")
-async def update_document_metadata(document_id: str, patch: Dict[str, Any], db: Session = Depends(get_db)):
+async def update_document_metadata(document_id: str, patch: Dict[str, Any], db: Session = Depends(get_async_db)):
     _ensure_doc_tables(db)
     allowed = {"vendor", "invoice_number", "issue_date", "due_date", "currency", "subtotal", "tax", "total"}
     sets = []
@@ -1510,7 +1510,7 @@ async def update_document_metadata(document_id: str, patch: Dict[str, Any], db: 
 
 
 @router.post("/{document_id}/post-to-ledger")
-async def post_document_journal_entry(document_id: str, db: Session = Depends(get_db)):
+async def post_document_journal_entry(document_id: str, db: Session = Depends(get_async_db)):
     _ensure_doc_tables(db)
     row = db.execute(sa_text("SELECT journal_entry_id FROM doc_metadata WHERE id = :id"), {"id": document_id}).fetchone()
     if not row or not row[0]:

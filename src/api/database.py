@@ -13,6 +13,12 @@ from .config import get_database_path
 # Import the single declarative Base from models to avoid duplicate metadata
 from .models import Base
 
+# Import all model modules to register tables with Base.metadata
+from . import models_accounting
+from . import models_accounting_part2
+from . import models_accounting_part3
+from . import models_learning
+
 # Lazily initialized engine/session to allow switching to pytest DB after import
 _engine = None
 _SessionLocal = None

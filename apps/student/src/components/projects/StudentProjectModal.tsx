@@ -8,6 +8,7 @@ import { useUser } from '@clerk/nextjs'
 import type { PublicProject } from '@/lib/api'
 import { ShowcaseViewer } from './ShowcaseViewer'
 import { ApplicationModal } from './ApplicationModal'
+import { CoffeeChatModal } from './CoffeeChatModal'
 
 interface StudentProjectModalProps {
   isOpen: boolean
@@ -42,6 +43,7 @@ const KNOWN_CLIENTS: Record<string, string> = {
 
 export function StudentProjectModal({ isOpen, project, onClose }: StudentProjectModalProps) {
   const [showApplication, setShowApplication] = useState(false)
+  const [showCoffee, setShowCoffee] = useState(false)
   const [showShowcase, setShowShowcase] = useState(false)
   const [profile, setProfile] = useState<any>(null)
   const [loadingProfile, setLoadingProfile] = useState(true)
@@ -360,7 +362,7 @@ export function StudentProjectModal({ isOpen, project, onClose }: StudentProject
                         Schedule a 15-minute chat with project leads
                       </p>
                       <button 
-                        onClick={() => toast.info('Coffee chat scheduling coming soon!')}
+                        onClick={() => setShowCoffee(true)}
                         className="w-full px-4 py-2.5 rounded-lg bg-background border border-border text-foreground text-sm font-medium hover:bg-accent transition-colors"
                       >
                         View Times
@@ -415,6 +417,9 @@ export function StudentProjectModal({ isOpen, project, onClose }: StudentProject
             resumeUrl={resumeUrl}
             hasCoffeeChat={hasCoffeeChat}
           />
+
+          {/* Coffee Chat Modal */}
+          <CoffeeChatModal isOpen={showCoffee} onClose={() => setShowCoffee(false)} />
         </>
       )}
     </AnimatePresence>

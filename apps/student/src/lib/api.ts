@@ -90,7 +90,7 @@ export type PublicCoffeeSlot = { start_ts: string; end_ts: string; slot_len_min:
 export async function getCoffeeAvailability(): Promise<{ slots: PublicCoffeeSlot[] }>{
   return spFetch('/api/public/coffeechats/availability')
 }
-export async function createCoffeeRequest(data: { start_ts: string; end_ts: string; slot_len_min: number }): Promise<{ id: number; status: string; expires_at_ts: string }>{
+export async function createCoffeeRequest(data: { start_ts: string; end_ts: string; slot_len_min: number; project_id?: number }): Promise<{ id: number; status: string; expires_at_ts: string }>{
   return spFetch('/api/public/coffeechats/requests', { method: 'POST', body: JSON.stringify(data) })
 }
 export async function listMyCoffeeRequests(): Promise<Array<{ id:number; start_ts:string; end_ts:string; status:string; created_at:string; cooldown_until_ts?:string; blacklist_until_ts?:string }>>{

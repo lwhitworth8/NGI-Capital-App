@@ -1,5 +1,70 @@
 # Coffee Chats Admin — PRD (NGI Capital Advisory)
 
+## Addendum – Per‑Project Integration and Global Availability (2025‑10‑03)
+
+This addendum supersedes prior navigation and scoping for Coffee Chats. It aligns Coffee Chats with per‑project admin workflows while keeping availability global per admin.
+
+Summary
+- Availability is global per admin (Andre/Landon) and shown within each Project’s Coffee Chats tab based on that project’s leads.
+- Students only see availability for the selected project’s leads from that project page; chats are allowed before applying and are recommended pre‑application.
+- One active request per student per project at a time.
+- Requests expire after 48 hours if not accepted.
+- When a student requests a slot, the slot is held immediately (blocking double booking) and conflict-checked against the admin’s Google Calendar on accept.
+- Accepting admin becomes the host/owner of the event; all project leads are invited.
+- Timezone: display PT; store UTC.
+- No‑show policy: a student with 2 no‑shows is temporarily blocked from creating more requests (friendly messaging).
+- Admin Coffee Chats are managed inside the Project detail page; legacy standalone Coffee Chats admin pages are deprecated.
+
+UI/UX (Admin – Projects › [id] › Coffee Chats)
+- Show an availability calendar/list composed from the project leads’ global availability (15 or 30 minute slots).
+- List project‑scoped requests with filters (status, owner), actions (accept, propose, cancel, complete, no‑show), and small header metrics (pending, accepted, completed last 30 days, no‑shows).
+- Creating availability is allowed only for project leads (admins in V1), and updates global availability.
+- Rich shadcn UI with animated interactions; all actions are audited.
+
+UI/UX (Student – Projects › [id])
+- Show coffee chat picker with availability restricted to that project’s leads.
+- Allow request before application; recommend coffee chat before applying.
+- Friendly policy text (PT timezone, 24‑hour cancellation, 2 no‑shows may limit future requests).
+
+Scheduling & Constraints
+- Slot length: 15 or 30 minutes.
+- Timezone: always PT for display; persist as UTC ISO.
+- Holds: creating a request places a hold on the selected slot (prevents double booking across projects for that admin). Releases on cancel/expire.
+- Conflicts: on accept, verify Google Calendar free/busy; if conflict, block acceptance and prompt propose‑new‑time.
+- Invitations: accepting admin is host; invite all project leads and the student. Event title template: “Coffee Chat — {Project} — {Student}”. Include 24‑hour cancellation policy in description.
+- Expiry: pending requests auto‑expire after 48 hours (configurable later).
+- Cooldown/Blacklist: keep existing fields and enforcement.
+
+Data Model Adjustments
+- Requests: add `project_id` (required) to `advisory_coffeechat_requests`.
+- Availability: remains global per admin via `advisory_coffeechat_availability` keyed by `admin_email`.
+- Enforce unique active request per (student_email, project_id).
+- Track `no_show_count` for policy enforcement.
+
+API Contracts (updated)
+- Public (Student):
+  - GET `/public/projects/{pid}/coffeechats/availability`
+  - POST `/public/projects/{pid}/coffeechats/requests` { start_ts, end_ts }
+- Admin (Project‑scoped views):
+  - GET `/advisory/projects/{pid}/coffeechats/availability` (read‐only aggregation of leads’ global availability)
+  - GET `/advisory/projects/{pid}/coffeechats/requests`
+  - POST `/advisory/coffeechats/requests/{id}/accept | /propose | /cancel | /complete | /no-show`
+  - POST `/advisory/coffeechats/availability` (create global block for current admin)
+  - DELETE `/advisory/coffeechats/availability/{id}`
+- Behavior:
+  - Create request holds the slot; accept creates calendar event and sends invites; propose changes times; cancel/complete/no‑show mutate state and audit.
+
+Navigation & Deprecation
+- Remove/replace standalone admin pages at `ngi-advisory/availability` and `ngi-advisory/coffeechats/requests` from the primary nav. Keep endpoints temporarily for legacy access if needed; prefer project tab entry point.
+
+Audit & Security
+- All actions (set availability, accept, propose, cancel, complete, no‑show) are written to `audit_log` with `project_id`, `admin_email`, and timestamps.
+- Admin gating follows existing advisory admin authorization.
+
+Reporting (Minimal)
+- Per‑project counts in tab header; additional dashboards can be added later.
+
+
 ## 0) Context & Goals
 Internal coffee chat scheduling for NGI Advisory uses Google Calendar and Google Meet. Admins (Andre, Landon) publish availability; students request a slot (PST); an admin accepts or proposes another time; the system creates a Google Calendar event with a Meet link and invites all participants. Anti‑abuse policies (one pending request, cooldown after no‑show, blacklist after repeated cancels) protect partner time.
 

@@ -29,8 +29,7 @@ import AdvisoryStudentsPage from '@/app/ngi-advisory/students/page'
 describe('AdvisoryStudentsPage', () => {
   it('renders header and archived section without crashing', async () => {
     render(<AdvisoryStudentsPage />)
-    expect(await screen.findByText('Students')).toBeInTheDocument()
+    expect(await screen.findByText('Students Database')).toBeInTheDocument()
     expect(screen.getByText('Archived Students')).toBeInTheDocument()
   })
 })
-

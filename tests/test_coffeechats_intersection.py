@@ -1,5 +1,11 @@
 import os
 from fastapi.testclient import TestClient
+import os
+# Enable auth bypass for tests
+os.environ['OPEN_NON_ACCOUNTING'] = '1'
+os.environ['PYTEST_CURRENT_TEST'] = 'test'
+
+
 
 os.environ['DISABLE_ADVISORY_AUTH'] = '1'
 

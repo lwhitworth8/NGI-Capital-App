@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text as sa_text
 from typing import Dict, Any
 from datetime import date, datetime
-from src.api.database import get_db
+from src.api.database_async import get_async_db
 
 router = APIRouter(prefix="/api", tags=["aging"])
 
@@ -47,7 +47,7 @@ def _ensure_ap_ar(db: Session):
 
 
 @router.get("/ap/aging")
-async def ap_aging(entity_id: int = Query(...), as_of: str = Query(date.today().isoformat()), db: Session = Depends(get_db)):
+async def ap_aging(entity_id: int = Query(...), as_of: str = Query(date.today().isoformat()), db: Session = Depends(get_async_db)):
     _ensure_ap_ar(db)
     rows = db.execute(sa_text("SELECT due_date, amount_total FROM ap_bills WHERE entity_id = :e AND status = 'open'"), {"e": entity_id}).fetchall()
     buckets = {"0_30":0.0, "31_60":0.0, "61_90":0.0, ">90":0.0}
@@ -68,7 +68,7 @@ async def ap_aging(entity_id: int = Query(...), as_of: str = Query(date.today().
 
 
 @router.get("/ar/aging")
-async def ar_aging(entity_id: int = Query(...), as_of: str = Query(date.today().isoformat()), db: Session = Depends(get_db)):
+async def ar_aging(entity_id: int = Query(...), as_of: str = Query(date.today().isoformat()), db: Session = Depends(get_async_db)):
     _ensure_ap_ar(db)
     rows = db.execute(sa_text("SELECT due_date, amount_total FROM ar_invoices WHERE entity_id = :e AND status = 'open'"), {"e": entity_id}).fetchall()
     buckets = {"0_30":0.0, "31_60":0.0, "61_90":0.0, ">90":0.0}

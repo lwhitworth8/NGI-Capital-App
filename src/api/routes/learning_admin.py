@@ -19,7 +19,7 @@ from src.api.models_learning import (
 )
 # Student model not yet implemented - using user_id strings for now
 # require_partner_access not yet implemented
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 router = APIRouter(prefix="/api/learning/admin", tags=["learning_admin"])
 
@@ -40,8 +40,7 @@ class StudentTalentResponse(BaseModel):
     selected_company: Optional[str] = None
     total_time_invested: int = 0
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TalentListResponse(BaseModel):
@@ -60,8 +59,7 @@ class ArtifactResponse(BaseModel):
     validator_status: str
     feedback_score: Optional[float] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ModuleProgressResponse(BaseModel):
@@ -79,8 +77,8 @@ class StudentDetailResponse(BaseModel):
 
 @router.get("/students", response_model=TalentListResponse)
 async def get_students(
-    sort: str = Query("talent_signal", regex="^(talent_signal|completion|quality|activity)$"),
-    filter: str = Query("all", regex="^(all|elite|strong|promising|developing)$"),
+    sort: str = Query("talent_signal", pattern="^(talent_signal|completion|quality|activity)$"),
+    filter: str = Query("all", pattern="^(all|elite|strong|promising|developing)$"),
     limit: int = Query(100, le=500),
     offset: int = Query(0, ge=0),
     # user=Depends(require_partner_access),  # TODO: Implement auth

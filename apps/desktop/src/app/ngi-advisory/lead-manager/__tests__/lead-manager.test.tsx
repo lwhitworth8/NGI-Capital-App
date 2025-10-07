@@ -28,11 +28,10 @@ describe('LeadManagerPage', () => {
 
   it('renders without crashing and handles non-array tasks safely', async () => {
     render(<LeadManagerPage />)
-    expect(await screen.findByText('Student Project Lead Manager')).toBeInTheDocument()
+    expect(await screen.findByText('Project Center')).toBeInTheDocument()
     // Columns render even if tasks fetch returned non-array
     await waitFor(() => {
       expect(screen.getAllByText(/No tasks/i).length).toBeGreaterThan(0)
     })
   })
 })
-

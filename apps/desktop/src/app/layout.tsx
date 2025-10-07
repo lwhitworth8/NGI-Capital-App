@@ -1,9 +1,6 @@
 import './globals.css'
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
 import { Providers } from './providers'
-
-const inter = Inter({ subsets: ['latin'] })
 
 // Ensure dynamic rendering to avoid build-time type/env coupling when
 // Clerk and providers load; keeps runtime consistent across environments.
@@ -23,7 +20,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head></head>
-      <body className={inter.className}>
+      <body className="min-h-screen bg-background text-foreground">
         <Providers>
           {children}
         </Providers>

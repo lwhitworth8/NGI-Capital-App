@@ -9,11 +9,15 @@ import os
 from jose import jwt
 from fastapi.testclient import TestClient
 
+# Set env vars BEFORE importing app
+os.environ['OPEN_NON_ACCOUNTING'] = '1'
+os.environ['DISABLE_ADVISORY_AUTH'] = '1'
+os.environ['PYTEST_CURRENT_TEST'] = 'test'
+
 from src.api.main import app
 from src.api.config import SECRET_KEY, ALGORITHM
 from src.api.database import get_db
 from sqlalchemy import text as sa_text
-
 
 client = TestClient(app)
 
@@ -30,7 +34,12 @@ def make_token(email: str) -> str:
 
 
 def admin_headers(email: str = "anurmamade@ngicapitaladvisory.com"):
-    return {"Authorization": f"Bearer {make_token(email)}"}
+    return {
+        "Authorization": f"Bearer {make_token(email)}",
+        "X-User-ID": "2",
+        "X-User-Email": email,
+        "X-Admin-Email": email
+    }
 
 
 def _clear_projects():
@@ -461,6 +470,15 @@ def test_full_project_update_workflow():
     data = r_get.json()
     assert data["status"] == "active"
     assert data["client_name"] == "Goldman Sachs, JPMorgan, BlackRock"
+    assert "partner_logos" in data
+    assert "team_requirements" in data
+    
+    # Step 6: Verify it appears in public listing
+    r_public = client.get("/api/public/projects")
+    assert r_public.status_code == 200
+    public_projects = r_public.json()
+    assert any(p.get("id") == pid for p in public_projects)
+
     assert "partner_logos" in data
     assert "team_requirements" in data
     

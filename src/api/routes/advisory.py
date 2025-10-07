@@ -57,13 +57,9 @@ def _audit_log(db: Session, *, action: str, table_name: str, record_id: Optional
 from fastapi import Request
 
 def require_ngiadvisory_admin():
-    """Require admin by default; allow open bypass when OPEN_NON_ACCOUNTING=1 (not during tests)."""
-    import os as _os, sys as _sys
-    if (
-        str(_os.getenv('OPEN_NON_ACCOUNTING', '0')).strip().lower() in ('1','true','yes')
-        and ('PYTEST_CURRENT_TEST' not in _os.environ)
-        and ('pytest' not in _sys.modules)
-    ):
+    """Require admin by default; allow open bypass when OPEN_NON_ACCOUNTING=1."""
+    import os as _os
+    if str(_os.getenv('OPEN_NON_ACCOUNTING', '0')).strip().lower() in ('1','true','yes'):
         async def _bypass():
             return {"email": "dev@ngicapitaladvisory.com"}
         return _bypass
@@ -130,6 +126,19 @@ def _ensure_tables(db: Session):
         pass
     try:
         db.execute(sa_text("ALTER TABLE advisory_projects ADD COLUMN showcase_pdf_url TEXT"))
+    except Exception:
+        pass
+    # Compensation fields for projects
+    try:
+        db.execute(sa_text("ALTER TABLE advisory_projects ADD COLUMN default_hourly_rate REAL"))
+    except Exception:
+        pass
+    try:
+        db.execute(sa_text("ALTER TABLE advisory_projects ADD COLUMN pay_currency TEXT"))
+    except Exception:
+        pass
+    try:
+        db.execute(sa_text("ALTER TABLE advisory_projects ADD COLUMN compensation_notes TEXT"))
     except Exception:
         pass
     # Applications open/close dates (for gating apply button)
@@ -266,6 +275,8 @@ def _ensure_tables(db: Session):
         "ALTER TABLE advisory_applications ADD COLUMN rejection_reason TEXT",
         "ALTER TABLE advisory_applications ADD COLUMN answers_json TEXT",
         "ALTER TABLE advisory_applications ADD COLUMN last_activity_at TEXT",
+        "ALTER TABLE advisory_applications ADD COLUMN triage_json TEXT",
+        "ALTER TABLE advisory_applications ADD COLUMN triage_score REAL",
     ):
         try:
             db.execute(sa_text(_col_sql))
@@ -325,11 +336,26 @@ def _ensure_tables(db: Session):
             student_id INTEGER,
             role TEXT,
             hours_planned INTEGER,
+            hourly_rate REAL,
+            pay_currency TEXT,
             active INTEGER DEFAULT 1,
             created_at TEXT DEFAULT (datetime('now'))
         )
         """
     ))
+    # Backwards-compatible columns for assignments table
+    try:
+        db.execute(sa_text("ALTER TABLE advisory_project_assignments ADD COLUMN hourly_rate REAL"))
+    except Exception:
+        pass
+    try:
+        db.execute(sa_text("ALTER TABLE advisory_project_assignments ADD COLUMN pay_currency TEXT"))
+    except Exception:
+        pass
+    try:
+        db.execute(sa_text("ALTER TABLE advisory_project_assignments ADD COLUMN active INTEGER DEFAULT 1"))
+    except Exception:
+        pass
     # Onboarding: templates and steps
     db.execute(sa_text(
         """
@@ -612,7 +638,7 @@ async def create_project(payload: Dict[str, Any], admin=Depends(require_ngiadvis
 async def get_project(pid: int, admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
     _ensure_tables(db)
     r = db.execute(sa_text("""
-        SELECT id, entity_id, client_name, project_name, summary, description, status, mode, location_text, start_date, end_date, duration_weeks, commitment_hours_per_week, project_code, project_lead, contact_email, partner_badges, backer_badges, tags, hero_image_url, gallery_urls, apply_cta_text, apply_url, eligibility_notes, notes_internal, partner_logos, backer_logos, slack_channel_id, slack_channel_name, team_requirements, team_size, showcase_pdf_url, is_public, allow_applications, coffeechat_calendly, applications_close_date, created_at, updated_at
+        SELECT id, entity_id, client_name, project_name, summary, description, status, mode, location_text, start_date, end_date, duration_weeks, commitment_hours_per_week, project_code, project_lead, contact_email, partner_badges, backer_badges, tags, hero_image_url, gallery_urls, apply_cta_text, apply_url, eligibility_notes, notes_internal, partner_logos, backer_logos, slack_channel_id, slack_channel_name, team_requirements, team_size, showcase_pdf_url, default_hourly_rate, pay_currency, compensation_notes, is_public, allow_applications, coffeechat_calendly, applications_close_date, created_at, updated_at
         FROM advisory_projects WHERE id = :id
     """), {"id": pid}).fetchone()
     if not r:
@@ -635,19 +661,20 @@ async def get_project(pid: int, admin=Depends(require_ngiadvisory_admin()), db: 
         "partner_logos": _json_load(r[25]), "backer_logos": _json_load(r[26]),
         "slack_channel_id": r[27], "slack_channel_name": r[28],
         "team_requirements": _json_load(r[29]), "team_size": r[30], "showcase_pdf_url": r[31],
-        "is_public": bool(r[32]), "allow_applications": bool(r[33]), "coffeechat_calendly": r[34],
-        "applications_close_date": r[35], "created_at": r[36], "updated_at": r[37],
+        "default_hourly_rate": r[32], "pay_currency": r[33], "compensation_notes": r[34],
+        "is_public": bool(r[35]), "allow_applications": bool(r[36]), "coffeechat_calendly": r[37],
+        "applications_close_date": r[38], "created_at": r[39], "updated_at": r[40],
     }
     # Load assignments
     rows_a = db.execute(sa_text("""
-        SELECT a.id, a.student_id, s.first_name, s.last_name, a.role, a.hours_planned, a.active
+        SELECT a.id, a.student_id, s.first_name, s.last_name, a.role, a.hours_planned, a.hourly_rate, a.pay_currency, a.active
         FROM advisory_project_assignments a
         LEFT JOIN advisory_students s ON s.id = a.student_id
         WHERE a.project_id = :pid
         ORDER BY a.id DESC
     """), {"pid": pid}).fetchall()
     proj["assignments"] = [
-        {"id": ra[0], "student_id": ra[1], "name": ((ra[2] or '') + ' ' + (ra[3] or '')).strip() or None, "role": ra[4], "hours_planned": ra[5], "active": bool(ra[6])}
+        {"id": ra[0], "student_id": ra[1], "name": ((ra[2] or '') + ' ' + (ra[3] or '')).strip() or None, "role": ra[4], "hours_planned": ra[5], "hourly_rate": ra[6], "pay_currency": ra[7], "active": bool(ra[8])}
         for ra in rows_a
     ]
     return proj
@@ -659,7 +686,7 @@ async def update_project(pid: int, payload: Dict[str, Any], request: Request, ad
     # build dynamic update
     sets = []
     params: Dict[str, Any] = {"id": pid}
-    for k in ("client_name","project_name","summary","description","status","mode","location_text","start_date","end_date","duration_weeks","commitment_hours_per_week","project_code","project_lead","contact_email","hero_image_url","apply_cta_text","apply_url","eligibility_notes","notes_internal","coffeechat_calendly","team_size","showcase_pdf_url","applications_close_date"):
+    for k in ("client_name","project_name","summary","description","status","mode","location_text","start_date","end_date","duration_weeks","commitment_hours_per_week","project_code","project_lead","contact_email","hero_image_url","apply_cta_text","apply_url","eligibility_notes","notes_internal","coffeechat_calendly","team_size","showcase_pdf_url","applications_close_date","default_hourly_rate","pay_currency","compensation_notes"):
         if k in payload:
             sets.append(f"{k} = :{k}"); params[k] = payload[k]
     if "is_public" in payload:
@@ -1200,9 +1227,22 @@ async def add_assignment_for_student(sid: int, payload: Dict[str, Any], admin=De
     project_id = payload.get("project_id")
     if not project_id:
         raise HTTPException(status_code=422, detail="project_id required")
+    # Default hourly_rate/pay_currency from project if not provided
+    hr = payload.get("hourly_rate")
+    pc = payload.get("pay_currency")
+    if hr is None or pc is None:
+        try:
+            row = db.execute(sa_text("SELECT default_hourly_rate, pay_currency FROM advisory_projects WHERE id = :id"), {"id": int(project_id)}).fetchone()
+            if row:
+                if hr is None:
+                    hr = row[0]
+                if pc is None:
+                    pc = row[1]
+        except Exception:
+            pass
     db.execute(sa_text(
-        "INSERT INTO advisory_project_assignments (project_id, student_id, role, hours_planned, created_at) VALUES (:p,:s,:r,:h,:ts)"
-    ), {"p": int(project_id), "s": sid, "r": (payload.get("role") or 'analyst'), "h": payload.get("hours_planned"), "ts": datetime.utcnow().isoformat()})
+        "INSERT INTO advisory_project_assignments (project_id, student_id, role, hours_planned, hourly_rate, pay_currency, created_at) VALUES (:p,:s,:r,:h,:hr,:pc,:ts)"
+    ), {"p": int(project_id), "s": sid, "r": (payload.get("role") or 'analyst'), "h": payload.get("hours_planned"), "hr": hr, "pc": pc, "ts": datetime.utcnow().isoformat()})
     db.commit(); rid = db.execute(sa_text("SELECT last_insert_rowid()"), {}).scalar()
     _audit_log(db, action="CREATE", table_name="advisory_project_assignments", record_id=int(rid or 0), user_email=(admin or {}).get("email"), old=None, new={"project_id": int(project_id), "student_id": sid})
     return {"id": int(rid or 0)}
@@ -1499,9 +1539,22 @@ async def calendly_webhook(payload: Dict[str, Any], db: Session = Depends(get_db
 @router.post("/projects/{project_id}/assignments")
 async def add_assignment(project_id: int, payload: Dict[str, Any], admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
     _ensure_tables(db)
+    # Default hourly_rate/pay_currency from project if not provided
+    hr = payload.get("hourly_rate")
+    pc = payload.get("pay_currency")
+    if hr is None or pc is None:
+        try:
+            row = db.execute(sa_text("SELECT default_hourly_rate, pay_currency FROM advisory_projects WHERE id = :id"), {"id": int(project_id)}).fetchone()
+            if row:
+                if hr is None:
+                    hr = row[0]
+                if pc is None:
+                    pc = row[1]
+        except Exception:
+            pass
     db.execute(sa_text(
-        "INSERT INTO advisory_project_assignments (project_id, student_id, role, hours_planned, created_at) VALUES (:p,:s,:r,:h,:ts)"
-    ), {"p": project_id, "s": payload.get("student_id"), "r": payload.get("role"), "h": payload.get("hours_planned"), "ts": datetime.utcnow().isoformat()})
+        "INSERT INTO advisory_project_assignments (project_id, student_id, role, hours_planned, hourly_rate, pay_currency, created_at) VALUES (:p,:s,:r,:h,:hr,:pc,:ts)"
+    ), {"p": project_id, "s": payload.get("student_id"), "r": payload.get("role"), "h": payload.get("hours_planned"), "hr": hr, "pc": pc, "ts": datetime.utcnow().isoformat()})
     db.commit(); rid = db.execute(sa_text("SELECT last_insert_rowid()")).scalar(); return {"id": int(rid or 0)}
 
 
@@ -1510,7 +1563,7 @@ async def update_assignment(aid: int, payload: Dict[str, Any], admin=Depends(req
     _ensure_tables(db)
     sets = []
     params: Dict[str, Any] = {"id": aid}
-    for k in ("role","hours_planned","active"):
+    for k in ("role","hours_planned","hourly_rate","pay_currency","active"):
         if k in payload:
             sets.append(f"{k} = :{k}"); params[k] = payload[k]
     if not sets:
@@ -1806,4 +1859,3 @@ async def finalize_onboarding_flow(fid: int, admin=Depends(require_ngiadvisory_a
     except Exception:
         pass
     db.commit(); return {"id": fid, "status": 'onboarded'}
-

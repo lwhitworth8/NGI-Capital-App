@@ -15,6 +15,7 @@ import os
 
 from src.api.database import get_db
 from .advisory import _ensure_tables
+from src.api.agent_client import start_agent_run, ensure_agent_tables
 from src.api.clerk_auth import verify_clerk_jwt as _verify_clerk_jwt, verify_clerk_session_cookie as _verify_clerk_session
 
 router = APIRouter()
@@ -313,6 +314,20 @@ async def create_public_application(payload: Dict[str, Any], request: Request, d
     ), {"tp": payload.get("target_project_id"), "fn": payload.get("first_name"), "ln": payload.get("last_name"), "em": email,
         "sc": payload.get("school"), "pr": payload.get("program"), "ru": payload.get("resume_url"), "nt": payload.get("notes"), "aj": answers_json})
     rid = db.execute(sa_text("SELECT last_insert_rowid()")).scalar()  # type: ignore
+    # Trigger triage agent (best-effort)
+    try:
+        ensure_agent_tables(db)
+        triage_payload = {
+            "application_id": int(rid or 0),
+            "project_id": int(payload.get("target_project_id") or 0),
+            "resume_url": payload.get("resume_url"),
+            "answers": payload.get("answers") or [],
+            "student": {"email": email, "first_name": payload.get("first_name"), "last_name": payload.get("last_name"), "school": payload.get("school"), "program": payload.get("program")},
+            "callback": {"url": "/api/agents/webhooks/triage"},
+        }
+        start_agent_run(db, workflow='triage', target_type='application', target_id=int(rid or 0), input_payload=triage_payload)
+    except Exception:
+        pass
     db.commit()
     return {"id": int(rid or 0)}
 

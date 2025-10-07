@@ -7,7 +7,7 @@ Following specifications from MarkdownFiles/NGILearning/PRD.NGILearningModule.md
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime, date
 import os
 import hashlib
@@ -52,8 +52,7 @@ class CompanyResponse(BaseModel):
     data_quality_score: Optional[int] = None
     is_active: bool
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ProgressResponse(BaseModel):
@@ -70,8 +69,7 @@ class ProgressResponse(BaseModel):
     activities_completed: List[str] = []
     capstone_submitted: bool
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SelectCompanyRequest(BaseModel):

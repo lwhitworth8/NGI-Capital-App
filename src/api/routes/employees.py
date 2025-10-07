@@ -168,6 +168,83 @@ def _ensure_hr_schema(db: Session) -> None:
         )
     )
 
+    # Timesheets table
+    db.execute(
+        sa_text(
+            """
+            CREATE TABLE IF NOT EXISTS timesheets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                entity_id INTEGER NOT NULL,
+                employee_id INTEGER NOT NULL,
+                pay_period_start TEXT NOT NULL,
+                pay_period_end TEXT NOT NULL,
+                total_hours REAL DEFAULT 0,
+                status TEXT DEFAULT 'draft',
+                submitted_date TEXT,
+                submitted_by_id INTEGER,
+                approved_by_id INTEGER,
+                approved_date TEXT,
+                rejected_by_id INTEGER,
+                rejected_date TEXT,
+                rejection_reason TEXT,
+                paid_date TEXT,
+                payroll_run_id INTEGER,
+                created_at TEXT DEFAULT (datetime('now')),
+                updated_at TEXT DEFAULT (datetime('now'))
+            )
+            """
+        )
+    )
+    
+    # Timesheet entries (daily hours)
+    db.execute(
+        sa_text(
+            """
+            CREATE TABLE IF NOT EXISTS timesheet_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timesheet_id INTEGER NOT NULL,
+                entry_date TEXT NOT NULL,
+                hours REAL NOT NULL,
+                project_id INTEGER,
+                team_id INTEGER,
+                notes TEXT,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+            """
+        )
+    )
+    
+    # Project leads (for Advisory)
+    db.execute(
+        sa_text(
+            """
+            CREATE TABLE IF NOT EXISTS project_leads (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                employee_id INTEGER NOT NULL,
+                role TEXT DEFAULT 'lead',
+                assigned_date TEXT,
+                UNIQUE(project_id, employee_id)
+            )
+            """
+        )
+    )
+    
+    # Student-Employee links (for Advisory auto-creation)
+    db.execute(
+        sa_text(
+            """
+            CREATE TABLE IF NOT EXISTS student_employee_links (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                employee_id INTEGER NOT NULL,
+                student_id INTEGER NOT NULL,
+                onboarding_date TEXT,
+                UNIQUE(employee_id, student_id)
+            )
+            """
+        )
+    )
+
     # Evolve employees table with richer fields when missing
     for col, typ in [
         ("legal_name", "TEXT"),
@@ -182,6 +259,9 @@ def _ensure_hr_schema(db: Session) -> None:
         ("deleted_at", "TEXT"),
         ("created_at", "TEXT"),
         ("updated_at", "TEXT"),
+        ("compensation_type", "TEXT"),
+        ("hourly_rate", "REAL"),
+        ("annual_salary", "REAL"),
     ]:
         try:
             _add_column_if_missing(db, "employees", col, typ)
@@ -485,29 +565,45 @@ async def create_employee(
             {"e": entity_id},
         ).fetchone()
         team_id = int(row[0]) if row else None
+    # Prepare insert with compensation fields
+    insert_cols = ["entity_id", "name", "legal_name", "preferred_name", "email", "title", "role", 
+                   "classification", "status", "employment_type", "start_date", "end_date", "team_id", 
+                   "manager_id", "created_at", "updated_at"]
+    insert_vals = [":e", ":n", ":ln", ":pn", ":em", ":ti", ":ro", ":cl", ":st", ":et", ":sd", ":ed", 
+                   ":tid", ":mid", "datetime('now')", "datetime('now')"]
+    insert_params = {
+        "e": entity_id,
+        "n": name,
+        "ln": name,
+        "pn": payload.get("preferred_name") or None,
+        "em": email,
+        "ti": payload.get("title"),
+        "ro": payload.get("role"),
+        "cl": payload.get("classification"),
+        "st": payload.get("status") or "active",
+        "et": payload.get("employment_type") or None,
+        "sd": payload.get("start_date") or None,
+        "ed": payload.get("end_date") or None,
+        "tid": team_id,
+        "mid": payload.get("manager_id") or None,
+    }
+    
+    # Add compensation if provided
+    if payload.get("hourly_rate"):
+        insert_cols.append("hourly_rate")
+        insert_vals.append(":hr")
+        insert_params["hr"] = float(payload.get("hourly_rate"))
+    if payload.get("annual_salary"):
+        insert_cols.append("annual_salary")
+        insert_vals.append(":sal")
+        insert_params["sal"] = float(payload.get("annual_salary"))
+    
     db.execute(
-        sa_text(
-            """
-            INSERT INTO employees (entity_id, name, legal_name, preferred_name, email, title, role, classification, status, employment_type, start_date, end_date, team_id, manager_id, created_at, updated_at)
-            VALUES (:e,:n,:ln,:pn,:em,:ti,:ro,:cl,:st,:et,:sd,:ed,:tid,:mid,datetime('now'),datetime('now'))
-            """
-        ),
-        {
-            "e": entity_id,
-            "n": name,
-            "ln": name,
-            "pn": payload.get("preferred_name") or None,
-            "em": email,
-            "ti": payload.get("title"),
-            "ro": payload.get("role"),
-            "cl": payload.get("classification"),
-            "st": payload.get("status") or "active",
-            "et": payload.get("employment_type") or None,
-            "sd": payload.get("start_date") or None,
-            "ed": payload.get("end_date") or None,
-            "tid": team_id,
-            "mid": payload.get("manager_id") or None,
-        },
+        sa_text(f"""
+            INSERT INTO employees ({", ".join(insert_cols)})
+            VALUES ({", ".join(insert_vals)})
+        """),
+        insert_params
     )
     new_id = int(db.execute(sa_text("SELECT last_insert_rowid()" )).scalar() or 0)
     # Optional memberships
@@ -787,4 +883,569 @@ async def export_employees(
     for r in rows:
         w.writerow([r[0], r[1], r[2] or "", r[3] or "", eid])
     return {"csv": out.getvalue()}
+
+
+# ============================================================================
+# TIMESHEET ENDPOINTS
+# ============================================================================
+
+@router.post("/timesheets")
+async def create_timesheet(
+    payload: Dict[str, Any],
+    partner=Depends(_require_clerk_user),
+    db: Session = Depends(get_db),
+):
+    """Create a new timesheet for an employee"""
+    _ensure_hr_schema(db)
+    
+    entity_id = _resolve_entity_id(payload.get("entity"), payload.get("entity_id"))
+    employee_id = payload.get("employee_id")
+    pay_period_start = payload.get("pay_period_start")
+    pay_period_end = payload.get("pay_period_end")
+    
+    if not all([entity_id, employee_id, pay_period_start, pay_period_end]):
+        raise HTTPException(status_code=422, detail="Missing required fields")
+    
+    # Check for duplicate timesheet for same period
+    existing = db.execute(
+        sa_text("""
+            SELECT id FROM timesheets 
+            WHERE employee_id = :emp AND pay_period_start = :start AND pay_period_end = :end
+        """),
+        {"emp": employee_id, "start": pay_period_start, "end": pay_period_end}
+    ).fetchone()
+    
+    if existing:
+        raise HTTPException(status_code=400, detail="Timesheet already exists for this pay period")
+    
+    db.execute(
+        sa_text("""
+            INSERT INTO timesheets (entity_id, employee_id, pay_period_start, pay_period_end, status, created_at, updated_at)
+            VALUES (:eid, :emp, :start, :end, 'draft', datetime('now'), datetime('now'))
+        """),
+        {"eid": entity_id, "emp": employee_id, "start": pay_period_start, "end": pay_period_end}
+    )
+    
+    new_id = int(db.execute(sa_text("SELECT last_insert_rowid()")).scalar())
+    db.commit()
+    
+    return {"id": new_id, "message": "Timesheet created"}
+
+
+@router.get("/timesheets")
+async def list_timesheets(
+    entity: int | None = Query(None),
+    entity_id: int | None = Query(None),
+    employee_id: Optional[int] = Query(None),
+    status: Optional[str] = Query(None),
+    pay_period: Optional[str] = Query(None),
+    partner=Depends(_require_clerk_user),
+    db: Session = Depends(get_db),
+):
+    """List timesheets with filters"""
+    _ensure_hr_schema(db)
+    
+    eid = _resolve_entity_id(entity, entity_id)
+    where = ["entity_id = :eid"]
+    params: Dict[str, Any] = {"eid": eid}
+    
+    if employee_id:
+        where.append("employee_id = :emp")
+        params["emp"] = employee_id
+    
+    if status:
+        where.append("status = :status")
+        params["status"] = status
+    
+    where_sql = " AND ".join(where)
+    
+    rows = db.execute(
+        sa_text(f"""
+            SELECT t.id, t.employee_id, t.pay_period_start, t.pay_period_end, t.total_hours, t.status,
+                   t.submitted_date, t.approved_date, t.rejected_date, t.rejection_reason,
+                   e.name as employee_name, e.email as employee_email
+            FROM timesheets t
+            LEFT JOIN employees e ON e.id = t.employee_id
+            WHERE {where_sql}
+            ORDER BY t.pay_period_start DESC, t.id DESC
+        """),
+        params
+    ).fetchall()
+    
+    result = []
+    for r in rows:
+        # Get entries count
+        entries_count = db.execute(
+            sa_text("SELECT COUNT(*) FROM timesheet_entries WHERE timesheet_id = :tid"),
+            {"tid": r[0]}
+        ).scalar()
+        
+        result.append({
+            "id": r[0],
+            "employee_id": r[1],
+            "employee_name": r[10],
+            "employee_email": r[11],
+            "pay_period_start": r[2],
+            "pay_period_end": r[3],
+            "total_hours": r[4],
+            "status": r[5],
+            "submitted_date": r[6],
+            "approved_date": r[7],
+            "rejected_date": r[8],
+            "rejection_reason": r[9],
+            "entries_count": entries_count
+        })
+    
+    return {"timesheets": result, "count": len(result)}
+
+
+@router.get("/timesheets/{timesheet_id}")
+async def get_timesheet(
+    timesheet_id: int,
+    partner=Depends(_require_clerk_user),
+    db: Session = Depends(get_db),
+):
+    """Get timesheet detail with all entries"""
+    _ensure_hr_schema(db)
+    
+    timesheet_row = db.execute(
+        sa_text("""
+            SELECT t.id, t.entity_id, t.employee_id, t.pay_period_start, t.pay_period_end, 
+                   t.total_hours, t.status, t.submitted_date, t.approved_date, t.rejected_date, t.rejection_reason,
+                   e.name as employee_name, e.email as employee_email
+            FROM timesheets t
+            LEFT JOIN employees e ON e.id = t.employee_id
+            WHERE t.id = :tid
+        """),
+        {"tid": timesheet_id}
+    ).fetchone()
+    
+    if not timesheet_row:
+        raise HTTPException(status_code=404, detail="Timesheet not found")
+    
+    # Get entries
+    entries_rows = db.execute(
+        sa_text("""
+            SELECT te.id, te.entry_date, te.hours, te.project_id, te.team_id, te.notes,
+                   p.name as project_name, tm.name as team_name
+            FROM timesheet_entries te
+            LEFT JOIN projects p ON p.id = te.project_id
+            LEFT JOIN teams tm ON tm.id = te.team_id
+            WHERE te.timesheet_id = :tid
+            ORDER BY te.entry_date
+        """),
+        {"tid": timesheet_id}
+    ).fetchall()
+    
+    entries = []
+    for e in entries_rows:
+        entries.append({
+            "id": e[0],
+            "entry_date": e[1],
+            "hours": e[2],
+            "project_id": e[3],
+            "project_name": e[6],
+            "team_id": e[4],
+            "team_name": e[7],
+            "notes": e[5]
+        })
+    
+    return {
+        "id": timesheet_row[0],
+        "entity_id": timesheet_row[1],
+        "employee_id": timesheet_row[2],
+        "employee_name": timesheet_row[11],
+        "employee_email": timesheet_row[12],
+        "pay_period_start": timesheet_row[3],
+        "pay_period_end": timesheet_row[4],
+        "total_hours": timesheet_row[5],
+        "status": timesheet_row[6],
+        "submitted_date": timesheet_row[7],
+        "approved_date": timesheet_row[8],
+        "rejected_date": timesheet_row[9],
+        "rejection_reason": timesheet_row[10],
+        "entries": entries
+    }
+
+
+@router.post("/timesheets/{timesheet_id}/entries")
+async def add_timesheet_entries(
+    timesheet_id: int,
+    payload: Dict[str, Any],
+    partner=Depends(_require_clerk_user),
+    db: Session = Depends(get_db),
+):
+    """Add or update timesheet entries"""
+    _ensure_hr_schema(db)
+    
+    # Verify timesheet exists and is in draft status
+    timesheet = db.execute(
+        sa_text("SELECT id, status FROM timesheets WHERE id = :tid"),
+        {"tid": timesheet_id}
+    ).fetchone()
+    
+    if not timesheet:
+        raise HTTPException(status_code=404, detail="Timesheet not found")
+    
+    if timesheet[1] not in ('draft', 'rejected'):
+        raise HTTPException(status_code=400, detail="Cannot modify submitted or approved timesheet")
+    
+    entries = payload.get("entries", [])
+    if not entries:
+        raise HTTPException(status_code=422, detail="No entries provided")
+    
+    # Delete existing entries for this timesheet
+    db.execute(
+        sa_text("DELETE FROM timesheet_entries WHERE timesheet_id = :tid"),
+        {"tid": timesheet_id}
+    )
+    
+    total_hours = 0.0
+    for entry in entries:
+        hours = float(entry.get("hours", 0))
+        if hours > 0:
+            db.execute(
+                sa_text("""
+                    INSERT INTO timesheet_entries (timesheet_id, entry_date, hours, project_id, team_id, notes)
+                    VALUES (:tid, :date, :hrs, :proj, :team, :notes)
+                """),
+                {
+                    "tid": timesheet_id,
+                    "date": entry.get("entry_date"),
+                    "hrs": hours,
+                    "proj": entry.get("project_id"),
+                    "team": entry.get("team_id"),
+                    "notes": entry.get("notes")
+                }
+            )
+            total_hours += hours
+    
+    # Update total hours
+    db.execute(
+        sa_text("UPDATE timesheets SET total_hours = :hrs, updated_at = datetime('now') WHERE id = :tid"),
+        {"hrs": total_hours, "tid": timesheet_id}
+    )
+    db.commit()
+    
+    return {"message": "Entries updated", "total_hours": total_hours}
+
+
+@router.post("/timesheets/{timesheet_id}/submit")
+async def submit_timesheet(
+    timesheet_id: int,
+    partner=Depends(_require_clerk_user),
+    db: Session = Depends(get_db),
+):
+    """Submit timesheet for approval"""
+    _ensure_hr_schema(db)
+    
+    timesheet = db.execute(
+        sa_text("SELECT id, status, total_hours FROM timesheets WHERE id = :tid"),
+        {"tid": timesheet_id}
+    ).fetchone()
+    
+    if not timesheet:
+        raise HTTPException(status_code=404, detail="Timesheet not found")
+    
+    if timesheet[1] not in ('draft', 'rejected'):
+        raise HTTPException(status_code=400, detail="Timesheet already submitted or approved")
+    
+    if timesheet[2] == 0:
+        raise HTTPException(status_code=400, detail="Cannot submit timesheet with zero hours")
+    
+    db.execute(
+        sa_text("""
+            UPDATE timesheets 
+            SET status = 'submitted', submitted_date = datetime('now'), updated_at = datetime('now')
+            WHERE id = :tid
+        """),
+        {"tid": timesheet_id}
+    )
+    db.commit()
+    
+    return {"message": "Timesheet submitted for approval"}
+
+
+@router.post("/timesheets/{timesheet_id}/approve")
+async def approve_timesheet(
+    timesheet_id: int,
+    partner=Depends(_require_clerk_user),
+    db: Session = Depends(get_db),
+):
+    """Approve timesheet (manager/project lead)"""
+    _ensure_hr_schema(db)
+    
+    timesheet = db.execute(
+        sa_text("SELECT id, status, employee_id FROM timesheets WHERE id = :tid"),
+        {"tid": timesheet_id}
+    ).fetchone()
+    
+    if not timesheet:
+        raise HTTPException(status_code=404, detail="Timesheet not found")
+    
+    if timesheet[1] != 'submitted':
+        raise HTTPException(status_code=400, detail="Only submitted timesheets can be approved")
+    
+    # TODO: Get approver ID from partner context
+    approver_id = 1  # Placeholder
+    
+    # TODO: Verify approver is manager or project lead
+    
+    db.execute(
+        sa_text("""
+            UPDATE timesheets 
+            SET status = 'approved', approved_by_id = :approver, approved_date = datetime('now'), updated_at = datetime('now')
+            WHERE id = :tid
+        """),
+        {"tid": timesheet_id, "approver": approver_id}
+    )
+    db.commit()
+    
+    return {"message": "Timesheet approved", "timesheet_id": timesheet_id}
+
+
+@router.post("/timesheets/{timesheet_id}/reject")
+async def reject_timesheet(
+    timesheet_id: int,
+    payload: Dict[str, Any],
+    partner=Depends(_require_clerk_user),
+    db: Session = Depends(get_db),
+):
+    """Reject timesheet with reason"""
+    _ensure_hr_schema(db)
+    
+    reason = payload.get("reason", "").strip()
+    if not reason:
+        raise HTTPException(status_code=422, detail="Rejection reason required")
+    
+    timesheet = db.execute(
+        sa_text("SELECT id, status FROM timesheets WHERE id = :tid"),
+        {"tid": timesheet_id}
+    ).fetchone()
+    
+    if not timesheet:
+        raise HTTPException(status_code=404, detail="Timesheet not found")
+    
+    if timesheet[1] != 'submitted':
+        raise HTTPException(status_code=400, detail="Only submitted timesheets can be rejected")
+    
+    # TODO: Get rejector ID from partner context
+    rejector_id = 1  # Placeholder
+    
+    db.execute(
+        sa_text("""
+            UPDATE timesheets 
+            SET status = 'rejected', rejected_by_id = :rejector, rejected_date = datetime('now'), 
+                rejection_reason = :reason, updated_at = datetime('now')
+            WHERE id = :tid
+        """),
+        {"tid": timesheet_id, "rejector": rejector_id, "reason": reason}
+    )
+    db.commit()
+    
+    return {"message": "Timesheet rejected"}
+
+
+@router.get("/timesheets/pending-approval")
+async def get_pending_approvals(
+    entity: int | None = Query(None),
+    entity_id: int | None = Query(None),
+    partner=Depends(_require_clerk_user),
+    db: Session = Depends(get_db),
+):
+    """Get all timesheets pending approval for manager/lead"""
+    _ensure_hr_schema(db)
+    
+    eid = _resolve_entity_id(entity, entity_id)
+    
+    rows = db.execute(
+        sa_text("""
+            SELECT t.id, t.employee_id, t.pay_period_start, t.pay_period_end, t.total_hours,
+                   t.submitted_date, e.name as employee_name
+            FROM timesheets t
+            LEFT JOIN employees e ON e.id = t.employee_id
+            WHERE t.entity_id = :eid AND t.status = 'submitted'
+            ORDER BY t.submitted_date ASC
+        """),
+        {"eid": eid}
+    ).fetchall()
+    
+    result = []
+    for r in rows:
+        result.append({
+            "id": r[0],
+            "employee_id": r[1],
+            "employee_name": r[6],
+            "pay_period_start": r[2],
+            "pay_period_end": r[3],
+            "total_hours": r[4],
+            "submitted_date": r[5]
+        })
+    
+    return {"timesheets": result, "count": len(result)}
+
+
+# ============================================================================
+# ADVISORY-SPECIFIC ENDPOINTS (Projects & Auto-Creation)
+# ============================================================================
+
+@router.post("/projects/{project_id}/leads")
+async def add_project_lead(
+    project_id: int,
+    payload: Dict[str, Any],
+    partner=Depends(_require_clerk_user),
+    db: Session = Depends(get_db),
+):
+    """Add a project lead to a project"""
+    _ensure_hr_schema(db)
+    
+    employee_id = payload.get("employee_id")
+    role = payload.get("role", "lead")
+    
+    if not employee_id:
+        raise HTTPException(status_code=422, detail="employee_id required")
+    
+    # Check if already exists
+    existing = db.execute(
+        sa_text("SELECT id FROM project_leads WHERE project_id = :pid AND employee_id = :eid"),
+        {"pid": project_id, "eid": employee_id}
+    ).fetchone()
+    
+    if existing:
+        raise HTTPException(status_code=400, detail="Employee is already a project lead")
+    
+    db.execute(
+        sa_text("""
+            INSERT INTO project_leads (project_id, employee_id, role, assigned_date)
+            VALUES (:pid, :eid, :role, datetime('now'))
+        """),
+        {"pid": project_id, "eid": employee_id, "role": role}
+    )
+    db.commit()
+    
+    return {"message": "Project lead added"}
+
+
+@router.delete("/projects/{project_id}/leads/{employee_id}")
+async def remove_project_lead(
+    project_id: int,
+    employee_id: int,
+    partner=Depends(_require_clerk_user),
+    db: Session = Depends(get_db),
+):
+    """Remove a project lead from a project"""
+    _ensure_hr_schema(db)
+    
+    db.execute(
+        sa_text("DELETE FROM project_leads WHERE project_id = :pid AND employee_id = :eid"),
+        {"pid": project_id, "eid": employee_id}
+    )
+    db.commit()
+    
+    return {"message": "Project lead removed"}
+
+
+@router.get("/projects/{project_id}/leads")
+async def get_project_leads(
+    project_id: int,
+    partner=Depends(_require_clerk_user),
+    db: Session = Depends(get_db),
+):
+    """Get all leads for a project"""
+    _ensure_hr_schema(db)
+    
+    rows = db.execute(
+        sa_text("""
+            SELECT pl.id, pl.employee_id, pl.role, e.name, e.email
+            FROM project_leads pl
+            LEFT JOIN employees e ON e.id = pl.employee_id
+            WHERE pl.project_id = :pid
+        """),
+        {"pid": project_id}
+    ).fetchall()
+    
+    result = []
+    for r in rows:
+        result.append({
+            "id": r[0],
+            "employee_id": r[1],
+            "role": r[2],
+            "employee_name": r[3],
+            "employee_email": r[4]
+        })
+    
+    return {"leads": result, "count": len(result)}
+
+
+@router.post("/employees/create-from-student")
+async def create_employee_from_student(
+    payload: Dict[str, Any],
+    partner=Depends(_require_clerk_user),
+    db: Session = Depends(get_db),
+):
+    """Auto-create employee when student is onboarded to Advisory project"""
+    _ensure_hr_schema(db)
+    
+    entity_id = payload.get("entity_id")  # Should be NGI Capital Advisory LLC
+    student_id = payload.get("student_id")
+    name = payload.get("name", "").strip()
+    email = payload.get("email", "").strip()
+    project_id = payload.get("project_id")
+    
+    if not all([entity_id, student_id, name, email]):
+        raise HTTPException(status_code=422, detail="Missing required fields")
+    
+    # Check if employee already exists for this student
+    existing_link = db.execute(
+        sa_text("SELECT employee_id FROM student_employee_links WHERE student_id = :sid"),
+        {"sid": student_id}
+    ).fetchone()
+    
+    if existing_link:
+        employee_id = existing_link[0]
+        
+        # Link to new project if provided
+        if project_id:
+            db.execute(
+                sa_text("INSERT OR IGNORE INTO employee_projects (employee_id, project_id) VALUES (:eid, :pid)"),
+                {"eid": employee_id, "pid": project_id}
+            )
+            db.commit()
+        
+        return {"employee_id": employee_id, "message": "Employee already exists, linked to project"}
+    
+    # Create new employee
+    db.execute(
+        sa_text("""
+            INSERT INTO employees (entity_id, name, email, title, role, classification, status, employment_type, start_date, created_at, updated_at)
+            VALUES (:e, :n, :em, 'Student Employee', 'Project Team Member', 'contractor', 'active', 'part_time', date('now'), datetime('now'), datetime('now'))
+        """),
+        {
+            "e": entity_id,
+            "n": name,
+            "em": email
+        }
+    )
+    
+    employee_id = int(db.execute(sa_text("SELECT last_insert_rowid()")).scalar())
+    
+    # Create student-employee link
+    db.execute(
+        sa_text("""
+            INSERT INTO student_employee_links (employee_id, student_id, onboarding_date)
+            VALUES (:eid, :sid, date('now'))
+        """),
+        {"eid": employee_id, "sid": student_id}
+    )
+    
+    # Link to project if provided
+    if project_id:
+        db.execute(
+            sa_text("INSERT INTO employee_projects (employee_id, project_id) VALUES (:eid, :pid)"),
+            {"eid": employee_id, "pid": project_id}
+        )
+    
+    db.commit()
+    
+    return {"employee_id": employee_id, "message": "Employee created from student"}
 

@@ -4,9 +4,9 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Upload, FileText, Trash2, Plus, Image as ImageIcon, Calendar, Clock, Users, MapPin, Briefcase } from 'lucide-react'
 import { toast } from 'sonner'
-import type { AdvisoryProject } from '@/lib/api'
+import type { AdvisoryProject } from '@/types'
 import ImageCropModal from './ImageCropModal'
-import { advisoryUploadProjectHero, advisoryUploadProjectShowcase, advisoryUploadProjectLogo } from '@/lib/api'
+import { advisoryUploadProjectHero, advisoryUploadProjectShowcase, advisoryUploadProjectLogo, advisoryAddAssignment } from '@/lib/api'
 import { UC_MAJORS, MAJOR_ALIASES } from '@/lib/uc-majors'
 import { addWeeks, weeksBetween, formatDateTimePST } from '@/lib/timezone'
 
@@ -19,7 +19,7 @@ interface ProjectEditorModalProps {
   onDelete?: (projectId: number) => Promise<void>
   leads: Array<{ email: string; name: string }>
   majors: string[]
-  aliases: Record<string, string[]>
+  aliases?: Record<string, string>
 }
 
 // Known client logos - using Clearbit Logo API for real company logos
@@ -73,6 +73,10 @@ export function ProjectEditorModal({
   const [newPartnerName, setNewPartnerName] = useState('')
   const [newBackerName, setNewBackerName] = useState('')
   const [activeTab, setActiveTab] = useState<'basic'|'details'|'team'|'media'|'settings'>('basic')
+  // Simple assignment inputs (v1)
+  const [assignStudentId, setAssignStudentId] = useState<string>('')
+  const [assignRole, setAssignRole] = useState<string>('analyst')
+  const [assignHours, setAssignHours] = useState<string>('')
   
   // Autocomplete states
   const [clientSearchTerm, setClientSearchTerm] = useState('')
@@ -106,7 +110,7 @@ export function ProjectEditorModal({
 
   // Duration calculation handlers
   const handleStartDateChange = (startDate: string) => {
-    setForm(prev => {
+    setForm((prev: any) => {
       const newForm = { ...prev, start_date: startDate }
       if (startDate && prev.duration_weeks) {
         newForm.end_date = addWeeks(startDate, prev.duration_weeks)
@@ -116,7 +120,7 @@ export function ProjectEditorModal({
   }
 
   const handleEndDateChange = (endDate: string) => {
-    setForm(prev => {
+    setForm((prev: any) => {
       const newForm = { ...prev, end_date: endDate }
       if (prev.start_date && endDate) {
         newForm.duration_weeks = weeksBetween(prev.start_date, endDate)
@@ -126,7 +130,7 @@ export function ProjectEditorModal({
   }
 
   const handleDurationChange = (weeks: number) => {
-    setForm(prev => {
+    setForm((prev: any) => {
       const newForm = { ...prev, duration_weeks: weeks }
       if (prev.start_date && weeks) {
         newForm.end_date = addWeeks(prev.start_date, weeks)
@@ -595,6 +599,46 @@ export function ProjectEditorModal({
                     </div>
                   </div>
 
+                  {/* Compensation */}
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-2">
+                        Default Hourly Rate
+                      </label>
+                      <input
+                        type="number"
+                        className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        placeholder="e.g., 25"
+                        value={(form as any).default_hourly_rate ?? ''}
+                        onChange={e => setForm({ ...form, default_hourly_rate: (e.target.value ? Number(e.target.value) : undefined) } as any)}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-2">
+                        Pay Currency
+                      </label>
+                      <select
+                        className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        value={String((form as any).pay_currency || 'USD')}
+                        onChange={e => setForm({ ...form, pay_currency: e.target.value } as any)}
+                      >
+                        {['USD','EUR','GBP','CAD','AUD'].map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-2">
+                        Compensation Notes (admin)
+                      </label>
+                      <input
+                        type="text"
+                        className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        placeholder="Optional internal notes"
+                        value={String((form as any).compensation_notes || '')}
+                        onChange={e => setForm({ ...form, compensation_notes: e.target.value } as any)}
+                      />
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-2">
                       Location (if in-person/hybrid)
@@ -824,6 +868,51 @@ export function ProjectEditorModal({
                         </div>
                       )}
                     </div>
+                  </div>
+
+                  {/* Assignments (add from editor) */}
+                  <div className="rounded-xl border border-border p-4 bg-card">
+                    <div className="font-semibold mb-3">Assignments</div>
+                    {!project ? (
+                      <div className="text-sm text-muted-foreground">Save project first to add assignments.</div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                        <div>
+                          <label className="block text-xs text-muted-foreground mb-1">Student ID</label>
+                          <input type="number" className="w-full px-3 py-2 rounded border bg-background" placeholder="e.g., 101" value={assignStudentId} onChange={e=>setAssignStudentId(e.target.value)} />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-muted-foreground mb-1">Role</label>
+                          <input type="text" className="w-full px-3 py-2 rounded border bg-background" value={assignRole} onChange={e=>setAssignRole(e.target.value)} />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-muted-foreground mb-1">Hours (planned)</label>
+                          <input type="number" className="w-full px-3 py-2 rounded border bg-background" placeholder="e.g., 5" value={assignHours} onChange={e=>setAssignHours(e.target.value)} />
+                        </div>
+                        <div>
+                          <button
+                            className="w-full px-3 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
+                            disabled={!assignStudentId || !project || saving}
+                            onClick={async()=>{
+                              try {
+                                await advisoryAddAssignment(project!.id, {
+                                  student_id: Number(assignStudentId),
+                                  role: assignRole || 'analyst',
+                                  hours_planned: assignHours ? Number(assignHours) : undefined,
+                                } as any)
+                                toast.success('Assignment added')
+                                setAssignStudentId(''); setAssignRole('analyst'); setAssignHours('')
+                              } catch (e:any) {
+                                toast.error(e?.message || 'Failed to add assignment')
+                              }
+                            }}
+                          >
+                            Add Assignment
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    <div className="text-xs text-muted-foreground mt-2">Assignments default to the project hourly rate (USD).</div>
                   </div>
                 </motion.div>
               )}

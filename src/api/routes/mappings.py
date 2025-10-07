@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any, List
 from sqlalchemy.orm import Session
 from sqlalchemy import text as sa_text
-from src.api.database import get_db
+from src.api.database_async import get_async_db
 import uuid
 
 router = APIRouter(prefix="/api/mappings", tags=["mappings"])
@@ -54,14 +54,14 @@ def _ensure_tables(db: Session):
 
 
 @router.get("/vendors")
-async def list_vendors(db: Session = Depends(get_db)):
+async def list_vendors(db: Session = Depends(get_async_db)):
     _ensure_tables(db)
     rows = db.execute(sa_text("SELECT id, name, default_gl_account_id, terms_days, tax_rate, is_active FROM vendors ORDER BY name"), {}).fetchall()
     return [{"id": r[0], "name": r[1], "default_gl_account_id": r[2], "terms_days": r[3], "tax_rate": r[4], "is_active": bool(r[5])} for r in rows]
 
 
 @router.post("/vendors")
-async def create_vendor(payload: Dict[str, Any], db: Session = Depends(get_db)):
+async def create_vendor(payload: Dict[str, Any], db: Session = Depends(get_async_db)):
     _ensure_tables(db)
     vid = str(uuid.uuid4())
     db.execute(sa_text("INSERT INTO vendors (id, name, default_gl_account_id, terms_days, tax_rate, is_active, created_at) VALUES (:id,:n,:acc,:td,:tr,1,datetime('now'))"), {
@@ -71,7 +71,7 @@ async def create_vendor(payload: Dict[str, Any], db: Session = Depends(get_db)):
 
 
 @router.patch("/vendors/{vendor_id}")
-async def update_vendor(vendor_id: str, payload: Dict[str, Any], db: Session = Depends(get_db)):
+async def update_vendor(vendor_id: str, payload: Dict[str, Any], db: Session = Depends(get_async_db)):
     _ensure_tables(db)
     fields = []
     params: Dict[str, Any] = {"id": vendor_id}
@@ -86,21 +86,21 @@ async def update_vendor(vendor_id: str, payload: Dict[str, Any], db: Session = D
 
 
 @router.delete("/vendors/{vendor_id}")
-async def delete_vendor(vendor_id: str, db: Session = Depends(get_db)):
+async def delete_vendor(vendor_id: str, db: Session = Depends(get_async_db)):
     _ensure_tables(db)
     db.execute(sa_text("DELETE FROM vendors WHERE id = :id"), {"id": vendor_id})
     db.commit(); return {"message": "deleted"}
 
 
 @router.get("/categories")
-async def list_categories(db: Session = Depends(get_db)):
+async def list_categories(db: Session = Depends(get_async_db)):
     _ensure_tables(db)
     rows = db.execute(sa_text("SELECT id, name, keyword_pattern, default_gl_account_id, is_active FROM categories ORDER BY name"), {}).fetchall()
     return [{"id": r[0], "name": r[1], "keyword_pattern": r[2], "default_gl_account_id": r[3], "is_active": bool(r[4])} for r in rows]
 
 
 @router.post("/categories")
-async def create_category(payload: Dict[str, Any], db: Session = Depends(get_db)):
+async def create_category(payload: Dict[str, Any], db: Session = Depends(get_async_db)):
     _ensure_tables(db)
     cid = str(uuid.uuid4())
     db.execute(sa_text("INSERT INTO categories (id, name, keyword_pattern, default_gl_account_id, is_active) VALUES (:id,:n,:kp,:acc,1)"), {
@@ -110,7 +110,7 @@ async def create_category(payload: Dict[str, Any], db: Session = Depends(get_db)
 
 
 @router.patch("/categories/{category_id}")
-async def update_category(category_id: str, payload: Dict[str, Any], db: Session = Depends(get_db)):
+async def update_category(category_id: str, payload: Dict[str, Any], db: Session = Depends(get_async_db)):
     _ensure_tables(db)
     fields = []
     params: Dict[str, Any] = {"id": category_id}
@@ -125,21 +125,21 @@ async def update_category(category_id: str, payload: Dict[str, Any], db: Session
 
 
 @router.delete("/categories/{category_id}")
-async def delete_category(category_id: str, db: Session = Depends(get_db)):
+async def delete_category(category_id: str, db: Session = Depends(get_async_db)):
     _ensure_tables(db)
     db.execute(sa_text("DELETE FROM categories WHERE id = :id"), {"id": category_id})
     db.commit(); return {"message": "deleted"}
 
 
 @router.get("/vendor-mappings")
-async def list_vendor_mappings(db: Session = Depends(get_db)):
+async def list_vendor_mappings(db: Session = Depends(get_async_db)):
     _ensure_tables(db)
     rows = db.execute(sa_text("SELECT id, vendor_id, pattern, is_regex FROM vendor_mappings ORDER BY pattern"), {}).fetchall()
     return [{"id": r[0], "vendor_id": r[1], "pattern": r[2], "is_regex": bool(r[3])} for r in rows]
 
 
 @router.post("/vendor-mappings")
-async def create_vendor_mapping(payload: Dict[str, Any], db: Session = Depends(get_db)):
+async def create_vendor_mapping(payload: Dict[str, Any], db: Session = Depends(get_async_db)):
     _ensure_tables(db)
     if not payload.get("vendor_id") or not payload.get("pattern"):
         raise HTTPException(status_code=400, detail="vendor_id and pattern required")
@@ -151,14 +151,14 @@ async def create_vendor_mapping(payload: Dict[str, Any], db: Session = Depends(g
 
 
 @router.delete("/vendor-mappings/{mapping_id}")
-async def delete_vendor_mapping(mapping_id: str, db: Session = Depends(get_db)):
+async def delete_vendor_mapping(mapping_id: str, db: Session = Depends(get_async_db)):
     _ensure_tables(db)
     db.execute(sa_text("DELETE FROM vendor_mappings WHERE id = :id"), {"id": mapping_id})
     db.commit(); return {"message": "deleted"}
 
 
 @router.get("/category-mappings")
-async def list_category_mappings(db: Session = Depends(get_db)):
+async def list_category_mappings(db: Session = Depends(get_async_db)):
     _ensure_tables(db)
     # Expose both dedicated table and the simpler categories table as mappings
     rows = db.execute(sa_text("SELECT id, category_id, keyword_pattern, default_gl_account_id FROM category_mappings"), {}).fetchall()
@@ -170,7 +170,7 @@ async def list_category_mappings(db: Session = Depends(get_db)):
 
 
 @router.post("/category-mappings")
-async def create_category_mapping(payload: Dict[str, Any], db: Session = Depends(get_db)):
+async def create_category_mapping(payload: Dict[str, Any], db: Session = Depends(get_async_db)):
     _ensure_tables(db)
     if not payload.get("keyword_pattern"):
         raise HTTPException(status_code=400, detail="keyword_pattern required")
@@ -182,7 +182,7 @@ async def create_category_mapping(payload: Dict[str, Any], db: Session = Depends
 
 
 @router.delete("/category-mappings/{mapping_id}")
-async def delete_category_mapping(mapping_id: str, db: Session = Depends(get_db)):
+async def delete_category_mapping(mapping_id: str, db: Session = Depends(get_async_db)):
     _ensure_tables(db)
     db.execute(sa_text("DELETE FROM category_mappings WHERE id = :id"), {"id": mapping_id})
     db.commit(); return {"message": "deleted"}

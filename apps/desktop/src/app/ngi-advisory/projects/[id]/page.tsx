@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { useApp } from '@/lib/context/AppContext'
 import { useAuth } from '@/lib/auth'
-import { advisoryGetProject, advisoryListStudents, advisoryAddAssignment, advisoryUpdateAssignment, advisoryDeleteAssignment, apiClient } from '@/lib/api'
+import { advisoryGetProject, advisoryListStudents, advisoryAddAssignment, advisoryUpdateAssignment, advisoryDeleteAssignment, apiClient, advisoryListCoffeeRequests, advisoryAcceptCoffeeRequest, advisoryCancelCoffeeRequest, advisoryListApplications, advisoryUpdateApplication, advisoryRejectApplication } from '@/lib/api'
 import type { AdvisoryProject, AdvisoryStudent } from '@/types'
 import Link from 'next/link'
+import { Modal } from '@/components/ui/Modal'
 
 const BASE_ALLOWED = new Set([
   'lwhitworth@ngicapitaladvisory.com',
@@ -54,6 +56,33 @@ export default function AdvisoryProjectDetailPage() {
   const [students, setStudents] = useState<AdvisoryStudent[]>([])
   const [q, setQ] = useState('')
   const [newAssign, setNewAssign] = useState<{ student_id?: number; role?: string; hours_planned?: number }>({})
+  const [coffeeOpen, setCoffeeOpen] = useState(false)
+  const [appsOpen, setAppsOpen] = useState(false)
+  const [coffee, setCoffee] = useState<any[]>([])
+  const [apps, setApps] = useState<any[]>([])
+  const [busy, setBusy] = useState(false)
+  // Availability (admin global; shown per-project)
+  const [avail, setAvail] = useState<Array<{ id:number; admin_email:string; start_ts:string; end_ts:string; slot_len_min:number }>>([])
+  const [avStart, setAvStart] = useState('')
+  const [avEnd, setAvEnd] = useState('')
+  const [avLen, setAvLen] = useState(30)
+
+  const loadAvailability = async () => {
+    try {
+      const res = await fetch('/api/advisory/coffeechats/availability')
+      if (!res.ok) return
+      const rows: any[] = await res.json()
+      const filtered = serverEmail
+        ? rows.filter((r: any) => (r.admin_email || '').toLowerCase() === serverEmail.toLowerCase())
+        : rows
+      setAvail(filtered)
+    } catch {}
+  }
+
+  const formatUSD = (val?: number | null) => {
+    if (val === null || val === undefined || isNaN(Number(val))) return '-'
+    return `$${Number(val).toFixed(2)}`
+  }
 
   const load = async () => {
     if (!id || !allowed) return
@@ -62,6 +91,13 @@ export default function AdvisoryProjectDetailPage() {
   }
 
   useEffect(() => { load() }, [id, allowed])
+  const search = useSearchParams()
+  useEffect(() => {
+    const o = search?.get('open')
+    if (o === 'coffee') { (async()=>{ await loadCoffee(); setCoffeeOpen(true) })() }
+    if (o === 'applications') { (async()=>{ await loadApps(); setAppsOpen(true) })() }
+  }, [search])
+  useEffect(() => { if (allowed) loadAvailability() }, [allowed, serverEmail])
 
   const searchStudents = async () => {
     if (!entityId) return
@@ -74,6 +110,15 @@ export default function AdvisoryProjectDetailPage() {
     await advisoryAddAssignment(id, newAssign as any)
     setNewAssign({})
     await load()
+  }
+
+  const loadCoffee = async () => {
+    const list = await advisoryListCoffeeRequests({ project_id: id })
+    setCoffee(list)
+  }
+  const loadApps = async () => {
+    const list = await advisoryListApplications({ project_id: id })
+    setApps(list)
   }
 
   if (authLoading || fetching) return <div className="p-6">Loading.</div>
@@ -119,6 +164,24 @@ export default function AdvisoryProjectDetailPage() {
           <div><span className="text-muted-foreground">Mode:</span> {project.mode}</div>
           <div><span className="text-muted-foreground">Timing:</span> {project.start_date || '-'} ? {project.end_date || '-'}</div>
           <div><span className="text-muted-foreground">Commitment:</span> {project.commitment_hours_per_week || 0} hrs/wk - {project.duration_weeks || 0} wks</div>
+          <div className="mt-2 pt-2 border-t">
+            <div className="font-medium mb-1">Compensation</div>
+            <div><span className="text-muted-foreground">Default Rate:</span> {formatUSD(project.default_hourly_rate)} USD</div>
+            {project.compensation_notes && (
+              <div className="text-muted-foreground text-xs mt-1">{project.compensation_notes}</div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Admin Actions */}
+      <div className="rounded-xl border border-border bg-card p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold">Admin</h2>
+          <div className="flex gap-2">
+            <button className="px-3 py-1.5 rounded border" onClick={async()=>{ await loadCoffee(); setCoffeeOpen(true) }}>Coffee Chats</button>
+            <button className="px-3 py-1.5 rounded border" onClick={async()=>{ await loadApps(); setAppsOpen(true) }}>Applications</button>
+          </div>
         </div>
       </div>
 
@@ -146,6 +209,7 @@ export default function AdvisoryProjectDetailPage() {
               <th className="p-2">Student</th>
               <th className="p-2">Role</th>
               <th className="p-2">Hours</th>
+              <th className="p-2">Rate</th>
               <th className="p-2">Active</th>
               <th className="p-2 text-right">Actions</th>
             </tr>
@@ -156,6 +220,7 @@ export default function AdvisoryProjectDetailPage() {
                 <td className="p-2">{a.name || a.student_id}</td>
                 <td className="p-2">{a.role || '-'}</td>
                 <td className="p-2">{a.hours_planned || '-'}</td>
+                <td className="p-2">{a.hourly_rate != null ? `${formatUSD(a.hourly_rate)} USD` : (project.default_hourly_rate != null ? `${formatUSD(project.default_hourly_rate)} USD` : '-')}</td>
                 <td className="p-2">{a.active ? 'Yes' : 'No'}</td>
                 <td className="p-2 text-right">
                   <button className="px-2 py-1 text-xs rounded border mr-2" onClick={async()=>{ await advisoryUpdateAssignment(a.id, { active: a.active ? 0 : 1 }); await load() }}>{a.active ? 'Deactivate' : 'Activate'}</button>
@@ -169,6 +234,79 @@ export default function AdvisoryProjectDetailPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Coffee Chats Modal */}
+      <Modal isOpen={coffeeOpen} onClose={()=>setCoffeeOpen(false)} title="Coffee Chats" size="xl">
+        <div className="text-sm text-muted-foreground mb-3">Project ID: {id}</div>
+        <div className="overflow-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left border-b border-border">
+                <th className="p-2">Student</th>
+                <th className="p-2">Start</th>
+                <th className="p-2">End</th>
+                <th className="p-2">Status</th>
+                <th className="p-2">Owner</th>
+                <th className="p-2 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {coffee.map(r => (
+                <tr key={r.id} className="border-b border-border">
+                  <td className="p-2">{r.student_email}</td>
+                  <td className="p-2">{new Date(r.start_ts).toLocaleString()}</td>
+                  <td className="p-2">{new Date(r.end_ts).toLocaleString()}</td>
+                  <td className="p-2">{r.status}</td>
+                  <td className="p-2">{r.claimed_by || '-'}</td>
+                  <td className="p-2 text-right">
+                    <button className="px-2 py-1 text-xs rounded border mr-2" disabled={busy} onClick={async()=>{ setBusy(true); try { await advisoryAcceptCoffeeRequest(r.id); await loadCoffee() } finally { setBusy(false) } }}>Accept</button>
+                    <button className="px-2 py-1 text-xs rounded border" disabled={busy} onClick={async()=>{ setBusy(true); try { await advisoryCancelCoffeeRequest(r.id) ; await loadCoffee() } finally { setBusy(false) } }}>Cancel</button>
+                  </td>
+                </tr>
+              ))}
+              {coffee.length === 0 && <tr><td className="p-2 text-muted-foreground">No requests for this project.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </Modal>
+
+      {/* Applications Modal */}
+      <Modal isOpen={appsOpen} onClose={()=>setAppsOpen(false)} title="Applications" size="xl">
+        <div className="text-sm text-muted-foreground mb-3">Project ID: {id}</div>
+        <div className="overflow-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left border-b border-border">
+                <th className="p-2">Name</th>
+                <th className="p-2">Email</th>
+                <th className="p-2">Status</th>
+                <th className="p-2">Created</th>
+                <th className="p-2 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {apps.map(a => (
+                <tr key={a.id} className="border-b border-border">
+                  <td className="p-2">{a.first_name} {a.last_name}</td>
+                  <td className="p-2">{a.email}</td>
+                  <td className="p-2">{a.status}</td>
+                  <td className="p-2">{new Date(a.created_at).toLocaleString()}</td>
+                  <td className="p-2 text-right">
+                    <button className="px-2 py-1 text-xs rounded border mr-2" disabled={busy} onClick={async()=>{ setBusy(true); try { await advisoryUpdateApplication(a.id, { status: 'interview' }); await loadApps() } finally { setBusy(false) } }}>Interview</button>
+                    <button className="px-2 py-1 text-xs rounded border mr-2" disabled={busy} onClick={async()=>{ setBusy(true); try { await advisoryUpdateApplication(a.id, { status: 'offer' }); await loadApps() } finally { setBusy(false) } }}>Offer</button>
+                    <button className="px-2 py-1 text-xs rounded border" disabled={busy} onClick={async()=>{ setBusy(true); try { await advisoryRejectApplication(a.id, 'admin') ; await loadApps() } finally { setBusy(false) } }}>Reject</button>
+                  </td>
+                </tr>
+              ))}
+              {apps.length === 0 && <tr><td className="p-2 text-muted-foreground">No applications for this project.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </Modal>
     </div>
   )
 }
+
+
+
+

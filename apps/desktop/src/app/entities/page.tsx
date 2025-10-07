@@ -1,378 +1,512 @@
-'use client';
+"use client"
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import { 
   Building2, 
-  Calendar,
-  MapPin,
-  FileText,
   Users,
-  DollarSign,
-  ChevronRight,
-  Plus,
-  Download,
-  ExternalLink,
+  ArrowRightLeft,
+  Loader2,
   Shield,
-  Briefcase,
-  Hash
-} from 'lucide-react';
-
-const API_URL = '/api';
+  Lock,
+  UserCircle,
+  Briefcase
+} from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { DynamicOrgChart } from "@/components/entities/DynamicOrgChart"
 
 interface Entity {
-  id: number;
-  legal_name: string;
-  entity_type: string;
-  ein?: string;
-  formation_date?: string;
-  state?: string;
-  parent_entity_id?: number;
-  is_active: boolean;
-  address?: string;
-  registered_agent?: string;
-  business_purpose?: string;
-  ownership_structure?: any;
-  documents?: any[];
+  id: number
+  entity_name: string
+  entity_type: string
+  ein?: string
+  entity_status: string
+  is_available: boolean
+  parent_entity_id?: number | null
+  ownership_percentage?: number | null
+}
+
+interface Employee {
+  id: number
+  name: string
+  email: string
+  ownership_percentage: number
+  role?: string
+  title?: string
+}
+
+interface Project {
+  id: number
+  name: string
+  code: string
+  status: string
+  lead_name?: string
+  leads: TeamMember[]
+  team_members: TeamMember[]
+}
+
+interface Team {
+  id: number
+  name: string
+  description: string
+  type: string
+  lead_name?: string
+  lead_email?: string
+  members: TeamMember[]
+}
+
+interface TeamMember {
+  id: number
+  name: string
+  email: string
+  title: string
+  role?: string
+  classification?: string
+  allocation_percent?: number
+}
+
+interface OrgChartData {
+  entity: Entity
+  structure_type: 'corporate' | 'advisory' | 'teams'
+  board: Employee[]
+  executives: Employee[]
+  projects: Project[]
+  teams: Team[]
 }
 
 export default function EntitiesPage() {
-  const [entities, setEntities] = useState<Entity[]>([]);
-  const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<'tree' | 'grid'>('tree');
+  const router = useRouter()
+  const [entities, setEntities] = useState<Entity[]>([])
+  const [employees, setEmployees] = useState<Employee[]>([])
+  const [orgChartData, setOrgChartData] = useState<OrgChartData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadingOrgChart, setLoadingOrgChart] = useState(false)
+  const [showOrgChart, setShowOrgChart] = useState(false)
+  const [showConversionModal, setShowConversionModal] = useState(false)
+  const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null)
+  const [expandedTeam, setExpandedTeam] = useState<string | null>(null)
+  const [expandedProject, setExpandedProject] = useState<number | null>(null)
 
-  useEffect(() => {
-    fetchEntities();
-  }, []);
-
-  const fetchEntities = async () => {
+  // Fetch entities
+  const fetchEntities = useCallback(async () => {
     try {
-      const response = await fetch(`${API_URL}/entities`);
-      
+      const response = await fetch("/api/accounting/entities", { credentials: "include" })
       if (response.ok) {
-        const data = await response.json();
-        setEntities(data.entities || []);
+        const data = await response.json()
+        setEntities(data)
       }
     } catch (error) {
-      console.error('Failed to fetch entities:', error);
+      console.error("Failed to fetch entities:", error)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }, [])
 
-  const getEntityTypeIcon = (type: string) => {
-    switch(type?.toLowerCase()) {
-      case 'c-corp':
-      case 'corporation':
-        return <Building2 className="h-5 w-5" />;
-      case 'llc':
-        return <Shield className="h-5 w-5" />;
-      default:
-        return <Briefcase className="h-5 w-5" />;
+  // Fetch employees
+  const fetchEmployees = useCallback(async () => {
+    try {
+      console.log("Fetching employees from /api/partners...")
+      const response = await fetch("/api/partners", { credentials: "include" })
+      console.log("Partners response status:", response.status)
+      
+      if (response.ok) {
+        const data = await response.json()
+        console.log("Partners data received:", data)
+        
+        // API returns array directly
+        const partnersList = Array.isArray(data) ? data : (data.partners || [])
+        console.log("Setting employees:", partnersList)
+        setEmployees(partnersList)
+      } else {
+        console.error("Partners API returned error:", response.status, response.statusText)
+      }
+    } catch (error) {
+      console.error("Failed to fetch employees:", error)
     }
-  };
+  }, [])
 
-  const getEntityTypeColor = (type: string) => {
-    switch(type?.toLowerCase()) {
-      case 'c-corp':
-      case 'corporation':
-        return 'bg-blue-500';
-      case 'llc':
-        return 'bg-green-500';
-      default:
-        return 'bg-gray-500';
-    }
-  };
+  useEffect(() => {
+    fetchEntities()
+    fetchEmployees()
+  }, [fetchEntities, fetchEmployees])
 
-  // Mock organization structure for visualization
-  const organizationStructure = {
-    root: {
-      id: 1,
-      name: 'NGI Capital',
-      type: 'C-Corp',
-      state: 'Delaware',
-      children: [
-        {
-          id: 2,
-          name: 'NGI Capital Advisory LLC',
-          type: 'LLC',
-          state: 'Delaware',
-          ownership: '100%'
-        },
-        {
-          id: 3,
-          name: 'The Creator Terminal',
-          type: 'C-Corp', 
-          state: 'Delaware',
-          ownership: '100%'
-        }
-      ]
+  // Get entity display name (remove duplicate LLC/Corp)
+  const getEntityDisplayName = (entity: Entity) => {
+    let name = entity.entity_name
+    const type = entity.entity_type.toUpperCase()
+    
+    if (type.includes("LLC") && name.toUpperCase().includes("LLC")) {
+      name = name.replace(/\s*LLC\s*$/i, "").replace(/\s*L\.L\.C\.\s*$/i, "").trim()
     }
-  };
+    if (type.includes("CORP") && (name.toUpperCase().includes("INC") || name.toUpperCase().includes("CORP"))) {
+      name = name.replace(/\s*Inc\.?\s*$/i, "").replace(/\s*Corp\.?\s*$/i, "").trim()
+    }
+    
+    return name
+  }
+
+  // Get entity icon
+  const getEntityIcon = (type: string, isAvailable: boolean) => {
+    if (!isAvailable) return <Lock className="h-5 w-5 text-orange-500" />
+    return type.toLowerCase().includes("corp") ? 
+      <Building2 className="h-5 w-5 text-blue-500" /> : 
+      <Shield className="h-5 w-5 text-green-500" />
+  }
+
+  // Extract role from employee name
+  const getEmployeeRole = (name: string) => {
+    const match = name.match(/\((.*?)\)/)
+    return match ? match[1] : "Team Member"
+  }
+
+  const getEmployeeName = (name: string) => {
+    return name.split("(")[0].trim()
+  }
+
+  const parentEntity = entities.find(e => e.is_available && e.parent_entity_id === null)
+  const subsidiaries = entities.filter(e => e.parent_entity_id !== null)
+
+  const handleEntityClick = async (entity: Entity) => {
+    // Allow viewing org chart even for pending conversion entities
+    setSelectedEntity(entity)
+    setLoadingOrgChart(true)
+    setShowOrgChart(true)
+    
+    try {
+      console.log(`Fetching org chart for entity ${entity.id}...`)
+      const response = await fetch(`/api/entities/${entity.id}/org-chart`, { 
+        credentials: "include" 
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        console.log("Org chart data received:", data)
+        setOrgChartData(data)
+      } else {
+        console.error("Failed to fetch org chart:", response.status)
+        
+        // Smart fallback based on entity name
+        const isAdvisory = entity.entity_name?.toLowerCase().includes('advisory')
+        const isCreator = entity.entity_name?.toLowerCase().includes('creator')
+        
+        setOrgChartData({
+          entity,
+          structure_type: isAdvisory ? 'advisory' : (isCreator ? 'teams' : 'corporate'),
+          board: (!isAdvisory && !isCreator) ? employees : [],
+          executives: (!isAdvisory && !isCreator) ? employees : [],
+          projects: [],
+          teams: []
+        })
+      }
+    } catch (error) {
+      console.error("Error fetching org chart:", error)
+      
+      // Smart fallback based on entity name
+      const isAdvisory = entity.entity_name?.toLowerCase().includes('advisory')
+      const isCreator = entity.entity_name?.toLowerCase().includes('creator')
+      
+      setOrgChartData({
+        entity,
+        structure_type: isAdvisory ? 'advisory' : (isCreator ? 'teams' : 'corporate'),
+        board: (!isAdvisory && !isCreator) ? employees : [],
+        executives: (!isAdvisory && !isCreator) ? employees : [],
+        projects: [],
+        teams: []
+      })
+    } finally {
+      setLoadingOrgChart(false)
+    }
+  }
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent"></div>
-          <p className="mt-4 text-sm text-muted-foreground font-medium">Loading entities...</p>
+          <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-sm text-muted-foreground">Loading organization structure...</p>
         </div>
       </div>
-    );
+    )
   }
 
   return (
-    <div className="p-6 lg:p-8 animate-fadeIn">
-      {/* Header */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground mb-2">Entity Management</h1>
-            <p className="text-muted-foreground">
-              Manage your business entities and organizational structure
-            </p>
-          </div>
-          <button className="btn-primary flex items-center gap-2">
-            <Plus className="h-4 w-4" />
-            Add Entity
-          </button>
+    <>
+      <div className="p-6 lg:p-8 space-y-6">
+        {/* Header */}
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Entity Management</h1>
+          <p className="text-muted-foreground mt-1">
+            Manage your business entities and organizational structure
+          </p>
         </div>
 
-        {/* View Toggle */}
-        <div className="mt-4 flex gap-2">
-          <button
-            onClick={() => setViewMode('tree')}
-            className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-              viewMode === 'tree' 
-                ? 'bg-primary text-primary-foreground' 
-                : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-            }`}
-          >
-            Organization Chart
-          </button>
-          <button
-            onClick={() => setViewMode('grid')}
-            className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-              viewMode === 'grid' 
-                ? 'bg-primary text-primary-foreground' 
-                : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-            }`}
-          >
-            Grid View
-          </button>
-        </div>
+        {/* Organization Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Organization Structure</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {entities.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <Building2 className="h-16 w-16 text-muted-foreground mb-4 opacity-50" />
+                <h3 className="text-lg font-semibold mb-2">No entities found</h3>
+                <p className="text-sm text-muted-foreground text-center max-w-md">
+                  Add your first entity to begin building your organization structure.
+                </p>
+              </div>
+            ) : (
+              <div className="py-8">
+                {/* COMPLETELY REDESIGNED TREE STRUCTURE */}
+                <div className="flex flex-col items-center">
+                  {/* Parent Entity */}
+                  {parentEntity && (
+                    <div
+                      onClick={() => handleEntityClick(parentEntity)}
+                      className="group relative bg-gradient-to-br from-primary/10 to-primary/5 
+                        border-2 border-primary rounded-xl p-6 
+                        transition-all duration-300 cursor-pointer
+                        hover:shadow-lg hover:scale-105 hover:border-primary/80
+                        min-w-[320px]"
+                    >
+                      <div className="flex items-start gap-4">
+                        <div className="p-3 bg-primary/10 rounded-lg">
+                          {getEntityIcon(parentEntity.entity_type, parentEntity.is_available)}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="font-bold text-lg">{getEntityDisplayName(parentEntity)}</h3>
+                            <Badge variant="default" className="bg-blue-500">Active</Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground">{parentEntity.entity_type}</p>
+                        </div>
+                      </div>
+                      <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span className="bg-primary text-primary-foreground text-xs font-medium px-2 py-1 rounded whitespace-nowrap">
+                          Click to view org chart
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Tree Connectors */}
+                  {subsidiaries.length > 0 && (
+                    <>
+                      {/* Vertical line from parent */}
+                      <div className="w-0.5 h-16 bg-border"></div>
+                      
+                      {/* Horizontal and vertical lines + Subsidiaries at bottom */}
+                      <div className="relative flex justify-center">
+                        {/* Horizontal line exactly 360px */}
+                        <div className="absolute h-0.5 bg-border" style={{ width: '360px', top: '0' }}></div>
+                        {/* Two vertical lines positioned at exact ends */}
+                        <div className="absolute w-0.5 h-16 bg-border" style={{ left: 'calc(50% - 180px)', top: '0' }}></div>
+                        <div className="absolute w-0.5 h-16 bg-border" style={{ left: 'calc(50% + 180px)', top: '0' }}></div>
+                      </div>
+                      
+                      {/* Subsidiaries - right at bottom of lines */}
+                      <div className="flex justify-center gap-12" style={{ width: '600px', margin: '64px auto 0' }}>
+                          {subsidiaries.map((entity) => (
+                            <div
+                              key={entity.id}
+                              className={`group relative bg-card border-2 rounded-xl p-5
+                                transition-all duration-300 cursor-pointer hover:shadow-md hover:scale-105
+                                ${entity.is_available ? "border-primary/30" : "border-dashed border-orange-500/50"}
+                                min-w-[280px] flex-1`}
+                              onClick={() => handleEntityClick(entity)}
+                            >
+                              <div className="flex items-start gap-3">
+                                <div className={`p-2.5 rounded-lg ${entity.is_available ? "bg-primary/10" : "bg-muted"}`}>
+                                  {getEntityIcon(entity.entity_type, entity.is_available)}
+                                </div>
+                                <div className="flex-1">
+                                  <h4 className="font-semibold text-base mb-1">{getEntityDisplayName(entity)}</h4>
+                                  <p className="text-xs text-muted-foreground mb-2">{entity.entity_type}</p>
+                                  <div className="flex items-center gap-3 text-xs">
+                                    <span className="text-muted-foreground">{entity.ownership_percentage}% owned</span>
+                                    {entity.is_available ? (
+                                      <Badge variant="default" className="text-xs">Active</Badge>
+                                    ) : (
+                                      <Badge variant="outline" className="text-xs text-orange-600 border-orange-600">
+                                        Pending Conversion
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                              {!entity.is_available && (
+                                <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <span className="bg-orange-500 text-white text-xs font-medium px-2 py-1 rounded whitespace-nowrap">
+                                    Requires Conversion
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Conversion CTA */}
+        {subsidiaries.some(e => !e.is_available) && (
+          <Card className="border-orange-500/20 bg-orange-50/50 dark:bg-orange-950/20">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-orange-500/10 rounded-lg">
+                    <ArrowRightLeft className="h-6 w-6 text-orange-600" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-lg mb-1">Entity Conversion Pending</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Complete the LLC to C-Corp conversion to activate your subsidiary entities
+                    </p>
+                  </div>
+                </div>
+                <Button onClick={() => setShowConversionModal(true)} size="lg" className="bg-orange-600 hover:bg-orange-700">
+                  Start Conversion
+                  <ArrowRightLeft className="ml-2 h-4 w-4" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
-      {viewMode === 'tree' ? (
-        /* Organization Chart View */
-        <div className="card-modern p-8">
-          <h2 className="text-lg font-semibold mb-6">Organization Structure</h2>
-          
-          {entities.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12">
-              <Building2 className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground text-center">
-                No entities found. Add your first entity to begin building your organization structure.
+      {/* Modern Organization Chart Modal - Click backdrop to close */}
+      <Dialog open={showOrgChart} onOpenChange={setShowOrgChart}>
+        <DialogContent 
+          hideClose
+          className="max-w-5xl w-[90vw] max-h-[85vh] overflow-y-auto bg-background/95 backdrop-blur-xl border shadow-2xl rounded-2xl p-0"
+          onPointerDownOutside={() => setShowOrgChart(false)}
+        >
+          <div className="sticky top-0 z-10 bg-gradient-to-r from-primary/5 via-background/95 to-primary/5 backdrop-blur-xl border-b px-8 py-5">
+            <div>
+              <h2 className="text-2xl font-bold tracking-tight">
+                {selectedEntity ? getEntityDisplayName(selectedEntity) : ""}
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                {selectedEntity?.entity_type} • Organization Structure
               </p>
-              <button className="btn-primary mt-4 flex items-center gap-2">
-                <Plus className="h-4 w-4" />
-                Add First Entity
-              </button>
-            </div>
-          ) : (
-            <div className="flex justify-center">
-              <div className="text-center">
-                {/* Parent Entity */}
-                <div className="inline-block">
-                  <div 
-                    className="card-modern p-6 cursor-pointer hover:scale-[1.02] transition-all min-w-[280px]"
-                    onClick={() => setSelectedEntity(organizationStructure.root as any)}
-                  >
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className={`p-2 rounded-lg ${getEntityTypeColor('c-corp')} bg-opacity-10`}>
-                        {getEntityTypeIcon('c-corp')}
-                      </div>
-                      <div className="text-left flex-1">
-                        <h3 className="font-semibold text-foreground">{organizationStructure.root.name}</h3>
-                        <p className="text-xs text-muted-foreground">{organizationStructure.root.type} - {organizationStructure.root.state}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <span>Parent Company</span>
-                      <ChevronRight className="h-3 w-3" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Connection Lines */}
-                {organizationStructure.root.children.length > 0 && (
-                  <div className="relative my-8">
-                    <div className="absolute left-1/2 transform -translate-x-1/2 w-0.5 h-8 bg-border"></div>
-                    <div className="absolute left-1/2 transform -translate-x-1/2 top-8 w-full h-0.5 bg-border"></div>
-                  </div>
-                )}
-
-                {/* Child Entities */}
-                <div className="flex gap-6 justify-center">
-                  {organizationStructure.root.children.map((child, index) => (
-                    <div key={child.id} className="relative">
-                      {/* Vertical line from horizontal bar to entity */}
-                      <div className="absolute left-1/2 transform -translate-x-1/2 -top-8 w-0.5 h-8 bg-border"></div>
-                      
-                      <div 
-                        className="card-modern p-6 cursor-pointer hover:scale-[1.02] transition-all min-w-[240px]"
-                        onClick={() => setSelectedEntity(child as any)}
-                      >
-                        <div className="flex items-center gap-3 mb-3">
-                          <div className={`p-2 rounded-lg ${getEntityTypeColor(child.type)} bg-opacity-10`}>
-                            {getEntityTypeIcon(child.type)}
-                          </div>
-                          <div className="text-left flex-1">
-                            <h3 className="font-semibold text-foreground text-sm">{child.name}</h3>
-                            <p className="text-xs text-muted-foreground">{child.type} - {child.state}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="text-muted-foreground">Ownership</span>
-                          <span className="font-medium text-foreground">{child.ownership}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      ) : (
-        /* Grid View */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {entities.length === 0 ? (
-            <div className="col-span-full">
-              <div className="card-modern p-12 text-center">
-                <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground">No entities found.</p>
-                <button className="btn-primary mt-4 mx-auto flex items-center gap-2">
-                  <Plus className="h-4 w-4" />
-                  Add First Entity
-                </button>
-              </div>
-            </div>
-          ) : (
-            <>
-              {/* Placeholder entity cards */}
-              {['NGI Capital', 'NGI Capital Advisory LLC', 'The Creator Terminal'].map((name, index) => (
-                <div key={index} className="card-modern p-6 hover:scale-[1.02] transition-all cursor-pointer">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className={`p-3 rounded-lg ${getEntityTypeColor(index === 1 ? 'llc' : 'c-corp')} bg-opacity-10`}>
-                      {getEntityTypeIcon(index === 1 ? 'llc' : 'c-corp')}
-                    </div>
-                    <span className="text-xs font-medium text-success">Active</span>
-                  </div>
-                  
-                  <h3 className="font-semibold text-lg text-foreground mb-1">{name}</h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    {index === 1 ? 'LLC' : 'C-Corporation'} - Delaware
-                  </p>
-
-                  <div className="space-y-2 text-sm">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Hash className="h-4 w-4" />
-                      <span>EIN: **-*******</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Calendar className="h-4 w-4" />
-                      <span>Formed: --/--/----</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <MapPin className="h-4 w-4" />
-                      <span>Delaware, USA</span>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 pt-4 border-t border-border flex items-center justify-between">
-                    <button className="text-sm text-primary hover:text-primary/80 font-medium">
-                      View Details
-                    </button>
-                    <button className="text-sm text-muted-foreground hover:text-foreground">
-                      Documents
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Entity Details Modal/Sidebar */}
-      {selectedEntity && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="card-modern max-w-2xl w-full max-h-[80vh] overflow-y-auto p-6">
-            <div className="flex items-start justify-between mb-6">
-              <div>
-                <h2 className="text-2xl font-bold text-foreground">{selectedEntity.legal_name}</h2>
-                <p className="text-muted-foreground">{selectedEntity.entity_type} - {selectedEntity.state}</p>
-              </div>
-              <button 
-                onClick={() => setSelectedEntity(null)}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                x
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <h3 className="font-semibold text-foreground">Registration Information</h3>
-                <div className="space-y-3 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Entity Type:</span>
-                    <span className="font-medium">{selectedEntity.entity_type || 'Not specified'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Formation State:</span>
-                    <span className="font-medium">{selectedEntity.state || 'Not specified'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">EIN:</span>
-                    <span className="font-medium">{selectedEntity.ein || 'Pending'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Formation Date:</span>
-                    <span className="font-medium">{selectedEntity.formation_date || 'Not specified'}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <h3 className="font-semibold text-foreground">Registered Agent</h3>
-                <div className="text-sm text-muted-foreground">
-                  <p>Information will be populated from uploaded documents</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6 pt-6 border-t border-border">
-              <h3 className="font-semibold text-foreground mb-4">Documents</h3>
-              <div className="text-sm text-muted-foreground">
-                <p>No documents uploaded yet. Upload formation documents to populate entity information.</p>
-              </div>
-            </div>
-
-            <div className="mt-6 flex gap-3">
-              <button className="btn-primary flex items-center gap-2">
-                <FileText className="h-4 w-4" />
-                Upload Documents
-              </button>
-              <button className="btn-secondary flex items-center gap-2">
-                <Download className="h-4 w-4" />
-                Export Details
-              </button>
             </div>
           </div>
-        </div>
-      )}
-    </div>
-  );
+
+          <div className="px-8 pb-8">
+            <DynamicOrgChart 
+              data={orgChartData}
+              loading={loadingOrgChart}
+              expandedTeam={expandedTeam}
+              setExpandedTeam={setExpandedTeam}
+              expandedProject={expandedProject}
+              setExpandedProject={setExpandedProject}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Conversion Workflow Modal */}
+      <Dialog open={showConversionModal} onOpenChange={setShowConversionModal}>
+        <DialogContent className="max-w-5xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-2xl">
+              Entity Conversion Management
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6 mt-4">
+            <Card className="border-primary/20 bg-primary/5">
+              <CardContent className="space-y-4 pt-6">
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3 p-3 bg-card rounded-lg">
+                    <div className="p-1.5 bg-primary/10 rounded">
+                      <span className="text-primary font-bold text-sm">1</span>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-sm mb-1">Read & Extract Document Data</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Extract key details from Certificate of Incorporation: authorized shares, par value, stock classes, formation date
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 p-3 bg-card rounded-lg">
+                    <div className="p-1.5 bg-primary/10 rounded">
+                      <span className="text-primary font-bold text-sm">2</span>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-sm mb-1">Calculate Capital Accounts from Accounting System</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Automatically pull member capital account balances and ownership % from your accounting documents and journal entries (NOT hardcoded)
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 p-3 bg-card rounded-lg">
+                    <div className="p-1.5 bg-primary/10 rounded">
+                      <span className="text-primary font-bold text-sm">3</span>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-sm mb-1">Generate GAAP Conversion Entries</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Create ASC 505-compliant journal entries: DR Members' Capital → CR Common Stock (par) + APIC
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 p-3 bg-card rounded-lg">
+                    <div className="p-1.5 bg-primary/10 rounded">
+                      <span className="text-primary font-bold text-sm">4</span>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-sm mb-1">Archive NGI Capital LLC</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Mark entity as "converted", archive all LLC accounting data, maintain complete audit trail
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 p-3 bg-card rounded-lg">
+                    <div className="p-1.5 bg-primary/10 rounded">
+                      <span className="text-primary font-bold text-sm">5</span>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-sm mb-1">Activate NGI Capital Inc. + Subsidiaries</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Create new C-Corp entity, transfer all data, activate Advisory LLC and Creator Terminal Inc., update entire app to NGI Capital Inc.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 p-3 bg-card rounded-lg">
+                    <div className="p-1.5 bg-primary/10 rounded">
+                      <span className="text-primary font-bold text-sm">6</span>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-sm mb-1">Generate Stockholder Documents</h4>
+                      <p className="text-xs text-muted-foreground">
+                        Create stock certificates, update cap table, generate audit package
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-4 border-t border-border">
+                  <Button variant="outline" onClick={() => setShowConversionModal(false)}>
+                    Close
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
 }

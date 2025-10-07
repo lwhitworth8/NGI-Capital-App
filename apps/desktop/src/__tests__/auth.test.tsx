@@ -14,7 +14,7 @@ jest.mock('../lib/api', () => ({
   apiClient: {
     login: jest.fn(),
     logout: jest.fn(),
-    getCurrentUser: jest.fn(),
+    getProfile: jest.fn(),
   },
 }));
 
@@ -99,7 +99,7 @@ describe('Authentication', () => {
       name: 'Andre Nurmamade',
       ownership_percentage: 50,
     };
-    (apiClient.getCurrentUser as jest.Mock).mockResolvedValue(mockUser);
+    (apiClient.getProfile as jest.Mock).mockResolvedValue(mockUser);
 
     render(
       <QueryClientProvider client={queryClient}>
@@ -126,7 +126,7 @@ describe('Authentication', () => {
       ownership_percentage: 50,
     };
 
-    (apiClient.getCurrentUser as jest.Mock).mockResolvedValue(mockUser);
+    (apiClient.getProfile as jest.Mock).mockResolvedValue(mockUser);
 
     render(
       <QueryClientProvider client={queryClient}>

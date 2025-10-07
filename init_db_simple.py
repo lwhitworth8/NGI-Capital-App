@@ -185,21 +185,62 @@ def init_database():
     """)
     print("[OK] Documents table created")
     
-    # Create audit_log table
+    # Create audit_log table with backward/forward compatible columns
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS audit_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             partner_id INTEGER,
+            user_email TEXT,
             action TEXT NOT NULL,
+            table_name TEXT,
+            record_id INTEGER,
             entity_type TEXT,
             entity_id INTEGER,
+            resource_type TEXT,
+            resource_id INTEGER,
             details TEXT,
+            old_values TEXT,
+            new_values TEXT,
+            success INTEGER,
             ip_address TEXT,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at TEXT,
             FOREIGN KEY (partner_id) REFERENCES partners(id)
         )
     """)
-    print("[OK] Audit log table created")
+    # Ensure new columns exist if table predated this schema
+    try:
+        acolumns = [r[1] for r in cursor.execute("PRAGMA table_info(audit_log)").fetchall()]
+        def _add(col, type_):
+            if col not in acolumns:
+                cursor.execute(f"ALTER TABLE audit_log ADD COLUMN {col} {type_}")
+        _add('user_email','TEXT')
+        _add('table_name','TEXT')
+        _add('record_id','INTEGER')
+        _add('resource_type','TEXT')
+        _add('resource_id','INTEGER')
+        _add('old_values','TEXT')
+        _add('new_values','TEXT')
+        _add('success','INTEGER')
+        _add('created_at','TEXT')
+        conn.commit()
+    except Exception:
+        pass
+    print("[OK] Audit log table created/updated")
+
+    # Minimal bank_transactions table to support tests and ingestion
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS bank_transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            bank_account_id INTEGER,
+            external_transaction_id TEXT,
+            transaction_date TEXT,
+            amount REAL,
+            description TEXT,
+            is_reconciled INTEGER DEFAULT 0
+        )
+    """)
+    print("[OK] Bank transactions table ensured")
     
     # Insert partners
     partners = [

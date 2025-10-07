@@ -1,5 +1,22 @@
 # Students Admin Module – PRD (Expanded)
 
+## Addendum – Coffee Chats Context (2025‑10‑03)
+
+Overview
+- Students see coffee chat availability scoped to the selected project’s leads on the project page. Chats are recommended prior to application and allowed regardless of application state.
+- Policy: PT timezone for display; 24‑hour cancellation guidance; two no‑shows may limit future requests.
+- Admins manage Coffee Chats within each Project’s Coffee Chats tab; the Students detail page may surface recent chat activity for context, but actions live in the Project tab.
+
+Constraints
+- One active coffee chat request per student per project.
+- Requests expire after 48 hours if not accepted.
+- Holds prevent double booking across projects for the same admin; Google Calendar conflicts are checked on accept.
+
+Audit & Visibility
+- Coffee chat actions are audited with `project_id` and `admin_email`.
+- Student detail activity timeline should include coffee chat milestones (requested/accepted/completed/no‑show/canceled) with links to the host project tab.
+
+
 ## 0) Context & Goals
 The Students Admin module is the internal database and management surface for student profiles participating in NGI Capital Advisory. Students own their canonical profile via the student Settings page. Admins (Andre/Landon) view and act on these profiles (assign to projects, track applications/chats/onboarding, override status, soft-delete/restore). Email is immutable; profile completeness gates student applications.
 

@@ -1,5 +1,32 @@
 # NGI Capital Advisory – Projects Module (Admin) PRD
 
+## Addendum – Coffee Chats Tab (2025‑10‑03)
+
+Purpose
+- Integrate Coffee Chats management directly into each Project’s detail view while keeping availability global per admin. Students see only the leads’ availability for the selected project.
+
+Admin UI – Project › Coffee Chats
+- Availability View: aggregate and display the project leads’ global availability (15/30 min) in PT; read‑only aggregation here, creation/edit is per lead.
+- Actions:
+  - Manage my availability (lead only): add/delete global blocks.
+  - Requests (project‑scoped): list and act on pending/accepted/completed/etc.; accept (host=accepting admin), propose new time, cancel, complete, mark no‑show.
+  - Metrics header: pending | accepted | completed (30d) | no‑shows.
+- Conflict Avoidance: holds on request creation; Google Calendar free/busy check on accept; conflicts block accept and require propose.
+- Policy: 24‑hour cancellation guidance; 2 no‑shows can temporarily block further requests.
+
+Student UX – Projects › [id]
+- Show only availability of that project’s leads; allow request prior to application; recommend chat before applying.
+- After chat, student can proceed to application (no auto lane change).
+
+Data/API Hooks
+- Leads Source: `GET /advisory/projects/{pid}/leads` defines the emails used to aggregate availability.
+- Requests are stored with `project_id`; one active request per (student_email, project_id).
+- Endpoints reused from Coffee Chats PRD addendum (public + admin project‑scoped).
+
+Navigation Changes
+- Coffee Chats admin functionality is accessed from the Project detail tab; standalone global admin pages are deprecated.
+
+
 ## 0. Context
 This PRD defines the Admin Projects module for NGI Capital Advisory, which powers student‑facing project discovery and application flows. It aligns with the existing FastAPI + Next.js stack and the advisory tables already present in the backend. No code changes are performed by this PRD; it specifies behavior for implementation.
 

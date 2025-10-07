@@ -14,6 +14,10 @@ import {
 import type { AdvisoryApplication, AdvisoryProject } from '@/types'
 import { advisoryGetApplication, advisoryRejectApplication, advisoryWithdrawApplication, advisoryUploadApplicationAttachment } from '@/lib/api'
 import { useRouter } from 'next/navigation'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/Select'
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/Table'
 
 type Lane = 'new'|'reviewing'|'interview'|'offer'|'joined'|'rejected'|'withdrawn'
 const LANES: Lane[] = ['new','reviewing','interview','offer','joined','rejected','withdrawn']
@@ -148,27 +152,40 @@ export default function ApplicationsAdminPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">Applications {newCount>0 && (<span className="ml-2 text-xs px-2 py-1 rounded-full bg-blue-600 text-white">{newCount} new</span>)}</h1>
-        <div className="flex items-center gap-2">
-          <input placeholder="Search name/email/school/program" value={search} onChange={e=>setSearch(e.target.value)} onKeyDown={e=>{ if (e.key==='Enter') loadApps() }} className="px-3 py-2 border rounded bg-background text-sm w-64" />
-          <select className="px-3 py-2 border rounded bg-background text-sm" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
-            <option value="">All Statuses</option>
-            {LANES.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <select className="px-3 py-2 border rounded bg-background text-sm" value={reviewerFilter} onChange={e=>setReviewerFilter(e.target.value)}>
-            <option value="">All Reviewers</option>
-            <option value="anurmamade@ngicapitaladvisory.com">Andre</option>
-            <option value="lwhitworth@ngicapitaladvisory.com">Landon</option>
-            <option value="unassigned">Unassigned</option>
-          </select>
-          <button className="px-3 py-2 rounded border" onClick={loadApps}>Filter</button>
-          <div className="h-6 w-px bg-border mx-2" />
-          <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={globalView} onChange={e=>{ setGlobalView(e.target.checked); setPastView(false) }} /> Global View</label>
-          <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={pastView} onChange={e=>{ setPastView(e.target.checked); setGlobalView(false) }} /> Past Applications</label>
-          {newCount>0 && <button className="px-3 py-2 rounded border" onClick={markReviewed}>Mark reviewed</button>}
-        </div>
-      </div>
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">
+          <div>
+            <CardTitle>
+              Applications {newCount>0 && (<span className="ml-2 text-xs px-2 py-1 rounded-full bg-blue-600 text-white">{newCount} new</span>)}
+            </CardTitle>
+            <CardDescription>Review, interview, and offer candidates</CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            <input placeholder="Search name/email/school/program" value={search} onChange={e=>setSearch(e.target.value)} onKeyDown={e=>{ if (e.key==='Enter') loadApps() }} className="px-3 py-2 border rounded bg-background text-sm w-64" />
+            <Select value={statusFilter} onValueChange={(v)=>setStatusFilter(v)}>
+              <SelectTrigger className="w-40"><SelectValue placeholder="All Statuses" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">All Statuses</SelectItem>
+                {LANES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={reviewerFilter} onValueChange={(v)=>setReviewerFilter(v)}>
+              <SelectTrigger className="w-40"><SelectValue placeholder="All Reviewers" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">All Reviewers</SelectItem>
+                <SelectItem value="anurmamade@ngicapitaladvisory.com">Andre</SelectItem>
+                <SelectItem value="lwhitworth@ngicapitaladvisory.com">Landon</SelectItem>
+                <SelectItem value="unassigned">Unassigned</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" onClick={loadApps}>Filter</Button>
+            <div className="h-6 w-px bg-border mx-2" />
+            <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={globalView} onChange={e=>{ setGlobalView(e.target.checked); setPastView(false) }} /> Global View</label>
+            <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={pastView} onChange={e=>{ setPastView(e.target.checked); setGlobalView(false) }} /> Past Applications</label>
+            {newCount>0 && <Button variant="outline" onClick={markReviewed}>Mark reviewed</Button>}
+          </div>
+        </CardHeader>
+      </Card>
 
       {!globalView && !pastView && (
         <div className="flex items-center gap-3">
@@ -362,3 +379,4 @@ function Timeline({ email }: { email: string }){
     </div>
   )
 }
+

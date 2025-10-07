@@ -1,153 +1,515 @@
-import sys
-import os
-import time
-import subprocess
-from pathlib import Path
+"""
+Shared pytest fixtures and configuration for NGI Capital test suite
 
-# Ensure project root is on sys.path so `import src...` works consistently
-ROOT = Path(__file__).resolve().parent.parent
-root_str = str(ROOT)
-if root_str not in sys.path:
-    sys.path.insert(0, root_str)
+Author: NGI Capital Development Team
+Date: October 4, 2025
+"""
 
-_SERVER_PROC = None
+import pytest
+import asyncio
+from typing import AsyncGenerator
+from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.pool import StaticPool
+from dotenv import load_dotenv
 
-# Shared auth helpers for tests
-def make_token(email: str) -> str:
-    """Build a local HS256 token accepted by the test Clerk shim."""
-    try:
-        from jose import jwt  # type: ignore
-        from src.api.config import SECRET_KEY, ALGORITHM
-        return jwt.encode({"sub": email}, SECRET_KEY, algorithm=ALGORITHM)
-    except Exception:
-        return f"clerk:{email}"
+# Load environment variables from .env file for Mercury API tests
+load_dotenv()
 
-def auth_headers(email: str) -> dict:
-    return {"Authorization": f"Bearer {make_token(email)}"}
+from src.api.database_async import get_async_db
+from src.api.models import Base
+from src.api.main import app
 
-def _wait_for_health(base_url: str, timeout_seconds: int = 20) -> bool:
-    try:
-        import requests
-    except Exception:
-        return False
-    deadline = time.time() + timeout_seconds
-    url = f"{base_url}/api/health"
-    while time.time() < deadline:
-        try:
-            r = requests.get(url, timeout=2)
-            if r.status_code == 200:
-                return True
-        except Exception:
-            pass
-        time.sleep(0.5)
-    return False
 
-def pytest_sessionstart(session):
-    """
-    Start a local FastAPI server for integration tests that hit http://localhost:8001.
-    Uses an isolated SQLite DB under .tmp/test_api.db so the host DB is untouched.
-    """
-    global _SERVER_PROC
-    base_url = os.environ.get("TEST_BASE_URL", "http://localhost:8001")
+# Test database URL (in-memory SQLite)
+TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
-    # If a server is already running, don't spawn another.
-    # Quick probe avoids port conflicts.
-    if _wait_for_health(base_url, timeout_seconds=1):
-        return
 
-    tmp_dir = ROOT / ".tmp"
-    tmp_dir.mkdir(exist_ok=True)
-    db_path = tmp_dir / "test_api.db"
-
-    env = os.environ.copy()
-    env.setdefault("ENV", "development")
-    env.setdefault("ALLOW_ALL_HOSTS", "1")
-    # Enable local JWT fallback in Clerk verification for tests
-    env.setdefault("ALLOW_LOCAL_TEST_JWT", "1")
-    env.setdefault("ENABLE_ENV_ADMIN_FALLBACK", "1")
-    env.setdefault(
-        "ALLOWED_ADVISORY_ADMINS",
-        "lwhitworth@ngicapitaladvisory.com,anurmamade@ngicapitaladvisory.com",
+@pytest.fixture(scope="function")
+async def async_db() -> AsyncGenerator[AsyncSession, None]:
+    """Create a test database session"""
+    # Create async engine with in-memory SQLite
+    engine = create_async_engine(
+        TEST_DATABASE_URL,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+        echo=False
     )
-    env["DATABASE_PATH"] = str(db_path)
-    env.setdefault("SECRET_KEY", "testing-secret-key")
-
-    # Initialize the database with required seed data
-    init_script = ROOT / "init_db_simple.py"
-    subprocess.run([sys.executable, str(init_script)], check=True, cwd=str(ROOT), env=env)
-    # Ensure Landon's password matches test expectation
-    reset_script = ROOT / "scripts" / "dev_reset_password.py"
-    if reset_script.exists():
-        subprocess.run([
-            sys.executable,
-            str(reset_script),
-            "--email", "lwhitworth@ngicapitaladvisory.com",
-            "--password", "FlashJayz2002!$!",
-        ], check=True, cwd=str(ROOT), env=env)
-
-    # Start uvicorn server bound to localhost:8001
-    _SERVER_PROC = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "src.api.main:app", "--host", "127.0.0.1", "--port", "8001", "--log-level", "warning"],
-        cwd=str(ROOT),
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+    
+    # Create all tables
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    
+    # Create session
+    async_session = async_sessionmaker(
+        engine,
+        class_=AsyncSession,
+        expire_on_commit=False
     )
-
-    # Wait for server to be healthy
-    if not _wait_for_health(base_url, timeout_seconds=20):
-        # If port is occupied by another process or the spawn failed, do not fail the test session.
-        # Most tests use FastAPI TestClient directly and do not require an external server.
-        try:
-            if _SERVER_PROC is not None:
-                _SERVER_PROC.terminate()
-        except Exception:
-            pass
-        # Continue without raising to allow in-process tests to run
-        return
+    
+    async with async_session() as session:
+        yield session
+    
+    # Drop all tables after test
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    
+    await engine.dispose()
 
 
+@pytest.fixture(scope="function")
+async def async_client(async_db: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
+    """Create an async HTTP client for testing"""
+    from httpx import ASGITransport
+    
+    # Override the get_async_db dependency
+    async def override_get_async_db():
+        yield async_db
+    
+    app.dependency_overrides[get_async_db] = override_get_async_db
+    
+    # Create async client with ASGI transport
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+    
+    # Clear overrides
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture(scope="function")
+async def client(async_client: AsyncClient) -> AsyncClient:
+    """Alias for async_client to match test expectations"""
+    return async_client
+
+
+@pytest.fixture(scope="function")
+def mock_auth_headers() -> dict:
+    """Create mock authentication headers for testing"""
+    return {
+        "Authorization": "Bearer test_token",
+        "X-User-ID": "1",
+        "X-User-Email": "lwhitworth@ngicapitaladvisory.com"
+    }
+
+
+# Database seed fixtures
+@pytest.fixture(scope="function", autouse=True)
+async def seed_test_entities(async_db: AsyncSession):
+    """Seed test entities into database - runs automatically"""
+    from src.api.models_accounting import AccountingEntity
+    from decimal import Decimal
+    
+    # Check if entities already exist
+    from sqlalchemy import select
+    result = await async_db.execute(select(AccountingEntity).where(AccountingEntity.id == 1))
+    existing = result.scalar_one_or_none()
+    
+    if not existing:
+        entities = [
+            AccountingEntity(
+                id=1,
+                entity_name="NGI Capital LLC",
+                entity_type="LLC",
+                is_available=True,
+                parent_entity_id=None,
+                ownership_percentage=None,
+                formation_state="DE",
+                entity_status="active",
+                ein="12-3456789"
+            ),
+            AccountingEntity(
+                id=2,
+                entity_name="NGI Capital Advisory LLC",
+                entity_type="LLC",
+                is_available=False,
+                parent_entity_id=1,
+                ownership_percentage=Decimal("100.00"),
+                formation_state="DE",
+                entity_status="active"
+            ),
+            AccountingEntity(
+                id=3,
+                entity_name="The Creator Terminal Inc.",
+                entity_type="C-Corp",
+                is_available=False,
+                parent_entity_id=1,
+                ownership_percentage=Decimal("100.00"),
+                formation_state="DE",
+                entity_status="active"
+            )
+        ]
+        
+        for entity in entities:
+            async_db.add(entity)
+        
+        await async_db.commit()
+    
+    return True
+
+
+@pytest.fixture(scope="function")
+async def seed_test_partners(async_db: AsyncSession):
+    """Seed test partners/employees into database"""
+    from src.api.models import Partners
+    import bcrypt
+    
+    # Generate test password hash
+    test_password_hash = bcrypt.hashpw("TestPassword123!".encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    
+    partners = [
+        Partners(
+            id=1,
+            email="lwhitworth@ngicapitaladvisory.com",
+            name="Landon Whitworth (CEO & Co-Founder)",
+            password_hash=test_password_hash,
+            ownership_percentage=50.0,
+            is_active=True
+        ),
+        Partners(
+            id=2,
+            email="anurmamade@ngicapitaladvisory.com",
+            name="Andre Nurmamade (Co-Founder, CFO & COO)",
+            password_hash=test_password_hash,
+            ownership_percentage=50.0,
+            is_active=True
+        )
+    ]
+    
+    for partner in partners:
+        async_db.add(partner)
+    
+    await async_db.commit()
+    return partners
+
+
+@pytest.fixture(scope="function")
+async def seed_test_coa(async_db: AsyncSession, seed_test_entities):
+    """Seed test chart of accounts"""
+    from src.api.models_accounting import ChartOfAccounts
+    
+    accounts = [
+        # Assets
+        ChartOfAccounts(
+            id=1,
+            entity_id=1,
+            account_number="1010",
+            account_name="Cash - Operating",
+            account_type="Asset",
+            normal_balance="debit",
+            allow_posting=True,
+            is_active=True
+        ),
+        ChartOfAccounts(
+            id=2,
+            entity_id=1,
+            account_number="1020",
+            account_name="Accounts Receivable",
+            account_type="Asset",
+            normal_balance="debit",
+            allow_posting=True,
+            is_active=True
+        ),
+        # Liabilities
+        ChartOfAccounts(
+            id=3,
+            entity_id=1,
+            account_number="2010",
+            account_name="Accounts Payable",
+            account_type="Liability",
+            normal_balance="credit",
+            allow_posting=True,
+            is_active=True
+        ),
+        # Equity
+        ChartOfAccounts(
+            id=4,
+            entity_id=1,
+            account_number="3010",
+            account_name="Member Capital",
+            account_type="Equity",
+            normal_balance="credit",
+            allow_posting=True,
+            is_active=True
+        ),
+        # Revenue
+        ChartOfAccounts(
+            id=5,
+            entity_id=1,
+            account_number="4010",
+            account_name="Service Revenue",
+            account_type="Revenue",
+            normal_balance="credit",
+            allow_posting=True,
+            is_active=True
+        ),
+        # Expenses
+        ChartOfAccounts(
+            id=6,
+            entity_id=1,
+            account_number="6010",
+            account_name="Operating Expenses",
+            account_type="Expense",
+            normal_balance="debit",
+            allow_posting=True,
+            is_active=True
+        )
+    ]
+    
+    for account in accounts:
+        async_db.add(account)
+    
+    await async_db.commit()
+    return accounts
+
+
+# Pytest configuration
 def pytest_configure(config):
-    """Global monkeypatch of Clerk verification for tests.
-    Accepts tokens of form 'clerk:<email>' and HS256 tokens using SECRET_KEY.
-    """
-    import importlib
-    import types
-    from jose import jwt as _jwt  # type: ignore
-    from src.api.config import SECRET_KEY
-    import src.api.auth_deps as auth_deps
-    import src.api.clerk_auth as clerk_auth
-    # Ensure env allowlist for admin gating in tests
-    os.environ.setdefault("ENABLE_ENV_ADMIN_FALLBACK", "1"); os.environ.setdefault("DISABLE_ACCOUNTING_GUARD","1")
-    os.environ.setdefault(
-        "ALLOWED_ADVISORY_ADMINS",
-        "lwhitworth@ngicapitaladvisory.com,anurmamade@ngicapitaladvisory.com",
+    """Configure pytest with custom markers"""
+    config.addinivalue_line(
+        "markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')"
     )
+    config.addinivalue_line(
+        "markers", "integration: marks tests as integration tests"
+    )
+    config.addinivalue_line(
+        "markers", "e2e: marks tests as end-to-end tests"
+    )
+    config.addinivalue_line(
+        "markers", "mercury: marks tests that use real Mercury API"
+    )
+"""
+Shared pytest fixtures and configuration for NGI Capital test suite.
 
-    def _claims_from_token(token: str):
-        if not isinstance(token, str):
-            return None
-        if token.startswith("clerk:"):
-            em = token.split(":", 1)[1]
-            return {"sub": em, "email": em}
+This setup uses a file-backed SQLite DB via the sync Session dependency
+to align with the FastAPI app and avoid async/sync mismatches.
+"""
+
+import os
+import shutil
+import pytest
+from typing import AsyncGenerator
+from httpx import AsyncClient
+from dotenv import load_dotenv
+
+# Load environment variables for tests (Mercury, etc.)
+load_dotenv()
+
+from src.api.main import app
+from src.api.database import get_db as sync_get_db, init_db as sync_init_db
+
+TEST_DB_PATH = os.path.abspath(os.path.join("data", "test_ngi_capital.db"))
+
+
+def _prepare_clean_db_file():
+    os.makedirs(os.path.dirname(TEST_DB_PATH), exist_ok=True)
+    if os.path.exists(TEST_DB_PATH):
         try:
-            return _jwt.decode(token, SECRET_KEY, algorithms=["HS256"])  # type: ignore
+            os.remove(TEST_DB_PATH)
         except Exception:
-            return None
+            try:
+                shutil.move(TEST_DB_PATH, TEST_DB_PATH + ".old")
+            except Exception:
+                pass
 
-    def _verify(token: str):
-        return _claims_from_token(token)
 
-    # Install lightweight shims
-    setattr(auth_deps, "verify_clerk_jwt", _verify)
-    setattr(clerk_auth, "verify_clerk_jwt", _verify)
+@pytest.fixture(scope="function")
+async def client() -> AsyncGenerator[AsyncClient, None]:
+    # Point to a per-test DB
+    os.environ["DATABASE_PATH"] = TEST_DB_PATH
+    _prepare_clean_db_file()
+    sync_init_db()
 
-def pytest_sessionfinish(session, exitstatus):
-    """Tear down the spawned API server if we started one."""
-    global _SERVER_PROC
-    if _SERVER_PROC is not None:
-        try:
-            _SERVER_PROC.terminate()
-        except Exception:
-            pass
-        _SERVER_PROC = None
+    from httpx import ASGITransport
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as c:
+        yield c
+
+    # Cleanup file after test
+    try:
+        if os.path.exists(TEST_DB_PATH):
+            os.remove(TEST_DB_PATH)
+    except Exception:
+        pass
+
+
+@pytest.fixture(scope="function")
+def mock_auth_headers() -> dict:
+    """Create mock authentication headers for testing"""
+    return {
+        "Authorization": "Bearer test_token",
+        "X-User-ID": "1",
+        "X-User-Email": "lwhitworth@ngicapitaladvisory.com",
+    }
+
+
+# Database seed fixtures
+@pytest.fixture(scope="function", autouse=True)
+def seed_test_entities():
+    """Seed test entities into database - runs automatically"""
+    from sqlalchemy import select
+    from decimal import Decimal
+    from src.api.models_accounting import AccountingEntity
+    with next(sync_get_db()) as db:
+        existing = db.execute(select(AccountingEntity).where(AccountingEntity.id == 1)).scalar_one_or_none()
+        if not existing:
+            entities = [
+                AccountingEntity(
+                    id=1,
+                    entity_name="NGI Capital LLC",
+                    entity_type="LLC",
+                    is_available=True,
+                    parent_entity_id=None,
+                    ownership_percentage=None,
+                    formation_state="DE",
+                    entity_status="active",
+                    ein="12-3456789",
+                ),
+                AccountingEntity(
+                    id=2,
+                    entity_name="NGI Capital Advisory LLC",
+                    entity_type="LLC",
+                    is_available=False,
+                    parent_entity_id=1,
+                    ownership_percentage=Decimal("100.00"),
+                    formation_state="DE",
+                    entity_status="active",
+                ),
+                AccountingEntity(
+                    id=3,
+                    entity_name="The Creator Terminal Inc.",
+                    entity_type="C-Corp",
+                    is_available=False,
+                    parent_entity_id=1,
+                    ownership_percentage=Decimal("100.00"),
+                    formation_state="DE",
+                    entity_status="active",
+                ),
+            ]
+            for e in entities:
+                db.add(e)
+            db.commit()
+    return True
+
+
+@pytest.fixture(scope="function")
+def seed_test_partners():
+    """Seed test partners/employees into database"""
+    from src.api.models import Partners
+    import bcrypt
+
+    test_password_hash = bcrypt.hashpw("TestPassword123!".encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+    partners = [
+        Partners(
+            id=1,
+            email="lwhitworth@ngicapitaladvisory.com",
+            name="Landon Whitworth (CEO & Co-Founder)",
+            password_hash=test_password_hash,
+            ownership_percentage=50.0,
+            is_active=True,
+        ),
+        Partners(
+            id=2,
+            email="anurmamade@ngicapitaladvisory.com",
+            name="Andre Nurmamade (Co-Founder, CFO & COO)",
+            password_hash=test_password_hash,
+            ownership_percentage=50.0,
+            is_active=True,
+        ),
+    ]
+
+    with next(sync_get_db()) as db:
+        for partner in partners:
+            db.add(partner)
+        db.commit()
+    return partners
+
+
+@pytest.fixture(scope="function")
+def seed_test_coa(seed_test_entities):
+    """Seed test chart of accounts"""
+    from src.api.models_accounting import ChartOfAccounts
+
+    accounts = [
+        # Assets
+        ChartOfAccounts(
+            id=1,
+            entity_id=1,
+            account_number="1010",
+            account_name="Cash - Operating",
+            account_type="Asset",
+            normal_balance="debit",
+            allow_posting=True,
+            is_active=True,
+        ),
+        ChartOfAccounts(
+            id=2,
+            entity_id=1,
+            account_number="1020",
+            account_name="Accounts Receivable",
+            account_type="Asset",
+            normal_balance="debit",
+            allow_posting=True,
+            is_active=True,
+        ),
+        # Liabilities
+        ChartOfAccounts(
+            id=3,
+            entity_id=1,
+            account_number="2010",
+            account_name="Accounts Payable",
+            account_type="Liability",
+            normal_balance="credit",
+            allow_posting=True,
+            is_active=True,
+        ),
+        # Equity
+        ChartOfAccounts(
+            id=4,
+            entity_id=1,
+            account_number="3010",
+            account_name="Member Capital",
+            account_type="Equity",
+            normal_balance="credit",
+            allow_posting=True,
+            is_active=True,
+        ),
+        # Revenue
+        ChartOfAccounts(
+            id=5,
+            entity_id=1,
+            account_number="4010",
+            account_name="Service Revenue",
+            account_type="Revenue",
+            normal_balance="credit",
+            allow_posting=True,
+            is_active=True,
+        ),
+        # Expenses
+        ChartOfAccounts(
+            id=6,
+            entity_id=1,
+            account_number="6010",
+            account_name="Operating Expenses",
+            account_type="Expense",
+            normal_balance="debit",
+            allow_posting=True,
+            is_active=True,
+        ),
+    ]
+
+    with next(sync_get_db()) as db:
+        for account in accounts:
+            db.add(account)
+        db.commit()
+    return accounts
+
+
+# Pytest configuration
+def pytest_configure(config):
+    """Configure pytest with custom markers"""
+    config.addinivalue_line("markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')")
+    config.addinivalue_line("markers", "integration: marks tests as integration tests")
+    config.addinivalue_line("markers", "e2e: marks tests as end-to-end tests")
+    config.addinivalue_line("markers", "mercury: marks tests that use real Mercury API")

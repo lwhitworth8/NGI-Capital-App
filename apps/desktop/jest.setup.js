@@ -1,54 +1,58 @@
-// Import testing library extensions
-require('@testing-library/jest-dom');
+import '@testing-library/jest-dom';
 
-// Mock window.matchMedia
-Object.defineProperty(window, 'matchMedia', {
-  writable: true,
-  value: jest.fn().mockImplementation(query => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: jest.fn(),
-    removeListener: jest.fn(),
-    addEventListener: jest.fn(),
-    removeEventListener: jest.fn(),
-    dispatchEvent: jest.fn(),
-  })),
-});
+// Polyfill TextEncoder/TextDecoder/Response for tests
+if (typeof global.TextEncoder === 'undefined') {
+  const { TextEncoder, TextDecoder } = require('util');
+  global.TextEncoder = TextEncoder;
+  global.TextDecoder = TextDecoder;
+}
 
-// Mock Next.js App Router hooks to avoid "expected app router to be mounted"
-jest.mock('next/navigation', () => {
-  return {
-    useRouter: () => ({
-      push: jest.fn(),
-      replace: jest.fn(),
-      prefetch: jest.fn(),
-      back: jest.fn(),
-      forward: jest.fn(),
-      refresh: jest.fn(),
-      pathname: '/',
-    }),
-    usePathname: () => '/',
-    useSearchParams: () => new URLSearchParams(),
+// Polyfill Response for MSW
+if (typeof global.Response === 'undefined') {
+  global.Response = class Response {
+    constructor(body, init) {
+      this.body = body;
+      this.init = init || {};
+      this.status = this.init.status || 200;
+      this.statusText = this.init.statusText || '';
+      this.headers = this.init.headers || {};
+    }
+  };
+}
+
+// Polyfill BroadcastChannel for MSW
+if (typeof global.BroadcastChannel === 'undefined') {
+  global.BroadcastChannel = class BroadcastChannel {
+    constructor(name) {
+      this.name = name;
+    }
+    postMessage() {}
+    addEventListener() {}
+    removeEventListener() {}
+    close() {}
+  };
+}
+
+// Mock fetch globally
+global.fetch = jest.fn(() =>
+  Promise.resolve({
+    ok: true,
+    json: () => Promise.resolve([]),
+  })
+);
+
+// Suppress console errors for tests
+const originalError = console.error;
+beforeAll(() => {
+  console.error = (...args) => {
+    const msg = args?.[0]?.toString?.() || '';
+    if (msg.includes('act(') || msg.includes('wrapped in act')) {
+      return;
+    }
+    originalError.apply(console, args);
   };
 });
 
-// Provide a minimal global.fetch for components that call fetch in effects
-if (typeof global.fetch === 'undefined') {
-  global.fetch = jest.fn(() =>
-    Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
-  );
-}
-
-// Polyfill ResizeObserver for recharts' ResponsiveContainer in jsdom
-if (typeof global.ResizeObserver === 'undefined') {
-  class ResizeObserver {
-    constructor(callback) {
-      this.callback = callback;
-    }
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  }
-  global.ResizeObserver = ResizeObserver;
-}
+afterAll(() => {
+  console.error = originalError;
+});

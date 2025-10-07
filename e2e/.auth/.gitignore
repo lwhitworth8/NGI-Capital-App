@@ -1,0 +1,2 @@
+# Ignore saved authentication states
+*.json

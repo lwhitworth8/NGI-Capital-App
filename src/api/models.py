@@ -86,11 +86,7 @@ class Partners(Base):
     # Relationships
     created_transactions = relationship("Transactions", foreign_keys="[Transactions.created_by_id]", back_populates="creator")
     approved_transactions = relationship("Transactions", foreign_keys="[Transactions.approved_by_id]", back_populates="approver")
-    journal_entries = relationship(
-        "JournalEntries",
-        foreign_keys="[JournalEntries.created_by_id]",
-        back_populates="created_by_partner",
-    )
+    # OLD DEPRECATED: journal_entries relationship - removed, use new accounting.JournalEntry instead
     expense_reports = relationship(
         "ExpenseReports",
         foreign_keys="[ExpenseReports.submitted_by_id]",
@@ -101,12 +97,12 @@ class Partners(Base):
     __table_args__ = (
         CheckConstraint('ownership_percentage >= 0 AND ownership_percentage <= 100', 
                        name='valid_ownership_percentage'),
-        CheckConstraint("email LIKE '%@ngicapital%'", name='valid_email_domain'),
+        CheckConstraint("email LIKE '%@ngicapitaladvisory.com'", name='valid_email_domain'),
     )
     
     @validates('email')
     def validate_email(self, key, address):
-        assert '@ngicapital' in address, "Email must be NGI Capital domain"
+        assert '@ngicapitaladvisory.com' in address, "Email must be @ngicapitaladvisory.com domain"
         return address.lower()
 
 
@@ -135,109 +131,17 @@ class Entities(Base):
     parent_entity = relationship("Entities", remote_side=[id], overlaps="child_entities")
     child_entities = relationship("Entities", overlaps="parent_entity")
     transactions = relationship("Transactions", back_populates="entity")
-    chart_of_accounts = relationship("ChartOfAccounts", back_populates="entity")
-    journal_entries = relationship("JournalEntries", back_populates="entity")
-    bank_accounts = relationship("BankAccounts", back_populates="entity")
+    # OLD DEPRECATED: chart_of_accounts, journal_entries, bank_accounts relationships removed
+    # Use new accounting module models instead
 
 
-class ChartOfAccounts(Base):
-    """5-digit chart of accounts system for GAAP compliance"""
-    __tablename__ = 'chart_of_accounts'
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    entity_id = Column(Integer, ForeignKey('entities.id'), nullable=False)
-    account_code = Column(String(5), nullable=False)  # 5-digit system
-    account_name = Column(String(200), nullable=False)
-    account_type = Column(Enum(AccountType), nullable=False)
-    parent_account_id = Column(Integer, ForeignKey('chart_of_accounts.id'))
-    normal_balance = Column(Enum(TransactionType), nullable=False)  # DEBIT or CREDIT
-    is_active = Column(Boolean, default=True, nullable=False)
-    description = Column(Text)
-    created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-    
-    # Relationships
-    entity = relationship("Entities", back_populates="chart_of_accounts")
-    parent_account = relationship("ChartOfAccounts", remote_side=[id], overlaps="child_accounts")
-    child_accounts = relationship("ChartOfAccounts", overlaps="parent_account")
-    journal_entry_lines = relationship("JournalEntryLines", back_populates="account")
-    transactions = relationship("Transactions", back_populates="account")
-    
-    # Constraints
-    __table_args__ = (
-        UniqueConstraint('entity_id', 'account_code', name='unique_account_code_per_entity'),
-        CheckConstraint("LENGTH(account_code) = 5", name='five_digit_account_code'),
-        Index('idx_account_code', 'account_code'),
-        Index('idx_account_type', 'account_type'),
-    )
+# DEPRECATED: ChartOfAccounts - Use models_accounting.py instead
 
 
-class JournalEntries(Base):
-    """Journal entries with approval workflow and audit trail"""
-    __tablename__ = 'journal_entries'
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    entity_id = Column(Integer, ForeignKey('entities.id'), nullable=False)
-    entry_number = Column(String(20), nullable=False)
-    entry_date = Column(Date, nullable=False)
-    description = Column(Text, nullable=False)
-    reference_number = Column(String(50))
-    total_debit = Column(SQLDecimal(15, 2), nullable=False, default=0)
-    total_credit = Column(SQLDecimal(15, 2), nullable=False, default=0)
-    created_by_id = Column(Integer, ForeignKey('partners.id'), nullable=False)
-    approved_by_id = Column(Integer, ForeignKey('partners.id'))
-    approval_status = Column(Enum(ApprovalStatus), default=ApprovalStatus.PENDING, nullable=False)
-    is_posted = Column(Boolean, default=False)
-    posted_date = Column(DateTime)
-    approval_date = Column(DateTime)
-    approval_notes = Column(Text)
-    is_reversing_entry = Column(Boolean, default=False)
-    reversed_by_entry_id = Column(Integer, ForeignKey('journal_entries.id'))
-    created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-    
-    # Relationships
-    entity = relationship("Entities", back_populates="journal_entries")
-    created_by_partner = relationship("Partners", foreign_keys=[created_by_id], back_populates="journal_entries")
-    approved_by_partner = relationship("Partners", foreign_keys=[approved_by_id])
-    journal_entry_lines = relationship("JournalEntryLines", back_populates="journal_entry", cascade="all, delete-orphan")
-    reversed_by_entry = relationship("JournalEntries", remote_side=[id])
-    
-    # Constraints - no self approval and balanced entries
-    __table_args__ = (
-        CheckConstraint('created_by_id != approved_by_id OR approved_by_id IS NULL', 
-                       name='no_self_approval'),
-        CheckConstraint('total_debit = total_credit', name='balanced_journal_entry'),
-        UniqueConstraint('entity_id', 'entry_number', name='unique_entry_number_per_entity'),
-        Index('idx_entry_date', 'entry_date'),
-        Index('idx_approval_status', 'approval_status'),
-        Index('idx_is_posted', 'is_posted'),
-    )
+# DEPRECATED: JournalEntries - Use models_accounting.py instead
 
 
-class JournalEntryLines(Base):
-    """Individual lines within journal entries"""
-    __tablename__ = 'journal_entry_lines'
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    journal_entry_id = Column(Integer, ForeignKey('journal_entries.id'), nullable=False)
-    account_id = Column(Integer, ForeignKey('chart_of_accounts.id'), nullable=False)
-    line_number = Column(Integer, nullable=False)
-    description = Column(Text)
-    debit_amount = Column(SQLDecimal(15, 2), default=0, nullable=False)
-    credit_amount = Column(SQLDecimal(15, 2), default=0, nullable=False)
-    
-    # Relationships
-    journal_entry = relationship("JournalEntries", back_populates="journal_entry_lines")
-    account = relationship("ChartOfAccounts", back_populates="journal_entry_lines")
-    
-    # Constraints
-    __table_args__ = (
-        CheckConstraint('debit_amount >= 0 AND credit_amount >= 0', name='non_negative_amounts'),
-        CheckConstraint('(debit_amount > 0 AND credit_amount = 0) OR (debit_amount = 0 AND credit_amount > 0)', 
-                       name='either_debit_or_credit'),
-        UniqueConstraint('journal_entry_id', 'line_number', name='unique_line_number_per_entry'),
-    )
+# DEPRECATED: JournalEntryLines - Use models_accounting.py instead
 
 
 class Transactions(Base):
@@ -270,7 +174,7 @@ class Transactions(Base):
     
     # Relationships
     entity = relationship("Entities", back_populates="transactions")
-    account = relationship("ChartOfAccounts", back_populates="transactions")
+    # OLD DEPRECATED: account relationship to old ChartOfAccounts removed
     creator = relationship("Partners", foreign_keys=[created_by_id], back_populates="created_transactions")
     approver = relationship("Partners", foreign_keys=[approved_by_id], back_populates="approved_transactions")
     
@@ -345,7 +249,7 @@ class ExpenseItems(Base):
     
     # Relationships
     expense_report = relationship("ExpenseReports", back_populates="expense_items")
-    account = relationship("ChartOfAccounts")
+    # OLD DEPRECATED: account relationship to old ChartOfAccounts removed
     documents = relationship("Documents", back_populates="expense_item")
     
     # Constraints
@@ -376,6 +280,7 @@ class Documents(Base):
     # Relationships
     expense_item = relationship("ExpenseItems", back_populates="documents")
     uploaded_by = relationship("Partners")
+    # OLD DEPRECATED: relationships to old JournalEntries removed
     
     # Constraints
     __table_args__ = (
@@ -385,62 +290,10 @@ class Documents(Base):
     )
 
 
-class BankAccounts(Base):
-    """Mercury Bank account information"""
-    __tablename__ = 'bank_accounts'
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    entity_id = Column(Integer, ForeignKey('entities.id'), nullable=False)
-    bank_name = Column(String(200), default='Mercury', nullable=False)
-    account_name = Column(String(200), nullable=False)
-    account_number = Column(String(50))  # Full account number (encrypted in production)
-    account_number_masked = Column(String(20), nullable=False)  # Last 4 digits only
-    routing_number = Column(String(20))
-    account_type = Column(String(50), nullable=False)  # checking, savings, etc.
-    mercury_account_id = Column(String(200), unique=True)  # Mercury's account ID
-    mercury_account_status = Column(String(50))  # active, frozen, closed
-    is_primary = Column(Boolean, default=False)
-    is_active = Column(Boolean, default=True)
-    last_sync = Column(DateTime)
-    current_balance = Column(SQLDecimal(15, 2), default=0)
-    available_balance = Column(SQLDecimal(15, 2), default=0)
-    pending_balance = Column(SQLDecimal(15, 2), default=0)
-    currency = Column(String(3), default='USD')
-    created_at = Column(DateTime, default=func.now(), nullable=False)
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-    
-    # Relationships
-    entity = relationship("Entities", back_populates="bank_accounts")
-    bank_transactions = relationship("BankTransactions", back_populates="bank_account")
+# DEPRECATED: BankAccounts - Use models_accounting.py instead
 
 
-class BankTransactions(Base):
-    """Bank transactions from API integration"""
-    __tablename__ = 'bank_transactions'
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    bank_account_id = Column(Integer, ForeignKey('bank_accounts.id'), nullable=False)
-    external_transaction_id = Column(String(200), nullable=False, unique=True)
-    transaction_date = Column(Date, nullable=False)
-    posted_date = Column(Date, nullable=False)
-    amount = Column(SQLDecimal(15, 2), nullable=False)
-    description = Column(Text, nullable=False)
-    transaction_type = Column(String(50), nullable=False)  # debit, credit, transfer, etc.
-    balance_after = Column(SQLDecimal(15, 2))
-    is_reconciled = Column(Boolean, default=False)
-    reconciled_transaction_id = Column(Integer, ForeignKey('transactions.id'))
-    created_at = Column(DateTime, default=func.now(), nullable=False)
-    
-    # Relationships
-    bank_account = relationship("BankAccounts", back_populates="bank_transactions")
-    reconciled_transaction = relationship("Transactions")
-    
-    # Constraints
-    __table_args__ = (
-        Index('idx_bank_trans_date', 'transaction_date'),
-        Index('idx_reconciled', 'is_reconciled'),
-        Index('idx_external_id', 'external_transaction_id'),
-    )
+# DEPRECATED: BankTransactions - Use models_accounting.py instead
 
 
 class AuditLog(Base):
@@ -521,7 +374,7 @@ class RevenueRecognitionEntries(Base):
     
     # Relationships
     revenue_recognition = relationship("RevenueRecognition", back_populates="recognition_entries")
-    journal_entry = relationship("JournalEntries")
+    # OLD DEPRECATED: journal_entry relationship to old JournalEntries removed
     
     # Constraints
     __table_args__ = (

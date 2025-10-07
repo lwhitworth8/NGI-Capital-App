@@ -10,20 +10,22 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, R
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func, desc, asc, select
-from pydantic import BaseModel, Field
-from pydantic import field_validator, model_validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 import json
 import uuid
 import os
 from pathlib import Path
 
 from ..models import (
-    Partners, Entities, ChartOfAccounts, JournalEntries, JournalEntryLines,
+    Partners, Entities,
     Transactions, ExpenseReports, ExpenseItems, Documents, AuditLog,
-    RevenueRecognition, RevenueRecognitionEntries, BankAccounts, BankTransactions,
+    RevenueRecognition, RevenueRecognitionEntries,
     ApprovalStatus, TransactionType, AccountType, ExpenseStatus, DocumentType,
     EntityType
 )
+# Use new accounting models instead of deprecated ones
+from ..models_accounting import ChartOfAccounts, JournalEntry, JournalEntryLine
+from ..models_accounting_part2 import BankAccount, BankTransaction
 from ..database import get_db
 from ..config import SECRET_KEY, ALGORITHM
 from jose import jwt, JWTError
@@ -46,6 +48,24 @@ import json as _jsonlib
 router = APIRouter(prefix="/api/accounting", tags=["accounting"])
 security = HTTPBearer(auto_error=False)
 
+# Import new accounting sub-routers (Epic 1-9)
+try:
+    from .accounting_documents import router as documents_router
+    from .accounting_coa import router as coa_router
+    from .accounting_journal_entries import router as journal_entries_router
+    from .accounting_bank_reconciliation import router as bank_rec_router
+    from .accounting_financial_reporting import router as financial_reporting_router
+    
+    # Include sub-routers
+    router.include_router(documents_router, prefix="", tags=["Accounting - Documents"])
+    router.include_router(coa_router, prefix="", tags=["Accounting - COA"])
+    router.include_router(journal_entries_router, prefix="", tags=["Accounting - Journal Entries"])
+    router.include_router(bank_rec_router, prefix="", tags=["Accounting - Bank Reconciliation"])
+    router.include_router(financial_reporting_router, prefix="", tags=["Accounting - Financial Reporting"])
+except ImportError as e:
+    # Sub-routers not yet available
+    print(f"Warning: Could not import accounting sub-routers: {e}")
+
 
 def _branding(entity_id: int) -> Dict[str, Any]:
     try:
@@ -62,23 +82,23 @@ def _branding(entity_id: int) -> Dict[str, Any]:
 # Pydantic models for API requests/responses
 class ChartOfAccountRequest(BaseModel):
     entity_id: int
-    account_code: str = Field(..., min_length=5, max_length=5)
+    account_number: str = Field(..., min_length=5, max_length=5)
     account_name: str
     account_type: AccountType
     parent_account_id: Optional[int] = None
     normal_balance: TransactionType
     description: Optional[str] = None
     
-    @field_validator('account_code')
-    def validate_account_code(cls, v: str):
+    @field_validator('account_number')
+    def validate_account_number(cls, v: str):
         if not v.isdigit():
-            raise ValueError('Account code must be 5 digits')
+            raise ValueError('Account number must be 5 digits')
         return v
 
 class ChartOfAccountResponse(BaseModel):
     id: int
     entity_id: int
-    account_code: str
+    account_number: str
     account_name: str
     account_type: AccountType
     parent_account_id: Optional[int]
@@ -87,8 +107,7 @@ class ChartOfAccountResponse(BaseModel):
     description: Optional[str]
     current_balance: Decimal = Decimal('0.00')
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class JournalEntryLineRequest(BaseModel):
     account_id: int
@@ -131,8 +150,7 @@ class JournalEntryResponse(BaseModel):
     approved_by_partner: Optional[str]
     lines: List[Dict[str, Any]]
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class TransactionRequest(BaseModel):
     entity_id: int
@@ -311,7 +329,7 @@ async def get_chart_of_accounts(
             account_dict = {
                 "id": account.id,
                 "entity_id": account.entity_id,
-                "account_code": account.account_code,
+                "account_number": account.account_number,
                 "account_name": account.account_name,
                 "account_type": account.account_type,
                 "parent_account_id": getattr(account, 'parent_account_id', None),
@@ -375,7 +393,7 @@ async def get_chart_of_accounts(
                 ChartOfAccountResponse(
                     id=int(data['id']),
                     entity_id=int(data['entity_id']),
-                    account_code=str(data['account_code']),
+                    account_number=str(data['account_number']),
                     account_name=str(data['account_name']),
                     account_type=acct_type,
                     parent_account_id=data.get('parent_account_id'),
@@ -397,7 +415,7 @@ async def create_account(
     
     # Check if account code already exists for this entity
     # Validate 5-digit account code follows GAAP standards
-    code_first_digit = int(account.account_code[0])
+    code_first_digit = int(account.account_number[0])
     expected_type_mapping = {
         1: AccountType.ASSET,
         2: AccountType.LIABILITY, 
@@ -412,7 +430,7 @@ async def create_account(
     if expected_type_mapping[code_first_digit] != account.account_type:
         raise HTTPException(
             status_code=400, 
-            detail=f"Account code {account.account_code} should be {expected_type_mapping[code_first_digit].value} type"
+            detail=f"Account number {account.account_number} should be {expected_type_mapping[code_first_digit].value} type"
         )
     
     # Idempotent: return existing when mapping is valid and code already present
@@ -420,7 +438,7 @@ async def create_account(
         existing = db.query(ChartOfAccounts).filter(
             and_(
                 ChartOfAccounts.entity_id == account.entity_id,
-                ChartOfAccounts.account_code == account.account_code
+                ChartOfAccounts.account_number == account.account_number
             )
         ).first()
     except Exception:
@@ -433,7 +451,7 @@ async def create_account(
             "SELECT id, entity_id, account_code, account_name, account_type, normal_balance, is_active FROM chart_of_accounts WHERE entity_id = :eid AND account_code = :code LIMIT 1",
         ]:
             try:
-                row = db.execute(text(sql), {"eid": account.entity_id, "code": account.account_code}).first()
+                row = db.execute(text(sql), {"eid": account.entity_id, "code": account.account_number}).first()
                 if row:
                     from types import SimpleNamespace
                     tup = tuple(row)
@@ -456,7 +474,7 @@ async def create_account(
         return ChartOfAccountResponse(
             id=existing.id,
             entity_id=existing.entity_id,
-            account_code=existing.account_code,
+            account_number=existing.account_number,
             account_name=existing.account_name,
             account_type=existing.account_type,
             parent_account_id=existing.parent_account_id,
@@ -466,7 +484,7 @@ async def create_account(
             current_balance=Decimal('0.00')
         )
     
-    new_account = ChartOfAccounts(**account.dict())
+    new_account = ChartOfAccounts(**account.model_dump())
     inserted_id = None
     try:
         db.add(new_account)
@@ -483,7 +501,7 @@ async def create_account(
                 "VALUES (:eid, :code, :name, :atype, :parent, :norm, 1, :desc)",
                 {
                     "eid": account.entity_id,
-                    "code": account.account_code,
+                    "code": account.account_number,
                     "name": account.account_name,
                     "atype": account.account_type.value if hasattr(account.account_type, 'value') else str(account.account_type),
                     "parent": account.parent_account_id,
@@ -496,7 +514,7 @@ async def create_account(
                 "VALUES (:eid, :code, :name, :atype, :norm, 1)",
                 {
                     "eid": account.entity_id,
-                    "code": account.account_code,
+                    "code": account.account_number,
                     "name": account.account_name,
                     "atype": account.account_type.value if hasattr(account.account_type, 'value') else str(account.account_type),
                     "norm": account.normal_balance.value if hasattr(account.normal_balance, 'value') else str(account.normal_balance),
@@ -519,7 +537,7 @@ async def create_account(
         na = _A()
         na.id = inserted_id
         na.entity_id = account.entity_id
-        na.account_code = account.account_code
+        na.account_number = account.account_number
         na.account_name = account.account_name
         na.account_type = account.account_type
         na.parent_account_id = account.parent_account_id
@@ -535,7 +553,7 @@ async def create_account(
             action="CREATE",
             table_name="chart_of_accounts",
             record_id=inserted_id or new_account.id,
-            new_values=json.dumps(account.dict())
+            new_values=json.dumps(account.model_dump())
         )
         db.add(audit_log)
         db.commit()
@@ -545,7 +563,7 @@ async def create_account(
     return ChartOfAccountResponse(
         id=new_account.id,
         entity_id=new_account.entity_id,
-        account_code=new_account.account_code,
+        account_number=new_account.account_number,
         account_name=new_account.account_name,
         account_type=new_account.account_type,
         parent_account_id=new_account.parent_account_id,
@@ -597,7 +615,7 @@ async def get_journal_entries(
             lines_data.append({
                 "id": line.id,
                 "line_number": line.line_number,
-                "account_code": account.account_code,
+                "account_number": account.account_number,
                 "account_name": account.account_name,
                 "description": line.description,
                 "debit_amount": line.debit_amount,
@@ -1062,13 +1080,14 @@ async def approve_journal_entry(
     return {"message": "Journal entry processed successfully", "status": getattr(entry.approval_status, 'value', str(entry.approval_status))}
 
 
-@router.post("/journal-entries/{entry_id}/post")
-async def post_journal_entry(
+# DEPRECATED: Use accounting_journal_entries.py endpoint instead
+# @router.post("/journal-entries/{entry_id}/post")
+async def post_journal_entry_DEPRECATED(
     entry_id: int,
     current_user: Partners = Depends(get_current_partner),
     db: Session = Depends(get_db)
 ):
-    """Post an approved journal entry. Posted entries become immutable."""
+    """DEPRECATED: Post an approved journal entry. Use new endpoint."""
     record_id = entry_id
     try:
         entry = db.query(JournalEntries).filter(JournalEntries.id == entry_id).first()
@@ -2385,8 +2404,9 @@ async def create_revenue_recognition(
     return {"id": new_revenue.id, "message": "Revenue recognition contract created"}
 
 # Document Upload Endpoints
-@router.post("/documents/upload")
-async def upload_document(
+# DEPRECATED: Use accounting_documents.py endpoint instead
+# @router.post("/documents/upload")
+async def upload_document_DEPRECATED(
     file: UploadFile = File(...),
     document_type: DocumentType = Form(...),
     expense_item_id: Optional[int] = Form(None),

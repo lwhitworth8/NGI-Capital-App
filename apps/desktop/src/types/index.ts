@@ -199,6 +199,9 @@ export type AdvisoryProject = {
   slack_channel_name?: string | null;
   // Derived
   open_roles?: number | null;
+  // Meta
+  created_at?: string;
+  updated_at?: string;
 }
 
 export type AdvisoryStudent = {
@@ -219,6 +222,28 @@ export type AdvisoryStudent = {
   status_override_at?: string | null;
   last_activity_at?: string | null;
   resume_url?: string | null;
+  // Additional profile fields from settings
+  phone?: string;
+  linkedin_url?: string;
+  gpa?: number;
+  location?: string;
+  created_at?: string;
+  updated_at?: string;
+  // Aggregated data for UI
+  applications_count?: number;
+  coffee_chats_count?: number;
+  onboarding_count?: number;
+  profile_completeness?: {
+    has_resume: boolean;
+    has_phone: boolean;
+    has_linkedin: boolean;
+    has_gpa: boolean;
+    has_location: boolean;
+    has_school: boolean;
+    has_program: boolean;
+    has_grad_year: boolean;
+    percentage: number;
+  };
 }
 
 export type AdvisoryApplication = {

@@ -17,6 +17,7 @@ from src.api.database import get_db
 from src.api.integrations import google_calendar as gcal
 from .advisory import require_ngiadvisory_admin, _ensure_tables as _ensure_advisory_tables
 from .advisory_public import _extract_student_email, _check_domain
+from src.api.agent_client import start_agent_run, ensure_agent_tables
 
 router = APIRouter()
 
@@ -46,6 +47,7 @@ def _ensure_internal_tables(db: Session) -> None:
             requested_start_ts TEXT NOT NULL,
             requested_end_ts TEXT NOT NULL,
             slot_len_min INTEGER NOT NULL,
+            project_id INTEGER,
             status TEXT CHECK(status IN ('requested','pending','accepted','completed','canceled','no_show','expired')) DEFAULT 'pending',
             cooldown_until_ts TEXT,
             blacklist_until_ts TEXT,
@@ -59,6 +61,10 @@ def _ensure_internal_tables(db: Session) -> None:
     ))
     try:
         db.execute(sa_text("ALTER TABLE advisory_coffeechat_requests ADD COLUMN cancel_reason TEXT"))
+    except Exception:
+        pass
+    try:
+        db.execute(sa_text("ALTER TABLE advisory_coffeechat_requests ADD COLUMN project_id INTEGER"))
     except Exception:
         pass
     # Event metadata
@@ -138,6 +144,23 @@ async def list_public_availability(
         all_start = min((_iso_to_dt(s[0]['start_ts']) for s in per_admin.values() for _ in s), default=datetime.utcnow())
         all_end = max((_iso_to_dt(s[0]['end_ts']) for s in per_admin.values() for _ in s), default=datetime.utcnow())
         busy = gcal.freebusy(admins, all_start.isoformat(), all_end.isoformat())
+        # Augment busy windows with already accepted local events to avoid double booking
+        try:
+            placeholders = ",".join([f":a{i}" for i in range(len(admins))]) or ":a0"
+            params = {f"a{i}": admins[i].lower() for i in range(len(admins))}
+            ev_rows = db.execute(sa_text(
+                "SELECT e.calendar_owner_email, r.requested_start_ts, r.requested_end_ts "
+                "FROM advisory_coffeechat_events e "
+                "JOIN advisory_coffeechat_requests r ON r.id = e.request_id "
+                f"WHERE lower(COALESCE(e.calendar_owner_email,'')) IN ({placeholders}) "
+                "AND lower(COALESCE(r.status,'')) = 'accepted'"
+            ), params).fetchall()
+            for (owner, st, et) in ev_rows or []:
+                if not owner or not st or not et:
+                    continue
+                busy.setdefault(owner.lower(), []).append((st, et))
+        except Exception:
+            pass
         def is_free(aemail: str, st: str, et: str) -> bool:
             blist = busy.get(aemail, [])
             st_dt = _iso_to_dt(st); et_dt = _iso_to_dt(et)
@@ -248,13 +271,49 @@ async def create_request(payload: Dict[str, Any], request: Request, db: Session 
         except Exception:
             pass
     expires_at = (now_dt + timedelta(days=7)).isoformat()
+    project_id = None
+    try:
+        if 'project_id' in payload and payload.get('project_id') is not None:
+            project_id = int(payload.get('project_id'))
+    except Exception:
+        project_id = None
     db.execute(sa_text(
-        "INSERT INTO advisory_coffeechat_requests (student_email, requested_start_ts, requested_end_ts, slot_len_min, status, expires_at_ts, created_at, updated_at) "
-        "VALUES (:em, :st, :et, :sl, 'pending', :ex, datetime('now'), datetime('now'))"
-    ), {"em": email, "st": start_ts, "et": end_ts, "sl": slot_len, "ex": expires_at})
+        "INSERT INTO advisory_coffeechat_requests (student_email, requested_start_ts, requested_end_ts, slot_len_min, project_id, status, expires_at_ts, created_at, updated_at) "
+        "VALUES (:em, :st, :et, :sl, :pid, 'pending', :ex, datetime('now'), datetime('now'))"
+    ), {"em": email, "st": start_ts, "et": end_ts, "sl": slot_len, "pid": project_id, "ex": expires_at})
     rid = db.execute(sa_text("SELECT last_insert_rowid()"), {}).scalar() or 0
-    db.commit()
-    return {"id": int(rid), "status": "pending", "expires_at_ts": expires_at}
+
+    # Start scheduler agent to handle invites
+    try:
+        ensure_agent_tables(db)
+        owners: List[str] = []
+        if project_id:
+            lead_rows = db.execute(sa_text(
+                "SELECT email FROM advisory_project_leads WHERE project_id = :pid"
+            ), {"pid": int(project_id)}).fetchall()
+            owners = [str(r[0]).strip() for r in (lead_rows or []) if r and r[0]]
+        if not owners:
+            admins_env = os.getenv('ALLOWED_ADVISORY_ADMINS', '')
+            if admins_env:
+                owners = [s.strip() for s in admins_env.split(',') if s.strip()]
+        if not owners:
+            owners = [os.getenv('DEFAULT_ADMIN_EMAIL') or 'admin@ngicapitaladvisory.com']
+        payload = {
+            "rid": int(rid),
+            "student_email": email,
+            "project_id": int(project_id or 0),
+            "candidate_windows": [{"start_ts": start_ts, "end_ts": end_ts, "slot_len_min": slot_len}],
+            "lead_emails": owners,
+            "timezone": os.getenv('DEFAULT_TIMEZONE') or 'UTC',
+            "duration_minutes": slot_len,
+            "constraints": {"work_hours": os.getenv('WORK_HOURS') or '09:00-18:00'},
+            "callback": {"url": "/api/agents/webhooks/scheduler"},
+        }
+        start_agent_run(db, workflow='scheduler', target_type='coffeechat_request', target_id=int(rid), input_payload=payload)
+    except Exception:
+        pass
+
+    return {"id": int(rid), "status": "pending", "expires_at_ts": expires_at, "agent": "queued"}
 
 
 @router.get('/public/coffeechats/mine')
@@ -311,6 +370,7 @@ async def admin_delete_availability(aid: int, admin=Depends(require_ngiadvisory_
 async def admin_list_requests(
     status: Optional[str] = Query(None),
     admin_email: Optional[str] = Query(None),
+    project_id: Optional[int] = Query(None),
     db: Session = Depends(get_db),
     admin=Depends(require_ngiadvisory_admin()),
 ):
@@ -321,19 +381,22 @@ async def admin_list_requests(
         where.append("lower(status) = :st"); params["st"] = status.strip().lower()
     if admin_email:
         where.append("lower(COALESCE(claimed_by_admin_email,'')) = :em"); params["em"] = admin_email.strip().lower()
-    sql = "SELECT id, student_email, requested_start_ts, requested_end_ts, slot_len_min, status, claimed_by_admin_email, expires_at_ts, cooldown_until_ts, blacklist_until_ts, created_at FROM advisory_coffeechat_requests"
+    if project_id is not None:
+        where.append("COALESCE(project_id, 0) = :pid"); params["pid"] = int(project_id)
+    sql = "SELECT id, student_email, requested_start_ts, requested_end_ts, slot_len_min, project_id, status, claimed_by_admin_email, expires_at_ts, cooldown_until_ts, blacklist_until_ts, created_at FROM advisory_coffeechat_requests"
     if where:
         sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY datetime(created_at) DESC, id DESC"
     rows = db.execute(sa_text(sql), params).fetchall()
     return [{
         "id": r[0], "student_email": r[1], "start_ts": r[2], "end_ts": r[3], "slot_len_min": r[4],
-        "status": r[5], "claimed_by": r[6], "expires_at_ts": r[7], "cooldown_until_ts": r[8], "blacklist_until_ts": r[9], "created_at": r[10]
+        "project_id": r[5],
+        "status": r[6], "claimed_by": r[7], "expires_at_ts": r[8], "cooldown_until_ts": r[9], "blacklist_until_ts": r[10], "created_at": r[11]
     } for r in rows]
 
 
 def _accept_request(db: Session, rid: int, owner_email: str) -> Dict[str, Any]:
-    # Create mock google event and update status
+    # Prevent double-booking: ensure owner has no overlapping accepted events
     r = db.execute(sa_text(
         "SELECT id, student_email, requested_start_ts, requested_end_ts, status FROM advisory_coffeechat_requests WHERE id = :id"
     ), {"id": rid}).fetchone()
@@ -343,6 +406,26 @@ def _accept_request(db: Session, rid: int, owner_email: str) -> Dict[str, Any]:
         # Idempotent
         ev = db.execute(sa_text("SELECT google_event_id, calendar_owner_email, meet_link FROM advisory_coffeechat_events WHERE request_id = :id"), {"id": rid}).fetchone()
         return {"status": "accepted", "google_event_id": ev[0] if ev else None, "owner": owner_email}
+    # Overlap check against existing accepted events
+    st, et = r[2], r[3]
+    try:
+        rows = db.execute(sa_text(
+            "SELECT r.requested_start_ts, r.requested_end_ts "
+            "FROM advisory_coffeechat_events e JOIN advisory_coffeechat_requests r ON r.id = e.request_id "
+            "WHERE lower(COALESCE(e.calendar_owner_email,'')) = :own AND lower(COALESCE(r.status,'')) = 'accepted'"
+        ), {"own": (owner_email or '').lower()}).fetchall()
+        st_dt = _iso_to_dt(st); et_dt = _iso_to_dt(et)
+        for (bs, be) in rows or []:
+            try:
+                bsd = _iso_to_dt(bs); bed = _iso_to_dt(be)
+            except Exception:
+                continue
+            if not (et_dt <= bsd or st_dt >= bed):
+                raise HTTPException(status_code=409, detail="Time window already booked for this owner")
+    except HTTPException:
+        raise
+    except Exception:
+        pass
     # Create real event if configured, else mock
     try:
         created = gcal.create_event(owner_email, start_ts=r[2], end_ts=r[3], student_email=r[1], summary=f"Coffee Chat — {r[1]}")
@@ -362,11 +445,64 @@ def _accept_request(db: Session, rid: int, owner_email: str) -> Dict[str, Any]:
     return {"status": "accepted", "google_event_id": event_id, "owner": owner_email}
 
 
+def _accept_request_fixed(db: Session, rid: int, owner_email: str) -> Dict[str, Any]:
+    r = db.execute(sa_text(
+        "SELECT id, student_email, requested_start_ts, requested_end_ts, status FROM advisory_coffeechat_requests WHERE id = :id"
+    ), {"id": rid}).fetchone()
+    if not r:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if r[4] == 'accepted':
+        ev = db.execute(sa_text(
+            "SELECT google_event_id, calendar_owner_email, meet_link FROM advisory_coffeechat_events WHERE request_id = :id"
+        ), {"id": rid}).fetchone()
+        return {"status": "accepted", "google_event_id": ev[0] if ev else None, "owner": owner_email}
+
+    st, et = r[2], r[3]
+    try:
+        rows = db.execute(sa_text(
+            "SELECT r.requested_start_ts, r.requested_end_ts FROM advisory_coffeechat_events e JOIN advisory_coffeechat_requests r ON r.id = e.request_id WHERE lower(COALESCE(e.calendar_owner_email,'')) = :own AND lower(COALESCE(r.status,'')) = 'accepted'"
+        ), {"own": (owner_email or '').lower()}).fetchall()
+        st_dt = _iso_to_dt(st); et_dt = _iso_to_dt(et)
+        for (bs, be) in rows or []:
+            try:
+                bsd = _iso_to_dt(bs); bed = _iso_to_dt(be)
+            except Exception:
+                continue
+            if not (et_dt <= bsd or st_dt >= bed):
+                raise HTTPException(status_code=409, detail="Time window already booked for this owner")
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
+    try:
+        created = gcal.create_event(
+            owner_email,
+            start_ts=st,
+            end_ts=et,
+            student_email=r[1],
+            summary=f"Coffee Chat - {r[1]}",
+        )
+        event_id = created.get('id') or f"mock-{rid}-{secrets.token_hex(4)}"
+        meet_link = created.get('meet_link') or _gen_meet_link()
+    except Exception:
+        event_id = f"mock-{rid}-{secrets.token_hex(4)}"
+        meet_link = _gen_meet_link()
+
+    db.execute(sa_text(
+        "INSERT INTO advisory_coffeechat_events (request_id, google_event_id, calendar_owner_email, meet_link, created_at, updated_at) VALUES (:rid, :gid, :own, :ml, datetime('now'), datetime('now'))"
+    ), {"rid": rid, "gid": event_id, "own": owner_email, "ml": meet_link})
+    db.execute(sa_text(
+        "UPDATE advisory_coffeechat_requests SET status = 'accepted', claimed_by_admin_email = :own, updated_at = datetime('now') WHERE id = :id"
+    ), {"own": owner_email, "id": rid})
+    db.commit()
+    return {"status": "accepted", "google_event_id": event_id, "owner": owner_email}
+
 @router.post('/advisory/coffeechats/requests/{rid}/accept')
 async def admin_accept_request(rid: int, admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
     _ensure_internal_tables(db)
     owner = (admin or {}).get('email') or os.getenv('DEFAULT_ADMIN_EMAIL') or 'admin@ngicapitaladvisory.com'
-    return _accept_request(db, rid, owner)
+    return _accept_request_fixed(db, rid, owner)
 
 
 @router.post('/advisory/coffeechats/requests/{rid}/propose')
@@ -419,3 +555,48 @@ async def admin_run_expiry(admin=Depends(require_ngiadvisory_admin()), db: Sessi
         "UPDATE advisory_coffeechat_requests SET status = 'expired', updated_at = datetime('now') WHERE status IN ('requested','pending') AND datetime(COALESCE(expires_at_ts, created_at)) < datetime('now','-1 minutes') AND datetime(COALESCE(expires_at_ts, created_at)) <= datetime('now')"
     ))
     db.commit(); return {"ok": True}
+
+
+
+@router.post('/advisory/coffeechats/requests/{rid}/agent-run')
+async def admin_start_scheduler_agent(rid: int, admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
+    """Start the scheduler agent for a specific coffee chat request."""
+    _ensure_internal_tables(db)
+    ensure_agent_tables(db)
+    r = db.execute(sa_text(
+        "SELECT id, student_email, requested_start_ts, requested_end_ts, slot_len_min, project_id FROM advisory_coffeechat_requests WHERE id = :id"
+    ), {"id": rid}).fetchone()
+    if not r:
+        raise HTTPException(status_code=404, detail="Request not found")
+    student_email = r[1]
+    st, et = r[2], r[3]
+    slot_len = int(r[4] or 30)
+    pid = int(r[5] or 0)
+    # Leads for the project (potential owners)
+    leads = []
+    try:
+        rows = db.execute(sa_text("SELECT email FROM advisory_project_leads WHERE project_id = :pid"), {"pid": pid}).fetchall()
+        leads = [str(x[0]).strip() for x in (rows or []) if x and x[0]]
+    except Exception:
+        leads = []
+    if not leads:
+        env = os.getenv('ALLOWED_ADVISORY_ADMINS', '')
+        leads = [s.strip() for s in env.split(',') if s.strip()] if env else []
+
+    payload = {
+        "rid": int(r[0]),
+        "student_email": student_email,
+        "project_id": pid,
+        "candidate_windows": [{"start_ts": st, "end_ts": et, "slot_len_min": slot_len}],
+        "lead_emails": leads,
+        "timezone": os.getenv('DEFAULT_TIMEZONE') or 'UTC',
+        "duration_minutes": slot_len,
+        "constraints": {
+            "work_hours": os.getenv('WORK_HOURS') or '09:00-18:00',
+        },
+        "callback": {
+            "url": "/api/agents/webhooks/scheduler",
+        },
+    }
+    run_id = start_agent_run(db, workflow='scheduler', target_type='coffeechat_request', target_id=int(r[0]), input_payload=payload)
+    return {"run_id": run_id, "status": "queued"}

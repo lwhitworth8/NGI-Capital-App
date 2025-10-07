@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text as sa_text
 from typing import Dict, Any, List
-from src.api.database import get_db
+from src.api.database_async import get_async_db
 
 router = APIRouter(prefix="/api/coa", tags=["coa"])
 
@@ -47,7 +47,7 @@ async def list_templates():
 
 
 @router.post("/apply-template")
-async def apply_template(entity_id: int = Query(...), template_id: str = Query("US_GAAP_STARTUP"), db: Session = Depends(get_db)):
+async def apply_template(entity_id: int = Query(...), template_id: str = Query("US_GAAP_STARTUP"), db: Session = Depends(get_async_db)):
     if template_id != "US_GAAP_STARTUP":
         raise HTTPException(status_code=404, detail="Unknown template")
     # Ensure tables

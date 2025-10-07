@@ -137,7 +137,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         setError(null)
         
         // Get Clerk token
-        const token = await user?.getToken?.()
+        const token = await (user as any)?.getToken?.()
         if (!token && !devBypass) {
           throw new Error('No authentication token available')
         }

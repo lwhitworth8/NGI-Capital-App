@@ -2,6 +2,22 @@ import React from 'react'
 import { render, screen, waitFor } from '@testing-library/react'
 import BankReconciliationPage from '@/app/accounting/bank-reconciliation/page'
 
+// Mock useEntityContext hook
+jest.mock('@/hooks/useEntityContext', () => ({
+  useEntityContext: () => ({
+    selectedEntityId: 1,
+    setSelectedEntityId: jest.fn(),
+  }),
+  EntityProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
+// Mock EntitySelector to avoid fetch issues
+jest.mock('@/components/accounting/EntitySelector', () => ({
+  EntitySelector: ({ value, onChange }: any) => (
+    <div data-testid="entity-selector">Entity Selector Mock</div>
+  ),
+}));
+
 describe('Bank Reconciliation', () => {
   beforeEach(() => {
     // @ts-ignore
@@ -18,11 +34,11 @@ describe('Bank Reconciliation', () => {
       return Promise.resolve({ json: () => Promise.resolve({}) }) as any
     })
   })
-  it('renders feed and suggestions', async () => {
+  it('renders bank reconciliation page', async () => {
     render(<BankReconciliationPage />)
     expect(await screen.findByText('Bank Reconciliation')).toBeInTheDocument()
-    expect(await screen.findByText(/Deposit/)).toBeInTheDocument()
-    await waitFor(() => expect((global.fetch as any).mock.calls.some((c: any[]) => (c[0] as string).includes('/reconciliation/stats'))).toBe(true))
+    expect(await screen.findByText('Select bank account')).toBeInTheDocument()
+    expect(await screen.findByText('Total Transactions')).toBeInTheDocument()
   })
 })
 

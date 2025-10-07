@@ -1,9 +1,16 @@
-'use client'
+"use client";
 
-import React from 'react'
-import { AppLayout } from '@/components/layout/AppLayout'
+import { EntityProvider } from "@/hooks/useEntityContext";
+import { AppLayout } from "@/components/layout/AppLayout";
 
-export default function EmployeesLayout({ children }: { children: React.ReactNode }) {
-  return <AppLayout>{children}</AppLayout>
+export default function EmployeesLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <EntityProvider>
+      <AppLayout>{children}</AppLayout>
+    </EntityProvider>
+  );
 }
-

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text as sa_text
 import uuid
 
-from src.api.database import get_db
+from src.api.database_async import get_async_db
 
 router = APIRouter(prefix="/api/ar", tags=["ar"])
 
@@ -56,6 +56,40 @@ def _ensure_ar_tables(db: Session):
             amount REAL,
             journal_entry_id INTEGER,
             created_at TEXT
+        )
+        """
+    ))
+    db.commit()
+
+
+def _ensure_rev_rec_tables(db: Session):
+    """Revenue recognition schedule table (ASC 606)"""
+    db.execute(sa_text(
+        """
+        CREATE TABLE IF NOT EXISTS revenue_recognition_schedules (
+            id TEXT PRIMARY KEY,
+            invoice_id TEXT NOT NULL,
+            entity_id INTEGER NOT NULL,
+            method TEXT DEFAULT 'straight_line',
+            start_date TEXT NOT NULL,
+            months INTEGER NOT NULL,
+            total_amount REAL NOT NULL,
+            recognized_amount REAL DEFAULT 0,
+            created_at TEXT,
+            FOREIGN KEY (invoice_id) REFERENCES ar_invoices(id)
+        )
+        """
+    ))
+    db.execute(sa_text(
+        """
+        CREATE TABLE IF NOT EXISTS revenue_recognition_entries (
+            id TEXT PRIMARY KEY,
+            schedule_id TEXT NOT NULL,
+            period TEXT NOT NULL,
+            amount REAL NOT NULL,
+            journal_entry_id INTEGER,
+            created_at TEXT,
+            FOREIGN KEY (schedule_id) REFERENCES revenue_recognition_schedules(id)
         )
         """
     ))
@@ -146,7 +180,7 @@ def _create_draft_je(db: Session, entity_id: int, lines: List[Dict[str, Any]], d
 
 
 @router.post("/customers")
-async def create_customer(payload: Dict[str, Any], db: Session = Depends(get_db)):
+async def create_customer(payload: Dict[str, Any], db: Session = Depends(get_async_db)):
     _ensure_ar_tables(db)
     if not (payload.get('entity_id') and payload.get('name')):
         raise HTTPException(status_code=422, detail="entity_id and name required")
@@ -158,22 +192,27 @@ async def create_customer(payload: Dict[str, Any], db: Session = Depends(get_db)
 
 
 @router.get("/customers")
-async def list_customers(entity_id: int, db: Session = Depends(get_db)):
+async def list_customers(entity_id: int, db: Session = Depends(get_async_db)):
     _ensure_ar_tables(db)
     rows = db.execute(sa_text("SELECT id, name, email, is_active FROM customers WHERE entity_id = :e ORDER BY name"), {"e": entity_id}).fetchall()
     return [{"id": r[0], "name": r[1], "email": r[2], "is_active": bool(r[3])} for r in rows]
 
 
 @router.post("/invoices")
-async def create_invoice(payload: Dict[str, Any], db: Session = Depends(get_db)):
+async def create_invoice(payload: Dict[str, Any], db: Session = Depends(get_async_db)):
     """Create AR invoice and Draft JE.
-    Payload: { entity_id, customer_id or customer_name, invoice_number, issue_date, due_date, amount_total, tax_amount?, defer_revenue? }
+    Payload: { 
+        entity_id, customer_id or customer_name, invoice_number, 
+        issue_date, due_date, amount_total, tax_amount?,
+        revenue_recognition: { method: "immediate|deferred", months?: int, start_date?: str }
+    }
     """
     _ensure_ar_tables(db)
     entity_id = int(payload.get('entity_id') or 0)
     if not entity_id:
         raise HTTPException(status_code=422, detail="entity_id required")
     accts = _ensure_accounts(db, entity_id)
+    
     # customer
     cust_id = payload.get('customer_id')
     if not cust_id and payload.get('customer_name'):
@@ -182,6 +221,7 @@ async def create_invoice(payload: Dict[str, Any], db: Session = Depends(get_db))
         db.execute(sa_text("INSERT INTO customers (id, entity_id, name, is_active, created_at) VALUES (:id,:e,:n,1,datetime('now'))"), {
             "id": cust_id, "e": entity_id, "n": str(payload.get('customer_name')).strip()
         }); db.commit()
+    
     # amounts/dates
     amt = float(payload.get('amount_total') or 0)
     if amt <= 0:
@@ -195,23 +235,42 @@ async def create_invoice(payload: Dict[str, Any], db: Session = Depends(get_db))
             due_date = (date.fromisoformat(issue_date) + timedelta(days=30)).isoformat()
         except Exception:
             due_date = issue_date
+    
+    # Revenue recognition (ASC 606)
+    rev_rec = payload.get('revenue_recognition', {})
+    method = rev_rec.get('method', 'immediate')  # "immediate" or "deferred"
+    rec_months = int(rev_rec.get('months', 1))  # spread over N months
+    rec_start_date = rev_rec.get('start_date') or issue_date
+    
     # JE: Dr AR, Cr Revenue or Deferred Revenue
-    credit_acc = accts['DEFREV'] if bool(payload.get('defer_revenue')) else accts['REV']
+    defer = (method == 'deferred' and rec_months > 1)
+    credit_acc = accts['DEFREV'] if defer else accts['REV']
     lines = [
         {"account_id": accts['AR'], "debit_amount": amt, "credit_amount": 0, "description": f"Invoice {inv_no}"},
         {"account_id": credit_acc, "debit_amount": 0, "credit_amount": amt, "description": f"Invoice {inv_no}"},
     ]
     je_id = _create_draft_je(db, entity_id, lines, f"AR Invoice {inv_no}", inv_no)
-    # Insert invoice
+    
+    # Insert invoice with revenue recognition metadata
     iid = uuid.uuid4().hex
     db.execute(sa_text("INSERT INTO ar_invoices (id, entity_id, customer_id, invoice_number, issue_date, due_date, amount_total, tax_amount, status, journal_entry_id, created_at) VALUES (:id,:e,:c,:no,:isdt,:ddt,:amt,:tax,'open',:je,datetime('now'))"), {
         "id": iid, "e": entity_id, "c": cust_id, "no": inv_no, "isdt": issue_date, "ddt": due_date, "amt": amt, "tax": tax, "je": je_id
     })
-    db.commit(); return {"id": iid, "journal_entry_id": je_id}
+    
+    # If deferred revenue, create recognition schedule (ASC 606)
+    if defer and rec_months > 1:
+        _ensure_rev_rec_tables(db)
+        rec_id = uuid.uuid4().hex
+        db.execute(sa_text("INSERT INTO revenue_recognition_schedules (id, invoice_id, entity_id, method, start_date, months, total_amount, recognized_amount, created_at) VALUES (:id,:inv,:e,:m,:sd,:mn,:tot,0,datetime('now'))"), {
+            "id": rec_id, "inv": iid, "e": entity_id, "m": "straight_line", "sd": rec_start_date, "mn": rec_months, "tot": amt
+        })
+    
+    db.commit()
+    return {"id": iid, "journal_entry_id": je_id, "revenue_deferred": defer}
 
 
 @router.get("/invoices")
-async def list_invoices(entity_id: int, status: Optional[str] = Query(None), db: Session = Depends(get_db)):
+async def list_invoices(entity_id: int, status: Optional[str] = Query(None), db: Session = Depends(get_async_db)):
     _ensure_ar_tables(db)
     where = ["entity_id = :e"]; params: Dict[str, Any] = {"e": entity_id}
     if status:
@@ -225,7 +284,7 @@ async def list_invoices(entity_id: int, status: Optional[str] = Query(None), db:
 
 
 @router.post("/payments")
-async def record_payment(payload: Dict[str, Any], db: Session = Depends(get_db)):
+async def record_payment(payload: Dict[str, Any], db: Session = Depends(get_async_db)):
     """Record a payment against an AR invoice and create a JE: Dr Cash, Cr A/R."""
     _ensure_ar_tables(db)
     inv_id = payload.get('invoice_id')
@@ -256,4 +315,93 @@ async def record_payment(payload: Dict[str, Any], db: Session = Depends(get_db))
     new_status = 'closed' if round(float(sum_pay or 0) - total, 2) >= 0 else 'open'
     db.execute(sa_text("UPDATE ar_invoices SET status = :st WHERE id = :id"), {"st": new_status, "id": inv_id})
     db.commit(); return {"id": pid, "journal_entry_id": je, "status": new_status}
+
+
+@router.post("/revenue-recognition/process-period")
+async def process_revenue_recognition(year: int, month: int, entity_id: int, db: Session = Depends(get_async_db)):
+    """
+    Automated Revenue Recognition (ASC 606)
+    Process all pending revenue schedules for the given period
+    Creates journal entries (Dr Deferred Revenue, Cr Revenue) requiring approval
+    Like NetSuite/QuickBooks period-end process
+    """
+    _ensure_rev_rec_tables(db)
+    period = f"{year:04d}-{month:02d}"
+    
+    # Find all schedules with unrecognized revenue in this period
+    schedules_sql = """
+        SELECT id, invoice_id, start_date, months, total_amount, recognized_amount 
+        FROM revenue_recognition_schedules 
+        WHERE entity_id = :e 
+        AND recognized_amount < total_amount
+    """
+    schedules = db.execute(sa_text(schedules_sql), {"e": entity_id}).fetchall()
+    
+    accts = _ensure_accounts(db, entity_id)
+    journal_entries_created = []
+    total_recognized = 0.0
+    
+    for sch_id, inv_id, start_date, months, total_amt, recognized_amt in schedules:
+        # Calculate if this period is in range
+        try:
+            start_y, start_m = int(start_date[0:4]), int(start_date[5:7])
+        except:
+            continue
+        
+        # Calculate offset from start month
+        offset = (year - start_y) * 12 + (month - start_m)
+        if offset < 0 or offset >= months:
+            continue  # Not in recognition period
+        
+        # Check if already recognized for this period
+        existing = db.execute(sa_text(
+            "SELECT 1 FROM revenue_recognition_entries WHERE schedule_id = :sid AND period = :p"
+        ), {"sid": sch_id, "p": period}).fetchone()
+        if existing:
+            continue  # Already recognized
+        
+        # Calculate amount (straight-line)
+        amount_to_recognize = round(total_amt / months, 2)
+        
+        # Get invoice number for reference
+        inv_row = db.execute(sa_text(
+            "SELECT invoice_number FROM ar_invoices WHERE id = :id"
+        ), {"id": inv_id}).fetchone()
+        inv_no = inv_row[0] if inv_row else inv_id
+        
+        # Create JE: Dr Deferred Revenue, Cr Revenue (pending approval)
+        lines = [
+            {"account_id": accts['DEFREV'], "debit_amount": amount_to_recognize, "credit_amount": 0, "description": f"Revenue Recognition - Invoice {inv_no}"},
+            {"account_id": accts['REV'], "debit_amount": 0, "credit_amount": amount_to_recognize, "description": f"Revenue Recognition - Invoice {inv_no}"},
+        ]
+        je_id = _create_draft_je(db, entity_id, lines, f"Revenue Recognition {period} - Invoice {inv_no}", inv_no)
+        
+        # Record recognition entry
+        rec_entry_id = uuid.uuid4().hex
+        db.execute(sa_text(
+            "INSERT INTO revenue_recognition_entries (id, schedule_id, period, amount, journal_entry_id, created_at) VALUES (:id,:sid,:p,:amt,:je,datetime('now'))"
+        ), {"id": rec_entry_id, "sid": sch_id, "p": period, "amt": amount_to_recognize, "je": je_id})
+        
+        # Update schedule recognized amount
+        new_recognized = recognized_amt + amount_to_recognize
+        db.execute(sa_text(
+            "UPDATE revenue_recognition_schedules SET recognized_amount = :amt WHERE id = :id"
+        ), {"amt": new_recognized, "id": sch_id})
+        
+        journal_entries_created.append({
+            "journal_entry_id": je_id,
+            "invoice": inv_no,
+            "amount": amount_to_recognize
+        })
+        total_recognized += amount_to_recognize
+    
+    db.commit()
+    
+    return {
+        "period": period,
+        "journal_entries_created": len(journal_entries_created),
+        "total_amount_recognized": round(total_recognized, 2),
+        "entries": journal_entries_created,
+        "message": f"Created {len(journal_entries_created)} revenue recognition journal entries for approval"
+    }
 

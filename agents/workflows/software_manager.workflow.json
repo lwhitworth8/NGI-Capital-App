@@ -1,0 +1,67 @@
+{
+  "name": "NGI Software Development Workflow",
+  "description": "Plans, routes, and aggregates software tasks across specialist agents for NGI Capital App.",
+  "version": "0.1",
+  "inputs": {
+    "task": { "type": "string", "required": true },
+    "context": { "type": "object", "required": false }
+  },
+  "steps": [
+    {
+      "id": "plan",
+      "type": "agent_call",
+      "agent_id": "AGENT_ID_SOFTWARE_MANAGER_PLACEHOLDER",
+      "instruction": "Create a concise plan and assign sub-tasks to Code/UIUX/Testing/Docs/Security specialists. Respect tools/guardrails."
+    },
+    {
+      "id": "fanout_code",
+      "type": "agent_call",
+      "if": "plan.recommends_code == true",
+      "agent_id": "AGENT_ID_CODE_ENGINEER_PLACEHOLDER",
+      "inputs": { "subtask": "plan.code_subtask", "context": "$.context" }
+    },
+    {
+      "id": "fanout_uiux",
+      "type": "agent_call",
+      "if": "plan.recommends_uiux == true",
+      "agent_id": "AGENT_ID_UIUX_ENGINEER_PLACEHOLDER",
+      "inputs": { "subtask": "plan.uiux_subtask", "context": "$.context" }
+    },
+    {
+      "id": "fanout_testing",
+      "type": "agent_call",
+      "if": "plan.recommends_testing == true",
+      "agent_id": "AGENT_ID_TESTING_ENGINEER_PLACEHOLDER",
+      "inputs": { "subtask": "plan.testing_subtask", "context": "$.context" }
+    },
+    {
+      "id": "fanout_docs",
+      "type": "agent_call",
+      "if": "plan.recommends_docs == true",
+      "agent_id": "AGENT_ID_DOCS_WRITER_PLACEHOLDER",
+      "inputs": { "subtask": "plan.docs_subtask", "context": "$.context" }
+    },
+    {
+      "id": "fanout_security",
+      "type": "agent_call",
+      "if": "plan.recommends_security == true",
+      "agent_id": "AGENT_ID_SECURITY_ENGINEER_PLACEHOLDER",
+      "inputs": { "subtask": "plan.security_subtask", "context": "$.context" }
+    },
+    {
+      "id": "aggregate",
+      "type": "agent_call",
+      "agent_id": "AGENT_ID_SOFTWARE_MANAGER_PLACEHOLDER",
+      "inputs": {
+        "plan": "plan",
+        "code": "fanout_code",
+        "uiux": "fanout_uiux",
+        "testing": "fanout_testing",
+        "docs": "fanout_docs",
+        "security": "fanout_security"
+      },
+      "instruction": "Summarize changes, produce patch-ready diffs or file path instructions, and list follow-ups."
+    }
+  ]
+}
+

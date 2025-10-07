@@ -1,8 +1,19 @@
 """
-Revenue Recognition (ASC 606) endpoints
+DEPRECATED: Revenue Recognition (ASC 606) endpoints
+These endpoints are deprecated as of October 2025.
+Revenue recognition is now automatic via AR invoices (see /api/ar/revenue-recognition/)
+
+OLD BEHAVIOR:
 - Create schedules from invoices
 - List schedules
 - Post current-period revenue (creates monthly JE: Dr Deferred Rev, Cr Revenue)
+
+NEW BEHAVIOR (Automated like QuickBooks/NetSuite):
+1. Create invoice with revenue_recognition metadata → auto creates schedule
+2. Run period-end process → auto creates JEs for approval
+3. Approve JEs in standard approval workflow
+
+See: src/api/routes/ar.py for new implementation
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,7 +23,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text as sa_text
 import uuid
 
-from src.api.database import get_db
+from src.api.database_async import get_async_db
 
 router = APIRouter(prefix="/api/revrec", tags=["revrec"])
 
@@ -75,7 +86,7 @@ def _create_je(db: Session, entity_id: int, date_str: str, amount: float, desc: 
 
 
 @router.post("/schedules")
-async def create_schedule(payload: Dict[str, Any], db: Session = Depends(get_db)):
+async def create_schedule(payload: Dict[str, Any], db: Session = Depends(get_async_db)):
     """Create a rev rec schedule. Payload: { entity_id, invoice_id, method: point_in_time|over_time, start_date, months, total }"""
     _ensure_tables(db)
     entity_id = int(payload.get('entity_id') or 0)
@@ -93,7 +104,7 @@ async def create_schedule(payload: Dict[str, Any], db: Session = Depends(get_db)
 
 
 @router.get("/schedules")
-async def list_schedules(entity_id: int, period: Optional[str] = None, db: Session = Depends(get_db)):
+async def list_schedules(entity_id: int, period: Optional[str] = None, db: Session = Depends(get_async_db)):
     _ensure_tables(db)
     rows = db.execute(sa_text("SELECT id, invoice_id, method, start_date, months, total FROM rev_rec_schedules WHERE entity_id = :e ORDER BY datetime(start_date) DESC"), {"e": entity_id}).fetchall()
     items = [{"id": r[0], "invoice_id": r[1], "method": r[2], "start_date": r[3], "months": r[4], "total": float(r[5] or 0)} for r in rows]
@@ -106,7 +117,7 @@ async def list_schedules(entity_id: int, period: Optional[str] = None, db: Sessi
 
 
 @router.post("/post-period")
-async def post_period(entity_id: int, year: int, month: int, db: Session = Depends(get_db)):
+async def post_period(entity_id: int, year: int, month: int, db: Session = Depends(get_async_db)):
     """Post revenue for the given period for all applicable schedules (idempotent per schedule+period)."""
     _ensure_tables(db)
     period = f"{year:04d}-{month:02d}"

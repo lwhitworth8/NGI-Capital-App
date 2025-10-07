@@ -901,7 +901,20 @@ export async function plmDeleteMilestone(id: number): Promise<{ deleted: boolean
   return apiClient.request('DELETE', `/advisory/milestones/${id}`)
 }
 
-export async function advisoryListStudents(params?: { entity_id?: number; q?: string; status?: string; page?: number; page_size?: number }): Promise<AdvisoryStudent[]> {
+export async function advisoryListStudents(params?: {
+  entity_id?: number
+  q?: string
+  status?: string
+  sort?: string
+  has_resume?: string | '1' | '0'
+  applied_project_id?: number
+  school?: string // comma-separated values
+  program?: string // comma-separated values
+  grad_year_min?: number
+  grad_year_max?: number
+  page?: number
+  page_size?: number
+}): Promise<AdvisoryStudent[]> {
   return apiClient.request('GET', '/advisory/students', undefined, { params })
 }
 
@@ -916,6 +929,22 @@ export async function advisoryUpdateStudent(id: number, patch: Partial<AdvisoryS
 
 export async function advisoryDeleteStudent(id: number): Promise<{ id: number; deleted: boolean }> {
   return apiClient.request('DELETE', `/advisory/students/${id}`)
+}
+
+export async function advisoryExportStudents(studentIds: number[]): Promise<void> {
+  const response = await apiClient.request('POST', '/advisory/students/export', studentIds, {
+    responseType: 'blob',
+  })
+
+  // Create download link
+  const url = window.URL.createObjectURL(new Blob([response.data]))
+  const link = document.createElement('a')
+  link.href = url
+  link.setAttribute('download', `students_export_${new Date().toISOString().split('T')[0]}.csv`)
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
 }
 
 export async function advisorySoftDeleteStudent(id: number): Promise<{ id: number; deleted: boolean; soft?: boolean }> {
@@ -940,6 +969,11 @@ export async function advisoryGetStudentTimeline(studentId: number): Promise<{ a
 
 export async function advisoryListArchivedStudents(params?: { q?: string; page?: number; page_size?: number }): Promise<Array<{ id:number; original_id:number; email:string; deleted_at:string; deleted_by?:string; snapshot?: any }>> {
   return apiClient.request('GET', `/advisory/students/archived`, undefined, { params })
+}
+
+// NGI Learning (Admin)
+export async function learningAdminListStudents(): Promise<{ students: any[]; total_count: number }> {
+  return apiClient.request('GET', '/learning/admin/students')
 }
 
 export async function advisoryListApplications(params?: { entity_id?: number; status?: string; project_id?: number; q?: string }): Promise<AdvisoryApplication[]> {
@@ -997,7 +1031,7 @@ export async function advisoryDeleteCoffeeAvailability(id: number): Promise<{ id
   return apiClient.request('DELETE', `/advisory/coffeechats/availability/${id}`)
 }
 
-export async function advisoryListCoffeeRequests(params?: { status?: string; admin_email?: string }): Promise<import('@/types').AdvisoryCoffeeRequest[]> {
+export async function advisoryListCoffeeRequests(params?: { status?: string; admin_email?: string; project_id?: number }): Promise<import('@/types').AdvisoryCoffeeRequest[]> {
   return apiClient.request('GET', '/advisory/coffeechats/requests', undefined, { params })
 }
 
@@ -1029,7 +1063,7 @@ export async function advisoryGetProject(id: number): Promise<import('@/types').
   return apiClient.request('GET', `/advisory/projects/${id}`)
 }
 
-export async function advisoryAddAssignment(projectId: number, data: { student_id: number; role?: string; hours_planned?: number }): Promise<{ id: number }> {
+export async function advisoryAddAssignment(projectId: number, data: { student_id: number; role?: string; hours_planned?: number; hourly_rate?: number; pay_currency?: string }): Promise<{ id: number }> {
   return apiClient.request('POST', `/advisory/projects/${projectId}/assignments`, data)
 }
 

@@ -2,40 +2,99 @@
 
 import { useEffect, useState } from 'react'
 import { useAuth } from '@/lib/auth'
-import { advisoryListStudents, advisoryUpdateStudent, advisorySoftDeleteStudent, advisoryGetStudentTimeline, advisoryOverrideStudentStatus, advisoryCreateStudentAssignment, advisoryListProjects, advisoryListArchivedStudents, advisoryRestoreStudent, apiClient } from '@/lib/api'
+import { advisoryListStudents, advisoryUpdateStudent, advisorySoftDeleteStudent, advisoryGetStudentTimeline, advisoryOverrideStudentStatus, advisoryCreateStudentAssignment, advisoryListProjects, advisoryListArchivedStudents, advisoryRestoreStudent, advisoryExportStudents, apiClient, learningAdminListStudents } from '@/lib/api'
+import { StudentsDataTable } from '@/components/students/StudentsDataTable'
+import { StudentDetailSheet } from '@/components/students/StudentDetailSheet'
+import { AssignToProjectDialog } from '@/components/students/AssignToProjectDialog'
+import { StatusOverrideDialog } from '@/components/students/StatusOverrideDialog'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Users, Archive, TrendingUp, AlertCircle, Download, Filter } from 'lucide-react'
 import type { AdvisoryStudent } from '@/types'
+import { UC_SCHOOLS } from '@/lib/uc-schools'
+import { UC_MAJORS } from '@/lib/uc-majors'
+import { MultiSelect } from '@/components/ui/MultiSelect'
+import { ProjectPicker } from '@/components/ui/ProjectPicker'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
 const BASE_ALLOWED = new Set([
   'lwhitworth@ngicapitaladvisory.com',
   'anurmamade@ngicapitaladvisory.com',
 ])
 
-
 export default function AdvisoryStudentsPage() {
   const { user, loading } = useAuth()
   const [listLoading, setListLoading] = useState(false)
   const [students, setStudents] = useState<AdvisoryStudent[]>([])
-  const [q, setQ] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all'|'active'|'alumni'|'prospect'|'paused'>('all')
-  const [sort, setSort] = useState<'default'|'last_activity_desc'|'name_asc'|'grad_year_asc'|'grad_year_desc'>('last_activity_desc')
-  const [hasResume, setHasResume] = useState<'all'|'yes'|'no'>('all')
-  const [page, setPage] = useState(1)
-  const [selected, setSelected] = useState<AdvisoryStudent | null>(null)
-  const [timeline, setTimeline] = useState<{ applications: any[]; coffeechats: any[]; onboarding: any[] } | null>(null)
-  const [assignOpen, setAssignOpen] = useState(false)
-  const [assignProjectId, setAssignProjectId] = useState<number | null>(null)
-  const [assignHours, setAssignHours] = useState<number | undefined>(undefined)
-  const [projects, setProjects] = useState<any[]>([])
-  const [overrideOpen, setOverrideOpen] = useState(false)
-  const [overrideStatus, setOverrideStatus] = useState<'active'|'alumni'|'__clear'>('__clear')
-  const [overrideReason, setOverrideReason] = useState('')
-  const [scrollTop, setScrollTop] = useState(0)
-  const [view, setView] = useState<'active'|'archived'>('active')
   const [archived, setArchived] = useState<Array<{ id:number; original_id:number; email:string; deleted_at:string; deleted_by?:string; snapshot?: any }>>([])
+  const [selectedStudent, setSelectedStudent] = useState<AdvisoryStudent | null>(null)
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [projects, setProjects] = useState<any[]>([])
+  const [learningByEmail, setLearningByEmail] = useState<Record<string, { completion: number; talent?: number }>>({})
+  const [activeTab, setActiveTab] = useState<'active'|'archived'>('active')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [schoolMulti, setSchoolMulti] = useState<string[]>([])
+  const [programMulti, setProgramMulti] = useState<string[]>([])
+  const [gradMin, setGradMin] = useState<number | ''>('')
+  const [gradMax, setGradMax] = useState<number | ''>('')
+  const [sortBy, setSortBy] = useState<string>('last_activity_desc')
+  const [hasResume, setHasResume] = useState<'all'|'yes'|'no'>('all')
+  const [appliedProjectId, setAppliedProjectId] = useState<number | null>(null)
+  const [page, setPage] = useState(1)
   const [archPage, setArchPage] = useState(1)
 
-    const [authCheckLoading, setAuthCheckLoading] = useState(true)
+  const [authCheckLoading, setAuthCheckLoading] = useState(true)
   const [serverEmail, setServerEmail] = useState('')
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+
+  // Initialize filters from URL once
+  useEffect(() => {
+    const sp = searchParams
+    if (!sp) return
+    const q0 = sp.get('q') || ''
+    const st0 = sp.get('status') || 'all'
+    const sort0 = sp.get('sort') || 'last_activity_desc'
+    const hr0 = (sp.get('has_resume') as any) || 'all'
+    const sch0 = (sp.get('school') || '').split(',').filter(Boolean)
+    const prg0 = (sp.get('program') || '').split(',').filter(Boolean)
+    const gymin0 = sp.get('grad_year_min'); const gymax0 = sp.get('grad_year_max')
+    const ap0 = sp.get('applied_project_id')
+    setSearchQuery(q0)
+    setStatusFilter(st0)
+    setSortBy(sort0)
+    if (hr0 === '1') setHasResume('yes'); else if (hr0 === '0') setHasResume('no'); else setHasResume('all')
+    setSchoolMulti(sch0)
+    setProgramMulti(prg0)
+    setGradMin(gymin0 ? Number(gymin0) : '')
+    setGradMax(gymax0 ? Number(gymax0) : '')
+    setAppliedProjectId(ap0 ? Number(ap0) : null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Sync URL when filters change
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const params = new URLSearchParams()
+      if (searchQuery) params.set('q', searchQuery)
+      if (statusFilter !== 'all') params.set('status', statusFilter)
+      if (sortBy && sortBy !== 'default') params.set('sort', sortBy)
+      if (hasResume !== 'all') params.set('has_resume', hasResume === 'yes' ? '1' : '0')
+      if (schoolMulti.length) params.set('school', schoolMulti.join(','))
+      if (programMulti.length) params.set('program', programMulti.join(','))
+      if (gradMin !== '') params.set('grad_year_min', String(gradMin))
+      if (gradMax !== '') params.set('grad_year_max', String(gradMax))
+      if (appliedProjectId !== null) params.set('applied_project_id', String(appliedProjectId))
+      router.replace(`${pathname}?${params.toString()}`)
+    }, 300)
+    return () => clearTimeout(t)
+  }, [searchQuery, statusFilter, sortBy, hasResume, schoolMulti, programMulti, gradMin, gradMax, router, pathname])
   const allowed = (() => {
     if ((process.env.NEXT_PUBLIC_ADVISORY_ALLOW_ALL || '').toLowerCase() === '1') return true
     const devAllow = process.env.NODE_ENV !== 'production' && (process.env.NEXT_PUBLIC_ADVISORY_DEV_OPEN || '1') === '1'
@@ -76,305 +135,377 @@ export default function AdvisoryStudentsPage() {
     check(); return () => { mounted = false }
   }, [user?.email, serverEmail])
 
-  const load = async () => {
+  const loadStudents = async () => {
     if (!allowed) return
     setListLoading(true)
     try {
-      if (view === 'active') {
-        const params: any = {q: q || undefined, page, page_size: 100 }
+      if (activeTab === 'active') {
+        const params: any = {
+          q: searchQuery || undefined,
+          page,
+          page_size: 100
+        }
         if (statusFilter !== 'all') params.status = statusFilter
-        if (sort && sort !== 'default') params.sort = sort
-        if (hasResume !== 'all') params.has_resume = hasResume === 'yes' ? 1 : 0
-        setStudents(await advisoryListStudents(params))
+        if (sortBy && sortBy !== 'default') params.sort = sortBy
+        if (hasResume !== 'all') params.has_resume = hasResume === 'yes' ? '1' : '0'
+        if (schoolMulti.length) params.school = schoolMulti.join(',')
+        if (programMulti.length) params.program = programMulti.join(',')
+        if (gradMin !== '') params.grad_year_min = Number(gradMin)
+        if (gradMax !== '') params.grad_year_max = Number(gradMax)
+        if (appliedProjectId !== null) params.applied_project_id = appliedProjectId
+        const list = await advisoryListStudents(params)
+        setStudents(list)
+        // Fetch learning progress and map by email (best-effort)
+        try {
+          const la = await learningAdminListStudents()
+          const map: Record<string, { completion: number; talent?: number }> = {}
+          for (const s of (la?.students || [])) {
+            const em = String(s.email || '').toLowerCase()
+            if (em) map[em] = { completion: Number(s.completion_percentage || 0), talent: Number(s.talent_signal || 0) }
+          }
+          setLearningByEmail(map)
+        } catch { setLearningByEmail({}) }
       } else {
-        setArchived(await advisoryListArchivedStudents({ q: q || undefined, page: archPage, page_size: 100 }))
+        setArchived(await advisoryListArchivedStudents({
+          q: searchQuery || undefined,
+          page: archPage,
+          page_size: 100
+        }))
       }
-    }
-    finally { setListLoading(false) }
+    } finally { setListLoading(false) }
   }
 
-  useEffect(() => { load() }, [allowed, statusFilter, sort, hasResume, page, view, archPage])
-
-  // When selecting a student, load timeline and supporting lists
   useEffect(() => {
-    (async () => {
-      if (!selected) return
-      try {
-        const tl = await advisoryGetStudentTimeline(selected.id)
-        setTimeline(tl)
-      } catch { setTimeline(null) }
-      try {
-        const projs = await advisoryListProjects({ status: 'active' } as any)
-        setProjects(projs as any)
-      } catch { setProjects([]) }
-    })()
-  }, [selected?.id])
+    loadStudents()
+  }, [allowed, activeTab, statusFilter, sortBy, hasResume, page, archPage, searchQuery])
 
+  // Load projects for assignments
+  useEffect(() => {
+    if (allowed) {
+      (async () => {
+        try {
+          const projs = await advisoryListProjects({ status: 'active' } as any)
+          setProjects(projs as any)
+        } catch { setProjects([]) }
+      })()
+    }
+  }, [allowed])
+
+  const handleStudentSelect = (student: AdvisoryStudent) => {
+    setSelectedStudent(student)
+    setDetailOpen(true)
+  }
+
+  const [assignOpen, setAssignOpen] = useState(false)
+  const [overrideOpen, setOverrideOpen] = useState(false)
+  const [targetStudent, setTargetStudent] = useState<AdvisoryStudent | null>(null)
+
+  const handleAssignToProject = async (student: AdvisoryStudent) => {
+    setTargetStudent(student)
+    setAssignOpen(true)
+  }
+
+  const handleStatusOverride = async (student: AdvisoryStudent) => {
+    setTargetStudent(student)
+    setOverrideOpen(true)
+  }
+
+  const handleArchive = async (student: AdvisoryStudent) => {
+    try {
+      await advisorySoftDeleteStudent(student.id)
+      await loadStudents()
+      setDetailOpen(false)
+    } catch (error) {
+      console.error('Failed to archive student:', error)
+    }
+  }
+
+  const handleBulkAction = async (action: string, students: AdvisoryStudent[]) => {
+    if (action === 'export') {
+      try {
+        await advisoryExportStudents(students.map(s => s.id))
+      } catch (error) {
+        console.error('Failed to export students:', error)
+      }
+    } else if (action === 'email') {
+      const emails = students.map(s => s.email).join(',')
+      window.open(`mailto:${emails}?subject=NGI Capital Advisory`)
+    }
+  }
 
   if (loading || authCheckLoading) {
     return (
-      <div className="p-6">
-        <h1 className="text-2xl font-semibold">Students</h1>
-        <p className="text-sm text-muted-foreground mt-2">Loading...</p>
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
-
     )
   }
+
   if (!allowed) {
     return (
-      <div className="p-6">
-        <h1 className="text-2xl font-semibold">Students</h1>
-        <p className="text-sm text-muted-foreground mt-2">Access restricted.</p>
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h2 className="text-lg font-semibold mb-2">Access Restricted</h2>
+          <p className="text-muted-foreground">You don't have permission to view this page.</p>
+        </div>
       </div>
     )
   }
 
   return (
     <>
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Students</h1>
-        </div>
-              </div>
-
-      {/* View Toggle + Actions */}
-      <div className="flex items-center gap-2">
-        <div className="flex items-center gap-1 mr-3">
-          <button className={`px-3 py-2 rounded-md border ${view==='active'?'bg-primary text-primary-foreground':''}`} onClick={()=>{ setView('active'); setPage(1) }}>Active</button>
-          <button className={`px-3 py-2 rounded-md border ${view==='archived'?'bg-primary text-primary-foreground':''}`} onClick={()=>{ setView('archived'); setArchPage(1) }}>Archived</button>
-        </div>
-        <input className="px-3 py-2 border rounded-md bg-background" placeholder="Search" value={q} onChange={e=>setQ(e.target.value)} />
-        <select className="px-3 py-2 border rounded-md bg-background" value={statusFilter} onChange={e=>{ setStatusFilter(e.target.value as any); setPage(1) }}>
-          <option value="all">All</option>
-          <option value="active">Active</option>
-          <option value="alumni">Alumni</option>
-          <option value="prospect">Prospect</option>
-          <option value="paused">Paused</option>
-        </select>
-        <select className="px-3 py-2 border rounded-md bg-background" value={sort} onChange={e=>{ setSort(e.target.value as any); setPage(1) }}>
-          <option value="last_activity_desc">Last Activity</option>
-          <option value="name_asc">Name (A-Z)</option>
-          <option value="grad_year_asc">Grad Year (Asc)</option>
-          <option value="grad_year_desc">Grad Year (Desc)</option>
-        </select>
-        <select className="px-3 py-2 border rounded-md bg-background" value={hasResume} onChange={e=>{ setHasResume(e.target.value as any); setPage(1) }}>
-          <option value="all">All</option>
-          <option value="yes">Has Resume</option>
-          <option value="no">No Resume</option>
-        </select>
-        <button className="px-3 py-2 rounded-md border" onClick={() => { setPage(1); load() }}>Search</button>
-      </div>
-
-      {/* Active List */}
-      {view === 'active' && (
-      <div className="rounded-xl border border-border bg-card">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left border-b border-border">
-              <th className="p-3">Name</th>
-              <th className="p-3">Email</th>
-              <th className="p-3">School</th>
-              <th className="p-3">Program</th>
-              <th className="p-3">Status</th>
-              <th className="p-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {students.map(s => (
-              <tr key={s.id} className="border-b border-border hover:bg-muted/30 cursor-pointer" onClick={()=>setSelected(s)}>
-                <td className="p-3">{s.first_name} {s.last_name}</td>
-                <td className="p-3">{s.email}</td>
-                <td className="p-3">{s.school || '-'}</td>
-                <td className="p-3">{s.program || '-'}</td>
-                <td className="p-3">{(s.status_effective || s.status || '').toString()}</td>
-                <td className="p-3 text-right">
-                  <button className="px-2 py-1 text-xs rounded border mr-2" onClick={async(e)=>{ e.stopPropagation(); await advisoryUpdateStudent(s.id, { status: s.status === 'active' ? 'paused' : 'active' }); await load() }}>{s.status==='active'?'Pause':'Activate'}</button>
-                  <button className="px-2 py-1 text-xs rounded border" onClick={async(e)=>{ e.stopPropagation(); await advisorySoftDeleteStudent(s.id); await load() }}>Archive</button>
-                </td>
-              </tr>
-            ))}
-            {students.length === 0 && !listLoading && (
-              <tr><td className="p-3 text-sm text-muted-foreground" colSpan={6}>No students found.</td></tr>
-            )}
-            {listLoading && (
-              <tr><td className="p-3 text-sm text-muted-foreground" colSpan={6}>Loading...</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      )}
-
-      {/* Archived (simple view with restore) */}
-      {view === 'archived' && (
-      <div className="rounded-xl border border-border bg-card">
-        <div className="flex items-center justify-between p-3 border-b border-border">
-          <h2 className="text-sm font-medium">Archived Students</h2>
-          <div className="flex items-center gap-2">
-            <button className="px-2 py-1 text-xs rounded border" onClick={async()=>{ setArchived(await advisoryListArchivedStudents({ q: q || undefined, page: archPage, page_size: 100 })) }}>Refresh</button>
+      <div className="mx-auto w-full max-w-screen-2xl px-6 py-6 space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Students Database</h1>
+            <p className="text-muted-foreground mt-2">
+              Manage student profiles, assignments, and activity tracking
+            </p>
           </div>
-        </div>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left border-b border-border">
-              <th className="p-3">Name</th>
-              <th className="p-3">Email</th>
-              <th className="p-3">Deleted At</th>
-              <th className="p-3">Deleted By</th>
-              <th className="p-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {archived.map(a => (
-              <tr key={a.id} className="border-b border-border">
-                <td className="p-3">{a.snapshot?.first_name || ''} {a.snapshot?.last_name || ''}</td>
-                <td className="p-3">{a.email}</td>
-                <td className="p-3">{a.deleted_at ? new Date(a.deleted_at).toLocaleString() : '-'}</td>
-                <td className="p-3">{a.deleted_by || '-'}</td>
-                <td className="p-3 text-right">
-                  <button className="px-2 py-1 text-xs rounded border" onClick={async()=>{ await advisoryRestoreStudent(a.original_id); setArchived(await advisoryListArchivedStudents({ q: q || undefined, page: archPage, page_size: 100 })) }}>Restore</button>
-                </td>
-              </tr>
-            ))}
-            {archived.length === 0 && (
-              <tr><td className="p-3 text-sm text-muted-foreground" colSpan={5}>No archived students.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      )}
 
-      {/* Pagination */}
-      <div className="flex items-center justify-end gap-2">
-        <button className="px-2 py-1 text-sm rounded border" disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))}>Prev</button>
-        <div className="text-xs text-muted-foreground">Page {page}</div>
-        <button className="px-2 py-1 text-sm rounded border" onClick={()=>setPage(p=>p+1)}>Next</button>
-      </div>
-
-      
-    </div>
-    {/* Detail Drawer */}
-    {selected && (
-      <div className="fixed inset-0 bg-black/30 z-40" onClick={()=>setSelected(null)}>
-        <div className="absolute right-0 top-0 bottom-0 w-full max-w-4xl bg-background border-l border-border shadow-xl overflow-auto" onClick={e=>e.stopPropagation()}>
-          <div className="p-6 space-y-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <h2 className="text-xl font-semibold">{selected.first_name} {selected.last_name}</h2>
-                <div className="text-sm text-muted-foreground">{selected.email}</div>
-                <div className="text-xs text-muted-foreground mt-1">Status: {(selected.status_effective || selected.status)}{selected.status_override ? ' (override)' : ''}</div>
-                {selected.resume_url ? <div className="text-xs mt-1"><a className="underline" href={selected.resume_url} target="_blank">Resume</a></div> : null}
-                {selected.last_activity_at ? <div className="text-xs text-muted-foreground mt-1">Last Activity: {new Date(selected.last_activity_at).toLocaleString()}</div> : null}
-              </div>
-              <div className="flex items-center gap-2">
-                <button className="px-2 py-1 text-xs rounded border" onClick={()=>{ setOverrideOpen(true); setOverrideStatus(selected.status_override ? (selected.status_override as any) : '__clear'); setOverrideReason('') }}>Status Override</button>
-                <button className="px-2 py-1 text-xs rounded border" onClick={()=>{ setAssignOpen(true); setAssignProjectId(null); setAssignHours(undefined) }}>Assign to Project</button>
-              </div>
-            </div>
-
-            {/* Timeline */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="col-span-1 md:col-span-1">
-                <h3 className="font-medium">Applications</h3>
-                <div className="mt-2 space-y-1">
-                  {(timeline?.applications||[]).map(a => (
-                    <div key={a.id} className="text-xs text-muted-foreground">#{a.id} ? P{a.project_id} - {a.status} - {new Date(a.created_at).toLocaleString()}</div>
-                  ))}
-                  {(!timeline || (timeline.applications||[]).length===0) && <div className="text-xs text-muted-foreground">None</div>}
+          {/* Stats Cards */}
+          <div className="grid grid-cols-3 gap-3 min-w-[320px] max-w-md">
+            <Card className="rounded-xl">
+              <CardContent className="py-3">
+                <div className="flex items-center space-x-2">
+                  <Users className="h-3 w-3 text-muted-foreground" />
+                  <div className="text-center">
+                    <p className="text-xl font-semibold leading-tight">{students.length}</p>
+                    <p className="text-[11px] text-muted-foreground">Active Students</p>
+                  </div>
                 </div>
-              </div>
-              <div className="col-span-1 md:col-span-1">
-                <h3 className="font-medium">Coffee Chats</h3>
-                <div className="mt-2 space-y-1">
-                  {(timeline?.coffeechats||[]).map(c => (
-                    <div key={c.id} className="text-xs text-muted-foreground">{c.provider} {c.status} - {c.scheduled_start ? new Date(c.scheduled_start).toLocaleString() : '-'}</div>
-                  ))}
-                  {(!timeline || (timeline.coffeechats||[]).length===0) && <div className="text-xs text-muted-foreground">None</div>}
+              </CardContent>
+            </Card>
+            <Card className="rounded-xl">
+              <CardContent className="py-3">
+                <div className="flex items-center space-x-2">
+                  <TrendingUp className="h-3 w-3 text-muted-foreground" />
+                  <div className="text-center">
+                    <p className="text-xl font-semibold leading-tight">
+                      {students.filter(s => (s.profile_completeness?.percentage || 0) >= 80).length}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">Complete Profiles</p>
+                  </div>
                 </div>
-              </div>
-              <div className="col-span-1 md:col-span-1">
-                <h3 className="font-medium">Onboarding</h3>
-                <div className="mt-2 space-y-1">
-                  {(timeline?.onboarding||[]).map(o => (
-                    <div key={o.id} className="text-xs text-muted-foreground">T{o.template_id} - {o.status} - {new Date(o.created_at).toLocaleString()}</div>
-                  ))}
-                  {(!timeline || (timeline.onboarding||[]).length===0) && <div className="text-xs text-muted-foreground">None</div>}
+              </CardContent>
+            </Card>
+            <Card className="rounded-xl">
+              <CardContent className="py-3">
+                <div className="flex items-center space-x-2">
+                  <Archive className="h-3 w-3 text-muted-foreground" />
+                  <div className="text-center">
+                    <p className="text-xl font-semibold leading-tight">{archived.length}</p>
+                    <p className="text-[11px] text-muted-foreground">Archived</p>
+                  </div>
                 </div>
-              </div>
-            </div>
-
-            <div className="pt-4">
-              <button className="px-3 py-2 rounded-md border" onClick={()=>setSelected(null)}>Close</button>
-            </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
-      </div>
-    )}
 
-    {/* Assign Dialog */}
-    {assignOpen && selected && (
-      <div className="fixed inset-0 bg-black/30 z-50" onClick={()=>setAssignOpen(false)}>
-        <div className="absolute inset-0 grid place-items-center" onClick={e=>e.stopPropagation()}>
-          <div className="w-full max-w-lg bg-background border border-border rounded-xl p-4 space-y-3">
-            <div className="text-base font-semibold">Assign to Project</div>
-            <select className="w-full px-3 py-2 border rounded-md bg-background" value={assignProjectId ?? ''} onChange={e=>setAssignProjectId(e.target.value ? Number(e.target.value) : null)}>
-              <option value="">Select project</option>
-              {projects.map((p:any) => (
-                <option key={p.id} value={p.id}>{p.project_name} - open roles: {p.open_roles ?? '-'}</option>
-              ))}
-            </select>
-            <input className="w-full px-3 py-2 border rounded-md bg-background" type="number" placeholder="Hours/week (optional)" value={assignHours ?? ''} onChange={e=>setAssignHours(e.target.value ? Number(e.target.value) : undefined)} />
-            <div className="flex items-center justify-end gap-2">
-              <button className="px-3 py-2 rounded-md border" onClick={()=>setAssignOpen(false)}>Cancel</button>
-              <button className="px-3 py-2 rounded-md bg-blue-600 text-white" onClick={async()=>{
-                if (!assignProjectId) return;
-                const chosen = projects.find((p:any)=>p.id===assignProjectId)
-                if (chosen && typeof chosen.open_roles === 'number' && chosen.open_roles <= 0) {
-                  const ok = window.confirm('No open analyst roles available for this project. Proceed anyway and assign?')
-                  if (!ok) return
-                }
-                await advisoryCreateStudentAssignment(selected.id, { project_id: assignProjectId, hours_planned: assignHours })
-                setAssignOpen(false)
-                // refresh timeline
-                try { setTimeline(await advisoryGetStudentTimeline(selected.id)) } catch {}
-              }}>Assign</button>
+        {/* Main Content */}
+        <div className="space-y-6">
+          {/* Filters */}
+          <Card className="rounded-xl border bg-card">
+          <div className="flex flex-wrap items-center gap-3 p-3" aria-label="Students filters toolbar">
+            <div className="relative">
+              <Input
+                placeholder="Search by name or email..."
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setPage(1) }}
+                className="w-80"
+                aria-label="Search students"
+              />
             </div>
+            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1) }}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="alumni">Alumni</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={sortBy} onValueChange={(v) => setSortBy(v)}>
+              <SelectTrigger className="w-44">
+                <SelectValue placeholder="Sort By" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="last_activity_desc">Last Activity</SelectItem>
+                <SelectItem value="name_asc">Name A-Z</SelectItem>
+                <SelectItem value="grad_year_asc">Grad Year Asc</SelectItem>
+                <SelectItem value="grad_year_desc">Grad Year Desc</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={hasResume} onValueChange={(v) => setHasResume(v as any)}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Has Resume" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="yes">Has Resume</SelectItem>
+                <SelectItem value="no">No Resume</SelectItem>
+              </SelectContent>
+            </Select>
+            <MultiSelect
+              options={UC_SCHOOLS}
+              selected={schoolMulti}
+              onChange={setSchoolMulti}
+              placeholder="UC Schools"
+              searchPlaceholder="Filter schools"
+              ariaLabel="Filter by UC schools"
+            />
+            <MultiSelect
+              options={UC_MAJORS}
+              selected={programMulti}
+              onChange={setProgramMulti}
+              placeholder="Majors"
+              searchPlaceholder="Filter majors"
+              ariaLabel="Filter by majors"
+            />
+            <ProjectPicker
+              projects={projects as any}
+              value={appliedProjectId}
+              onChange={(id)=> setAppliedProjectId(id)}
+              placeholder="Applied Project"
+              ariaLabel="Filter by applied project"
+            />
+            <div className="flex items-center space-x-2" aria-label="Grad year range">
+              <Input
+                type="number"
+                placeholder="Min Year"
+                value={gradMin as any}
+                onChange={(e) => setGradMin(e.target.value === '' ? '' : Number(e.target.value))}
+                className="w-28"
+                aria-label="Minimum graduation year"
+              />
+              <span className="text-sm text-muted-foreground">to</span>
+              <Input
+                type="number"
+                placeholder="Max Year"
+                value={gradMax as any}
+                onChange={(e) => setGradMax(e.target.value === '' ? '' : Number(e.target.value))}
+                className="w-28"
+                aria-label="Maximum graduation year"
+              />
+            </div>
+            <div className="ml-auto" />
+            <Button variant="outline" onClick={() => { setSearchQuery(''); setStatusFilter('all'); setHasResume('all'); setSortBy('last_activity_desc'); setSchoolMulti([]); setProgramMulti([]); setAppliedProjectId(null); setGradMin(''); setGradMax(''); setPage(1) }}>
+              Clear Filters
+            </Button>
           </div>
+          </Card>
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'active'|'archived')}>
+            <TabsList>
+              <TabsTrigger value="active" className="flex items-center space-x-2">
+                <Users className="h-4 w-4" />
+                <span>Active Students</span>
+              </TabsTrigger>
+              <TabsTrigger value="archived" className="flex items-center space-x-2">
+                <Archive className="h-4 w-4" />
+                <span>Archived</span>
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="active" className="space-y-6">
+              <StudentsDataTable
+                data={students}
+                loading={listLoading}
+                onStudentSelect={handleStudentSelect}
+                onBulkAction={handleBulkAction}
+                learningByEmail={learningByEmail}
+                hideToolbar
+              />
+            </TabsContent>
+
+            <TabsContent value="archived" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Archived Students</CardTitle>
+                  <CardDescription>
+                    Students who have been removed from the active list but preserved for reference
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {archived.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        No archived students found
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {archived.map((student) => (
+                          <div key={student.id} className="flex items-center justify-between p-4 border rounded-lg">
+                            <div>
+                              <p className="font-medium">
+                                {student.snapshot?.first_name} {student.snapshot?.last_name}
+                              </p>
+                              <p className="text-sm text-muted-foreground">{student.email}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Archived {new Date(student.deleted_at).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => advisoryRestoreStudent(student.original_id)}
+                            >
+                              Restore
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
-    )}
 
-    {/* Status Override Dialog */}
-    {overrideOpen && selected && (
-      <div className="fixed inset-0 bg-black/30 z-50" onClick={()=>setOverrideOpen(false)}>
-        <div className="absolute inset-0 grid place-items-center" onClick={e=>e.stopPropagation()}>
-          <div className="w-full max-w-lg bg-background border border-border rounded-xl p-4 space-y-3">
-            <div className="text-base font-semibold">Status Override</div>
-            <select className="w-full px-3 py-2 border rounded-md bg-background" value={overrideStatus} onChange={e=>setOverrideStatus(e.target.value as any)}>
-              <option value="__clear">Use computed (clear override)</option>
-              <option value="active">Active</option>
-              <option value="alumni">Alumni</option>
-            </select>
-            {overrideStatus !== '__clear' && (
-              <textarea className="w-full px-3 py-2 border rounded-md bg-background" placeholder="Reason (for audit)" value={overrideReason} onChange={e=>setOverrideReason(e.target.value)} />
-            )}
-            <div className="flex items-center justify-end gap-2">
-              <button className="px-3 py-2 rounded-md border" onClick={()=>setOverrideOpen(false)}>Cancel</button>
-              <button className="px-3 py-2 rounded-md bg-blue-600 text-white" onClick={async()=>{
-                if (overrideStatus === '__clear') {
-                  await advisoryOverrideStudentStatus(selected.id, { clear: true })
-                } else {
-                  await advisoryOverrideStudentStatus(selected.id, { status: overrideStatus as any, reason: overrideReason || undefined })
-                }
-                setOverrideOpen(false)
-                await load()
-              }}>Save</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    )}
+      {/* Student Detail Sheet */}
+      <StudentDetailSheet
+        student={selectedStudent}
+        isOpen={detailOpen}
+        onClose={() => {
+          setDetailOpen(false)
+          setSelectedStudent(null)
+        }}
+        onAssignToProject={handleAssignToProject}
+        onStatusOverride={handleStatusOverride}
+        onArchive={handleArchive}
+      />
+
+      {/* Assign Dialog */}
+      <AssignToProjectDialog
+        open={assignOpen}
+        onClose={() => setAssignOpen(false)}
+        student={targetStudent}
+        projects={projects as any}
+        onConfirm={async ({ project_id, hours_planned }) => {
+          if (!targetStudent) return
+          await advisoryCreateStudentAssignment(targetStudent.id, { project_id, hours_planned })
+          setAssignOpen(false)
+          await loadStudents()
+        }}
+      />
+
+      {/* Status Override Dialog */}
+      <StatusOverrideDialog
+        open={overrideOpen}
+        onClose={() => setOverrideOpen(false)}
+        student={targetStudent}
+        onConfirm={async ({ status, reason }) => {
+          if (!targetStudent) return
+          await advisoryOverrideStudentStatus(targetStudent.id, { status, reason })
+          setOverrideOpen(false)
+          await loadStudents()
+        }}
+      />
     </>
   )
 }

@@ -1,5 +1,17 @@
 # Applications Admin – PRD (NGI Capital Advisory)
 
+## Addendum – Coffee Chats Relationship (2025‑10‑03)
+
+Clarifications
+- Coffee chats are informal pre‑application conversations. They do not automatically change application status.
+- Admins may drag applications to a new lane after reviewing outcomes, but no automatic transition occurs upon chat completion.
+- The Student project page recommends scheduling a coffee chat before applying.
+- If an application already exists for the project and a chat is completed, the system may add an internal timeline note; status remains unchanged until an admin action.
+
+Interactions
+- Coffee chat scheduling and requests are managed in each Project’s Coffee Chats tab; see Coffee Chats PRD addendum for API and behaviors (holds, expiry, conflict checks).
+
+
 ## 0) Context & Goals
 Admin module for managing student applications to NGI Advisory projects. Provides project-scoped Kanban by default and a switchable global consolidated view. Integrates with Projects (capacity and questions), Students (immutable email, profile completeness), and Onboarding (interviews, offers, joining). No code changes here—this defines the expected behavior.
 
