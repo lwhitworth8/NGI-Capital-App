@@ -9,9 +9,16 @@ from sqlalchemy.pool import NullPool
 import os
 
 # Import all models to ensure they are registered with SQLAlchemy
+from . import models
 from . import models_accounting
 from . import models_accounting_part2
 from . import models_accounting_part3
+from . import models_ap
+from . import models_ar
+from . import models_tax
+from . import models_expenses_payroll
+from . import models_fixed_assets
+from . import models_period_close
 from . import models_learning
 
 # Lazy initialization of async engine and session factory

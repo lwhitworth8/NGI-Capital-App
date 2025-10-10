@@ -1440,7 +1440,6 @@ else:
         app.include_router(accounting_banking_routes.router, dependencies=[Depends(require_full_access())])
         app.include_router(accounting_reporting_routes.router, dependencies=[Depends(require_full_access())])
         app.include_router(accounting_tax_routes.router, dependencies=[Depends(require_full_access())])
-        app.include_router(accounting_period_close_routes.router, dependencies=[Depends(require_full_access())])
 
 app.include_router(time_utils.router)
 if _OPEN_NON_ACCOUNTING:
