@@ -1,9 +1,9 @@
 "use client"
 
 import React, { useState } from "react"
-import { Modal, ModalFooter } from "@/components/ui/Modal"
-import { Button } from "@/components/ui/Button"
-import { Badge } from "@/components/ui/Badge"
+import { Modal, ModalFooter } from "@/components/ui/modal"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import type { AdvisoryStudent } from "@/types"
 
 type Props = {
@@ -55,4 +55,5 @@ export function StatusOverrideDialog({ open, onClose, student, onConfirm }: Prop
     </Modal>
   )
 }
+
 

@@ -73,6 +73,10 @@
   }
   
   html {
+    /* Ensure REM base exactly matches admin app (16px)
+       This standardizes width classes like w-60 (15rem = 240px)
+       and font sizes like text-base (1rem = 16px). */
+    font-size: 16px;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
@@ -150,3 +154,112 @@
 .card { @apply rounded-2xl border bg-card; }
 .input-modern { @apply w-full rounded-xl border bg-background px-4 py-2.5; }
 .input-sm { @apply w-full rounded-lg border bg-background px-3 py-2 text-sm; }
+
+/*
+  UI polish: hide blinking text caret on non-editable elements.
+  Some browsers/features (e.g., caret browsing) can show a blinking
+  insertion cursor on static text when clicking. Keep caret visible
+  only in true text inputs, textareas, or explicitly contenteditable
+  elements so typing UX remains intact where expected.
+*/
+:where(body) :where(*):not(input):not(textarea):not([contenteditable="true"]) {
+  caret-color: transparent;
+}
+input, textarea, [contenteditable="true"] {
+  caret-color: auto;
+}
+
+/* Hide scrollbars utility (match admin) */
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Learning Center Animations */
+@keyframes progress-fill {
+  from {
+    stroke-dashoffset: 100;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(59, 130, 246, 0.6);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Enhanced hover effects for learning modules */
+.learning-module-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-style: preserve-3d;
+}
+
+.learning-module-card:hover {
+  transform: translateY(-8px) rotateX(5deg) rotateY(5deg);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+/* Gradient text animation */
+.gradient-text {
+  background: linear-gradient(45deg, #3b82f6, #8b5cf6, #06b6d4);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: shimmer 3s ease-in-out infinite;
+}
+
+/* Floating particles */
+.floating-particle {
+  animation: float 3s ease-in-out infinite;
+}
+
+.floating-particle:nth-child(2) {
+  animation-delay: 0.5s;
+}
+
+.floating-particle:nth-child(3) {
+  animation-delay: 1s;
+}
+
+.floating-particle:nth-child(4) {
+  animation-delay: 1.5s;
+}
+
+/* Pulse effect for available modules */
+.pulse-ring {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.05);
+  }
+}

@@ -14,7 +14,7 @@ export const metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body>
+      <body className="bg-background text-foreground">
         <ClerkAppProviders>
           <ClientRoot>
             {children}

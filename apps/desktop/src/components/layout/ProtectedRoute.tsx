@@ -3,7 +3,7 @@
 import React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useApp } from '@/lib/context/AppContext';
-import { LoadingState } from '@/components/ui/LoadingSpinner';
+import { LoadingState } from '@/components/ui/loading-spinner';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -36,3 +36,4 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   return <>{children}</>;
 }
+

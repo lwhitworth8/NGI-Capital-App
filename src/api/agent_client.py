@@ -65,9 +65,13 @@ def start_agent_run(db: Session, *, workflow: str, target_type: str, target_id: 
     run_id = int(db.execute(sa_text("SELECT last_insert_rowid()"), {}).scalar() or 0)
     db.commit()
 
-    # Optional: dispatch to external workflow runner (placeholder)
+    # Optional: dispatch to external workflow runner (Agent Builder REST)
+    # Skip REST dispatch when ChatKit/UI-driven runs are preferred
+    if str(os.getenv('AGENT_DISABLE_REST_DISPATCH', '0')).strip().lower() in ('1','true','yes'):
+        return run_id
+    # Otherwise attempt REST dispatch
     base_url = os.getenv('OPENAI_WORKFLOWS_BASE_URL')
-    api_key = os.getenv('OPENAI_WORKFLOWS_API_KEY')
+    api_key = os.getenv('OPENAI_WORKFLOWS_API_KEY') or os.getenv('OPENAI_API_KEY')
     # Resolve concrete workflow id
     wf_id_env = None
     if workflow == 'scheduler':
@@ -84,23 +88,55 @@ def start_agent_run(db: Session, *, workflow: str, target_type: str, target_id: 
                 cb = {"url": "/api/agents/webhooks/%s" % (workflow,)}
                 input_payload['callback'] = cb
             # Build request
-            url = base_url.rstrip('/') + f"/workflows/{wf_id}/runs"
+            base = base_url.rstrip('/')
+            url_primary = base + f"/workflows/{wf_id}/runs"
+            url_alt = base + "/workflows/runs"
             input_key = os.getenv('WORKFLOW_INPUT_KEY') or 'input'
             # Some builders expose a single string input only (e.g., input_as_text)
             if input_key == 'input_as_text':
-                body = {"input": {"input_as_text": json.dumps(input_payload)}}
+                body_primary = {"input": {"input_as_text": json.dumps(input_payload)}}
+                body_alt = {"workflow_id": wf_id, "input": {"input_as_text": json.dumps(input_payload)}}
             else:
-                body = {"input": input_payload}
-            data = json.dumps(body).encode('utf-8')
-            req = urllib.request.Request(url, data=data, method='POST')
-            req.add_header('Authorization', f"Bearer {api_key}")
-            req.add_header('Content-Type', 'application/json')
+                body_primary = {"input": input_payload}
+                body_alt = {"workflow_id": wf_id, "input": input_payload}
+            # Prepare headers
+            headers = {
+                'Authorization': f"Bearer {api_key}",
+                'Content-Type': 'application/json',
+                'OpenAI-Beta': 'workflows=v1',
+            }
+            # Optional scoping headers
+            if os.getenv('OPENAI_PROJECT'):
+                headers['OpenAI-Project'] = os.getenv('OPENAI_PROJECT')  # project-scoped keys
+            org = os.getenv('OPENAI_ORG') or os.getenv('OPENAI_ORGANIZATION')
+            if org:
+                headers['OpenAI-Organization'] = org
+            # Optional: pass webhook secret header for convenience
             # Optional: pass webhook secret header for convenience
             secret = os.getenv('AGENT_WEBHOOK_SECRET') or ''
-            if secret:
-                req.add_header('X-Callback-Secret', secret)
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                _ = resp.read()
+            # Try primary endpoint first
+            sent = False
+            for url, body in ((url_primary, body_primary), (url_alt, body_alt)):
+                try:
+                    data = json.dumps(body).encode('utf-8')
+                    req = urllib.request.Request(url, data=data, method='POST')
+                    for k, v in headers.items():
+                        req.add_header(k, v)
+                    if secret:
+                        req.add_header('X-Callback-Secret', secret)
+                    with urllib.request.urlopen(req, timeout=10) as resp:
+                        _ = resp.read()
+                        sent = True
+                        break
+                except urllib.error.HTTPError as he:  # type: ignore
+                    # 404/403 may indicate alt endpoint needed or missing project header
+                    last_err = f"HTTPError {he.code}: {getattr(he, 'reason', '')}"
+                    continue
+                except Exception as e:
+                    last_err = str(e)
+                    continue
+            if not sent:
+                raise RuntimeError(last_err if 'last_err' in locals() else 'dispatch failed')
             # Mark as dispatched
             db.execute(sa_text(
                 "UPDATE agent_runs SET status = 'dispatched', updated_at = :now WHERE id = :id"

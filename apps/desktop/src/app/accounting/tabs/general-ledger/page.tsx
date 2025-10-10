@@ -4,33 +4,10 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { PieChart, ClipboardList, FileSpreadsheet } from 'lucide-react';
-import dynamic from 'next/dynamic';
+import ChartOfAccountsView from './ChartOfAccountsView';
 
-// Lazy load heavy components for performance
-const ChartOfAccountsView = dynamic(() => import('./ChartOfAccountsView'), {
-  loading: () => (
-    <div className="flex items-center justify-center p-12">
-      <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-    </div>
-  ),
-});
-
-const JournalEntriesView = dynamic(() => import('./JournalEntriesView'), {
-  loading: () => (
-    <div className="flex items-center justify-center p-12">
-      <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-    </div>
-  ),
-});
-
-const TrialBalanceView = dynamic(() => import('./TrialBalanceView'), {
-  loading: () => (
-    <div className="flex items-center justify-center p-12">
-      <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-    </div>
-  ),
-});
+import JournalEntriesView from './JournalEntriesView';
+import TrialBalanceView from './TrialBalanceView';
 
 export default function GeneralLedgerTab() {
   const [activeSubTab, setActiveSubTab] = useState('coa');
@@ -49,16 +26,13 @@ export default function GeneralLedgerTab() {
 
       <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="w-full">
         <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="coa" className="flex items-center gap-2">
-            <PieChart className="h-4 w-4" />
+          <TabsTrigger value="coa" className="flex items-center justify-center">
             <span>Chart of Accounts</span>
           </TabsTrigger>
-          <TabsTrigger value="je" className="flex items-center gap-2">
-            <ClipboardList className="h-4 w-4" />
+          <TabsTrigger value="je" className="flex items-center justify-center">
             <span>Journal Entries</span>
           </TabsTrigger>
-          <TabsTrigger value="tb" className="flex items-center gap-2">
-            <FileSpreadsheet className="h-4 w-4" />
+          <TabsTrigger value="tb" className="flex items-center justify-center">
             <span>Trial Balance</span>
           </TabsTrigger>
         </TabsList>

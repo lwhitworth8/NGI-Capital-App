@@ -6,6 +6,8 @@ Author: NGI Capital Development Team
 Date: October 3, 2025
 Python: 3.11+
 SQLAlchemy: 2.0+
+
+All datetime fields use PST (Pacific Standard Time) via datetime_utils.
 """
 
 from datetime import date, datetime
@@ -20,6 +22,7 @@ from sqlalchemy import JSON  # Use JSON for SQLite compatibility instead of JSON
 
 # Import the shared Base from main models to ensure all tables are registered
 from .models import Base
+from .utils.datetime_utils import get_pst_now
 
 
 # ============================================================================
@@ -64,8 +67,8 @@ class AccountingEntity(Base):
     # statutory_conversion, asset_transfer
     
     # Audit
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now, onupdate=get_pst_now)
     
     # Relationships
     chart_of_accounts: Mapped[List["ChartOfAccounts"]] = relationship(
@@ -109,8 +112,8 @@ class EntityRelationship(Base):
     # full, equity_method, cost
     
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now, onupdate=get_pst_now)
     
     __table_args__ = (
         Index("idx_entity_rel_parent", "parent_entity_id"),
@@ -160,9 +163,9 @@ class ChartOfAccounts(Base):
     last_transaction_date: Mapped[Optional[date]] = mapped_column(Date)
     
     # Audit
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now)
     created_by_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("partners.id"))
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now, onupdate=get_pst_now)
     updated_by_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("partners.id"))
     
     # Relationships
@@ -202,8 +205,8 @@ class AccountMappingRule(Base):
     times_corrected: Mapped[int] = mapped_column(Integer, default=0)
     accuracy_score: Mapped[Optional[Decimal]] = mapped_column(Numeric(3, 2))
     
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now, onupdate=get_pst_now)
     
     __table_args__ = (
         Index("idx_mapping_entity", "entity_id"),
@@ -251,10 +254,13 @@ class JournalEntry(Base):
     
     # Approval tracking (Landon + Andre)
     created_by_id: Mapped[int] = mapped_column(Integer, ForeignKey("partners.id"))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_by_email: Mapped[Optional[str]] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now)
     first_approved_by_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("partners.id"))
+    first_approved_by_email: Mapped[Optional[str]] = mapped_column(String(255))
     first_approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     final_approved_by_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("partners.id"))
+    final_approved_by_email: Mapped[Optional[str]] = mapped_column(String(255))
     final_approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text)
     
@@ -274,9 +280,10 @@ class JournalEntry(Base):
     )
     
     # Audit
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now, onupdate=get_pst_now)
     posted_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     posted_by_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("partners.id"))
+    posted_by_email: Mapped[Optional[str]] = mapped_column(String(255))
     
     # Locking
     is_locked: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -317,6 +324,11 @@ class JournalEntryLine(Base):
     # Line metadata
     description: Mapped[Optional[str]] = mapped_column(Text)
     
+    # ASC 720 Startup Cost Tracking
+    is_startup_cost: Mapped[bool] = mapped_column(Boolean, default=False)
+    startup_cost_metadata: Mapped[Optional[dict]] = mapped_column(JSON)
+    # {"threshold_tracking": "first_5000", "entity_inception_date": "2025-07-16", "cumulative_amount": 2500.00}
+    
     # Dimensions (optional) - project_id references advisory_projects but no FK constraint (table created via raw SQL)
     project_id: Mapped[Optional[int]] = mapped_column(Integer)
     cost_center: Mapped[Optional[str]] = mapped_column(String(50))
@@ -327,7 +339,7 @@ class JournalEntryLine(Base):
         Integer, ForeignKey("accounting_documents.id")
     )
     
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now)
     
     # Relationships
     journal_entry: Mapped["JournalEntry"] = relationship(back_populates="lines")
@@ -341,6 +353,40 @@ class JournalEntryLine(Base):
         Index("idx_jel_entry", "journal_entry_id"),
         Index("idx_jel_account", "account_id"),
         UniqueConstraint("journal_entry_id", "line_number"),
+    )
+
+
+class StartupCostMetadata(Base):
+    """
+    ASC 720 Startup Cost Tracking
+    Tracks startup costs separately for tax purposes (first $5,000 threshold)
+    while expenses are recorded in normal GL accounts
+    """
+    __tablename__ = "startup_cost_metadata"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    entity_id: Mapped[int] = mapped_column(Integer, ForeignKey("accounting_entities.id"))
+    journal_entry_line_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("journal_entry_lines.id")
+    )
+    
+    # Tracking
+    tracked_amount: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=False)
+    cumulative_startup_costs: Mapped[Decimal] = mapped_column(Numeric(15, 2), nullable=False)
+    within_threshold: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Is this within first $5,000 for tax purposes
+    
+    # Classification
+    cost_category: Mapped[Optional[str]] = mapped_column(String(100))
+    # Legal, Accounting, Filing Fees, etc.
+    classification_date: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now)
+    classification_notes: Mapped[Optional[str]] = mapped_column(Text)
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now)
+    
+    __table_args__ = (
+        Index("idx_startup_entity", "entity_id"),
+        Index("idx_startup_je_line", "journal_entry_line_id"),
     )
 
 
@@ -371,8 +417,8 @@ class RecurringJournalTemplate(Base):
     require_review: Mapped[bool] = mapped_column(Boolean, default=True)
     
     created_by_id: Mapped[int] = mapped_column(Integer, ForeignKey("partners.id"))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now, onupdate=get_pst_now)
 
 
 class JournalEntryApprovalRule(Base):
@@ -396,7 +442,7 @@ class JournalEntryApprovalRule(Base):
     notify_cfo: Mapped[bool] = mapped_column(Boolean, default=False)
     notify_board: Mapped[bool] = mapped_column(Boolean, default=False)
     
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now)
 
 
 class JournalEntryAuditLog(Base):
@@ -412,7 +458,7 @@ class JournalEntryAuditLog(Base):
     action: Mapped[str] = mapped_column(String(50), nullable=False)
     # created, edited, approved, rejected, posted, reversed
     performed_by_id: Mapped[int] = mapped_column(Integer, ForeignKey("partners.id"))
-    performed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    performed_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now)
     
     # Details
     old_value: Mapped[Optional[dict]] = mapped_column(JSON)

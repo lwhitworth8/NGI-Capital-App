@@ -5,7 +5,9 @@ import { useAuth } from '@clerk/nextjs';
 import { useParams, useRouter } from 'next/navigation';
 import { LEARNING_MODULES } from '@/types/learning';
 import CompanySelector from '@/components/learning/CompanySelector';
-import { learningAPI } from '@/lib/api/learning';
+import { learningAPI, type LearningContentItem } from '@/lib/api/learning';
+import { LessonContent } from '@/components/learning/LessonContent';
+import { motion } from 'framer-motion';
 
 export default function ModuleDetailPage() {
   const params = useParams();
@@ -13,6 +15,10 @@ export default function ModuleDetailPage() {
   const { getToken } = useAuth();
   const [progress, setProgress] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [content, setContent] = useState<LearningContentItem[]>([]);
+  const [contentLoading, setContentLoading] = useState(false);
+  const [contentError, setContentError] = useState<string | null>(null);
+  const [selectedLesson, setSelectedLesson] = useState<LearningContentItem | null>(null);
   
   const moduleId = params.module_id as string;
   const module = LEARNING_MODULES.find(m => m.id === moduleId);
@@ -23,6 +29,8 @@ export default function ModuleDetailPage() {
       return;
     }
     loadProgress();
+    // Load module content
+    loadModuleContent();
   }, [module, router]);
 
   const loadProgress = async () => {
@@ -41,6 +49,22 @@ export default function ModuleDetailPage() {
 
   const handleCompanySelected = async (companyId: number) => {
     await loadProgress();
+  };
+
+  const loadModuleContent = async () => {
+    try {
+      setContentLoading(true);
+      setContentError(null);
+      const token = await getToken();
+      if (!token || !module) return;
+      const data = await learningAPI.getModuleContent(module.id, token);
+      setContent(data || []);
+    } catch (err) {
+      setContentError(err instanceof Error ? err.message : 'Failed to load content');
+      setContent([]);
+    } finally {
+      setContentLoading(false);
+    }
   };
 
   if (loading || !module) {
@@ -152,20 +176,27 @@ export default function ModuleDetailPage() {
               <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-6">
                 <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Units</h3>
                 <div className="space-y-2">
-                  {Array.from({ length: module.units }, (_, i) => (
-                    <button
-                      key={i}
+                  {Array.from(new Set(content.filter(c => c.unit_id).map(c => c.unit_id as string))).map((uid) => (
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      key={uid}
                       className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 transition-colors"
+                      onClick={() => {
+                        // Scroll to unit section
+                        const el = document.getElementById(`unit-${uid}`);
+                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }}
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-gray-900 dark:text-white">
-                          Unit {i + 1}
+                        <span className="text-sm font-medium text-gray-900 dark:text-white capitalize">
+                          {(uid || '').replace(/_/g, ' ')}
                         </span>
                         <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                         </svg>
                       </div>
-                    </button>
+                    </motion.button>
                   ))}
                 </div>
               </div>
@@ -229,6 +260,91 @@ export default function ModuleDetailPage() {
                     Start Unit 1
                   </button>
                 </div>
+
+                {/* Lessons */}
+                <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-6">
+                  <h3 className="font-semibold text-gray-900 dark:text-white mb-4">Lessons</h3>
+                  {contentLoading && (
+                    <div className="text-sm text-gray-500">Loading lessons...</div>
+                  )}
+                  {contentError && (
+                    <div className="text-sm text-red-600">Error: {contentError}</div>
+                  )}
+                  {!contentLoading && !contentError && (
+                    <div className="space-y-6">
+                      {Array.from(new Set(content.filter(c => c.unit_id).map(c => c.unit_id as string))).map((uid) => (
+                        <div key={uid} id={`unit-${uid}`} className="space-y-2">
+                          <div className="text-sm font-semibold text-gray-700 dark:text-gray-300 capitalize">{(uid || '').replace(/_/g, ' ')}</div>
+                          <div className="grid gap-2">
+                            {content.filter(c => c.unit_id === uid && c.lesson_id).map((lesson) => (
+                              <motion.button
+                                whileHover={{ scale: 1.01 }}
+                                whileTap={{ scale: 0.99 }}
+                                key={lesson.id}
+                                onClick={() => setSelectedLesson(lesson)}
+                                className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 transition-colors"
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <div className="text-sm font-medium text-gray-900 dark:text-white">{lesson.title}</div>
+                                    <div className="text-xs text-gray-500">
+                                      {lesson.estimated_duration_minutes ? `${lesson.estimated_duration_minutes} min` : ''} {lesson.difficulty_level ? ` • ${lesson.difficulty_level}` : ''}
+                                    </div>
+                                  </div>
+                                  <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                  </svg>
+                                </div>
+                              </motion.button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Selected Lesson Renderer */}
+                {selectedLesson && (
+                  <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-semibold text-gray-900 dark:text-white">{selectedLesson.title}</h3>
+                      <button
+                        onClick={() => setSelectedLesson(null)}
+                        className="text-sm text-gray-500 hover:text-gray-700"
+                      >Close</button>
+                    </div>
+                    <LessonContent
+                      content={{
+                        id: selectedLesson.id,
+                        title: selectedLesson.title,
+                        content_type: selectedLesson.content_type,
+                        content_markdown: selectedLesson.content_markdown || undefined,
+                        content_url: selectedLesson.content_url || undefined,
+                        estimated_duration_minutes: selectedLesson.estimated_duration_minutes || undefined,
+                        difficulty_level: selectedLesson.difficulty_level || undefined,
+                        animation_id: selectedLesson.animation_id || undefined,
+                        interactive_tool_id: selectedLesson.interactive_tool_id || undefined,
+                        prerequisites: selectedLesson.prerequisites || [],
+                        tags: selectedLesson.tags || [],
+                      }}
+                      onComplete={async () => {
+                        try {
+                          const token = await getToken();
+                          if (!token) return;
+                          await learningAPI.markLessonComplete(
+                            selectedLesson.lesson_id || String(selectedLesson.id),
+                            { module_id: selectedLesson.module_id, unit_id: selectedLesson.unit_id || undefined },
+                            token
+                          );
+                        } catch (e) {
+                          // non-blocking
+                          console.warn('Failed to mark complete', e);
+                        }
+                      }}
+                    />
+                  </div>
+                )}
 
                 {/* Resources */}
                 <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-6">

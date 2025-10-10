@@ -11,6 +11,8 @@ export function CoffeeChatsPanel({ onClose, projectId }: { onClose: () => void; 
   const [blocks, setBlocks] = React.useState<Array<{ id:number; admin_email:string; start_ts:string; end_ts:string; slot_len_min:number }>>([])
   const [form, setForm] = React.useState<{ date:string; start:string; end:string; slot:number }>({ date:'', start:'09:00', end:'17:00', slot:30 })
   const [saving, setSaving] = React.useState(false)
+  const [accepted, setAccepted] = React.useState<Array<{ start_ts:string; end_ts:string }>>([])
+  const [syncing, setSyncing] = React.useState(false)
 
   const load = React.useCallback(async () =>{
     setLoading(true); setError(undefined)
@@ -22,6 +24,10 @@ export function CoffeeChatsPanel({ onClose, projectId }: { onClose: () => void; 
       const av = await apiClient.request<Array<{ id:number; admin_email:string; start_ts:string; end_ts:string; slot_len_min:number }>>('GET','/advisory/coffeechats/availability')
       setBlocks(av || [])
     }catch(e){ setError('Failed to load availability'); setBlocks([]) }
+    try{
+      const reqs = await apiClient.request<Array<{ id:number; requested_start_ts:string; requested_end_ts:string; status:string }>>('GET','/advisory/coffeechats/requests', undefined, { params: { status: 'accepted' } })
+      setAccepted((reqs||[]).map(r=> ({ start_ts: r.requested_start_ts, end_ts: r.requested_end_ts })))
+    }catch(e){ setAccepted([]) }
     finally{ setLoading(false) }
   },[])
 
@@ -51,10 +57,17 @@ export function CoffeeChatsPanel({ onClose, projectId }: { onClose: () => void; 
     finally{ setSaving(false) }
   }
 
+  const fmt = (d: Date) => {
+    const day = d.toLocaleDateString(undefined,{ weekday:'short' })
+    const mon = d.toLocaleDateString(undefined,{ month:'short' })
+    const n = d.getDate()
+    const suf = (n%10===1 && n%100!==11)?'st':(n%10===2 && n%100!==12)?'nd':(n%10===3 && n%100!==13)?'rd':'th'
+    return `${day}, ${mon} ${n}${suf}`
+  }
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-6">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-4xl bg-card border border-border rounded-2xl overflow-hidden">
+      <div className="relative w-full max-w-6xl bg-card border border-border rounded-2xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2 font-semibold"><Calendar className="w-4 h-4"/> Coffee Chats</div>
           <div className="flex items-center gap-2">
@@ -62,31 +75,36 @@ export function CoffeeChatsPanel({ onClose, projectId }: { onClose: () => void; 
             <button className="p-1 rounded hover:bg-accent" onClick={onClose}><X className="w-4 h-4"/></button>
           </div>
         </div>
-        <div className="p-5 grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="p-5 grid grid-cols-1 lg:grid-cols-3 gap-5 overflow-y-auto max-h-[80vh] no-scrollbar">
           <div className="lg:col-span-2 space-y-3">
             <div className="text-sm font-medium">Upcoming Public Slots (7 days)</div>
             {loading && <div className="text-sm text-muted-foreground">Loading...</div>}
             {error && <div className="text-sm text-red-500">{error}</div>}
             {!loading && (
+              <div className="rounded-2xl border border-border bg-card/50 p-3">
               <div className="grid grid-cols-7 gap-2 text-xs">
                 {days.map((d, idx)=> (
                   <div key={idx} className="border border-border rounded-lg overflow-hidden">
-                    <div className="px-2 py-1 bg-muted/50 border-b border-border font-medium text-center">
-                      {d.date.toLocaleDateString(undefined,{ weekday:'short', month:'short', day:'numeric' })}
+                    <div className="px-2 py-1 bg-muted/50 border-b border-border font-semibold text-center whitespace-nowrap">
+                      {fmt(d.date)}
                     </div>
-                    <div className="p-2 space-y-1 max-h-64 overflow-auto no-scrollbar">
-                      {d.slots.map((s,i)=> (
-                        <div key={i} className="px-2 py-1 rounded bg-background border border-border flex items-center gap-2">
+                    <div className="p-2 space-y-1">
+                      {d.slots.map((s,i)=> {
+                        const taken = accepted.some(a => new Date(a.start_ts).getTime() === s.start.getTime())
+                        return (
+                        <div key={i} className={`px-2 py-1 rounded-lg border flex items-center gap-2 shadow-sm ${taken ? 'bg-muted text-muted-foreground border-dashed' : 'bg-background border-border'}`}>
                           <Clock className="w-3 h-3"/>
                           <span>{s.start.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}</span>
                         </div>
-                      ))}
+                        )
+                      })}
                       {d.slots.length===0 && Array.from({length:6}).map((_,i)=> (
-                        <div key={i} className="px-2 py-1 rounded border border-dashed border-border text-muted-foreground/60">—</div>
+                        <div key={i} className="px-2 py-1 rounded-lg border border-dashed border-border text-muted-foreground/60">—</div>
                       ))}
                     </div>
                   </div>
                 ))}
+              </div>
               </div>
             )}
           </div>

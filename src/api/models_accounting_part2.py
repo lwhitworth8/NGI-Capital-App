@@ -4,6 +4,8 @@ Documents, Bank Accounts, Reconciliation, Controls, Period Close
 
 Author: NGI Capital Development Team
 Date: October 3, 2025
+
+All datetime fields use PST (Pacific Standard Time) via datetime_utils.
 """
 
 from datetime import date, datetime
@@ -16,6 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy import JSON  # Use JSON for SQLite compatibility instead of JSONB
 from .models_accounting import Base
+from .utils.datetime_utils import get_pst_now
 
 
 # ============================================================================
@@ -42,7 +45,7 @@ class AccountingDocument(Base):
     file_path: Mapped[str] = mapped_column(Text, nullable=False)
     file_size_bytes: Mapped[Optional[int]] = mapped_column(Integer)
     mime_type: Mapped[Optional[str]] = mapped_column(String(100))
-    upload_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    upload_date: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now)
     uploaded_by_id: Mapped[int] = mapped_column(Integer, ForeignKey("partners.id"))
     
     # Version control
@@ -74,8 +77,8 @@ class AccountingDocument(Base):
     archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     archived_by_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("partners.id"))
     
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now, onupdate=get_pst_now)
     
     # Relationships
     entity: Mapped["AccountingEntity"] = relationship(back_populates="documents")
@@ -139,8 +142,8 @@ class BankAccount(Base):
     gl_account_id: Mapped[int] = mapped_column(Integer, ForeignKey("chart_of_accounts.id"))
     
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now, onupdate=get_pst_now)
     
     # Relationships
     transactions: Mapped[List["BankTransaction"]] = relationship(
@@ -188,7 +191,7 @@ class BankTransaction(Base):
     status: Mapped[str] = mapped_column(String(50), default="unmatched")
     # unmatched, matched, excluded
     
-    imported_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    imported_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now)
     
     # Relationships
     bank_account: Mapped["BankAccount"] = relationship(back_populates="transactions")
@@ -221,7 +224,7 @@ class BankTransactionMatch(Base):
     confidence: Mapped[Optional[Decimal]] = mapped_column(Numeric(3, 2))
     
     matched_by_id: Mapped[int] = mapped_column(Integer, ForeignKey("partners.id"))
-    matched_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    matched_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now)
     
     # Relationships
     bank_transaction: Mapped["BankTransaction"] = relationship(back_populates="matches")
@@ -272,8 +275,8 @@ class BankReconciliation(Base):
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     
     notes: Mapped[Optional[str]] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now, onupdate=get_pst_now)
     
     # Relationships
     bank_account: Mapped["BankAccount"] = relationship(back_populates="reconciliations")
@@ -318,8 +321,8 @@ class BankMatchingRule(Base):
     times_applied: Mapped[int] = mapped_column(Integer, default=0)
     
     created_by_id: Mapped[int] = mapped_column(Integer, ForeignKey("partners.id"))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now, onupdate=get_pst_now)
     
     __table_args__ = (
         Index("idx_matching_rules_entity", "entity_id"),
@@ -385,8 +388,8 @@ class InternalControl(Base):
     )
     evidence_required: Mapped[Optional[str]] = mapped_column(Text)
     
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now, onupdate=get_pst_now)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     
     __table_args__ = (
@@ -421,7 +424,7 @@ class AuthorizationMatrix(Base):
     # Segregation of duties
     cannot_be_preparer: Mapped[bool] = mapped_column(Boolean, default=False)
     
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now)
     
     __table_args__ = (
         Index("idx_authz_matrix_entity", "entity_id"),
@@ -461,11 +464,48 @@ class ControlTestResult(Base):
     tested_by_id: Mapped[int] = mapped_column(Integer, ForeignKey("partners.id"))
     reviewed_by_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("partners.id"))
     
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now)
     
     __table_args__ = (
         Index("idx_test_results_control", "control_id"),
         Index("idx_test_results_date", "test_date"),
+    )
+
+
+# ============================================================================
+# AGENT VALIDATION
+# ============================================================================
+
+class AgentValidation(Base):
+    """
+    Agent validation results for journal entries
+    OpenAI Agent Builder integration for US GAAP compliance
+    """
+    __tablename__ = "agent_validations"
+    
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    journal_entry_id: Mapped[int] = mapped_column(Integer, ForeignKey("journal_entries.id", ondelete="CASCADE"))
+    
+    # Agent workflow details
+    agent_run_id: Mapped[Optional[str]] = mapped_column(String(100))
+    workflow_id: Mapped[Optional[str]] = mapped_column(String(100))
+    validation_status: Mapped[Optional[str]] = mapped_column(String(50))
+    # completed, failed, in_progress
+    
+    # Validation results
+    gaap_compliance_score: Mapped[Optional[Decimal]] = mapped_column(Numeric(3, 2))
+    corrections_made: Mapped[Optional[dict]] = mapped_column(JSON)
+    validation_notes: Mapped[Optional[str]] = mapped_column(Text)
+    asc_references: Mapped[Optional[dict]] = mapped_column(JSON)
+    
+    # Timestamps
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=get_pst_now, onupdate=get_pst_now)
+    
+    __table_args__ = (
+        Index("idx_agent_validations_journal_entry_id", "journal_entry_id"),
+        Index("idx_agent_validations_agent_run_id", "agent_run_id"),
+        Index("idx_agent_validations_validation_status", "validation_status"),
     )
 
 

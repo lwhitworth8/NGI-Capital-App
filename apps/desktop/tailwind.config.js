@@ -1,4 +1,7 @@
 /** @type {import('tailwindcss').Config} */
+const path = require('path')
+const uiSrc = path.resolve(__dirname, '../../packages/ui/src')
+
 module.exports = {
   darkMode: 'class',
   content: [
@@ -6,8 +9,19 @@ module.exports = {
     './src/components/**/*.{js,ts,jsx,tsx,mdx}',
     './src/app/**/*.{js,ts,jsx,tsx,mdx}',
     '../../packages/ui/src/**/*.{ts,tsx}',
+    uiSrc + '/**/*.{ts,tsx}',
     // If using published UI pkg, scope to its built output only
     './node_modules/@ngi/ui/dist/**/*.{js,jsx,ts,tsx}'
+  ],
+  safelist: [
+    // Ensure shared sidebar pixel-locked utilities are always generated
+    'w-[240px]',
+    'px-[24px]',
+    'px-[12px]',
+    'py-[8px]',
+    'text-[16px]',
+    'text-[24px]',
+    'tracking-[-0.006em]'
   ],
   theme: {
     extend: {

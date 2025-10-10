@@ -9,9 +9,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { format } from "date-fns";
 import { toast } from "sonner";
 
 interface ReconciliationData {
+  id?: number;
   beginning_balance: number;
   ending_balance_per_bank: number;
   ending_balance_per_books: number;

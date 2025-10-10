@@ -10,6 +10,7 @@ import {
   Plus, Search, FileText, Calendar, DollarSign, 
   CheckCircle2, Clock, AlertCircle, Loader2, Edit, Trash2 
 } from "lucide-react"
+import { JournalEntryApprovalModal } from "./JournalEntryApprovalModal"
 import { toast } from "sonner"
 import { motion } from "framer-motion"
 import {
@@ -46,12 +47,23 @@ interface JournalEntry {
   fiscal_period: number
   description: string
   status: string
+  workflow_stage: number
   total_debits: number
   total_credits: number
   created_by: number
-  approved_by: number | null
+  first_approved_by: number | null
+  first_approved_at: string | null
+  final_approved_by: number | null
+  final_approved_at: string | null
+  posted_at: string | null
+  rejection_reason: string | null
   created_at: string
   updated_at: string
+  // Agent validation fields
+  agent_validated_at?: string | null
+  agent_validation_score?: number | null
+  agent_corrections_made?: boolean | null
+  agent_validation_notes?: string | null
 }
 
 interface JournalEntryLine {
@@ -79,6 +91,8 @@ export default function JournalEntriesView() {
   const [selectedStatus, setSelectedStatus] = useState("all")
   const [selectedPeriod, setSelectedPeriod] = useState("all")
   const [showNewEntryDialog, setShowNewEntryDialog] = useState(false)
+  const [showApprovalModal, setShowApprovalModal] = useState(false)
+  const [selectedEntryForApproval, setSelectedEntryForApproval] = useState<JournalEntry | null>(null)
   const [newEntry, setNewEntry] = useState({
     entry_date: new Date().toISOString().split('T')[0],
     description: "",
@@ -91,16 +105,9 @@ export default function JournalEntriesView() {
 
     try {
       setLoading(true)
-      const response = await fetch(`/api/accounting/journal-entries?entity_id=${selectedEntityId}`, {
-        credentials: "include",
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setEntries(data)
-      } else {
-        toast.error("Failed to load journal entries")
-      }
+      const { apiClient } = await import('@/lib/api')
+      const data = await apiClient.getJournalEntries({ entity_id: selectedEntityId })
+      setEntries(data)
     } catch (error) {
       console.error("Error loading entries:", error)
       toast.error("Error loading journal entries")
@@ -109,19 +116,16 @@ export default function JournalEntriesView() {
     }
   }, [selectedEntityId])
 
+  // Removed auto-refresh - data loads once and stays loaded
+
   // Fetch accounts for dropdown
   const fetchAccounts = useCallback(async () => {
     if (!selectedEntityId) return
 
     try {
-      const response = await fetch(`/api/accounting/coa?entity_id=${selectedEntityId}`, {
-          credentials: "include",
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setAccounts(data.filter((acc: Account) => acc.account_type !== "Header"))
-      }
+      const { apiClient } = await import('@/lib/api')
+      const data = await apiClient.getChartOfAccounts(selectedEntityId)
+      setAccounts(data.filter((acc: Account) => acc.account_type !== "Header"))
     } catch (error) {
       console.error("Error loading accounts:", error)
     }
@@ -158,6 +162,233 @@ export default function JournalEntriesView() {
     }))
   }, [])
 
+  // Workflow action functions
+  const submitForApproval = useCallback(async (entryId: number) => {
+    try {
+      const { apiClient } = await import('@/lib/api')
+      await apiClient.request('POST', `/accounting/journal-entries/${entryId}/submit-for-approval`)
+      toast.success("Journal entry submitted for approval")
+      fetchEntries() // Refresh the list
+    } catch (error) {
+      console.error("Error submitting for approval:", error)
+      toast.error("Error submitting for approval")
+    }
+  }, [fetchEntries])
+
+  const approveFirst = useCallback(async (entryId: number) => {
+    try {
+      const { apiClient } = await import('@/lib/api')
+      await apiClient.request('POST', `/accounting/journal-entries/${entryId}/approve-first`)
+      toast.success("Journal entry approved by first partner")
+      fetchEntries() // Refresh the list
+    } catch (error) {
+      console.error("Error approving:", error)
+      toast.error("Error approving journal entry")
+    }
+  }, [fetchEntries])
+
+  const approveFinal = useCallback(async (entryId: number) => {
+    try {
+      const { apiClient } = await import('@/lib/api')
+      await apiClient.request('POST', `/accounting/journal-entries/${entryId}/approve-final`)
+      toast.success("Journal entry posted successfully")
+      fetchEntries() // Refresh the list
+    } catch (error) {
+      console.error("Error posting:", error)
+      toast.error("Error posting journal entry")
+    }
+  }, [fetchEntries])
+
+  const rejectEntry = useCallback(async (entryId: number, reason: string) => {
+    try {
+      const { apiClient } = await import('@/lib/api')
+      await apiClient.request('POST', `/accounting/journal-entries/${entryId}/reject`, { reason })
+      toast.success("Journal entry rejected and returned to draft")
+      fetchEntries() // Refresh the list
+    } catch (error) {
+      console.error("Error rejecting:", error)
+      toast.error("Error rejecting journal entry")
+    }
+  }, [fetchEntries])
+
+  const approveEntry = useCallback(async (entryId: number) => {
+    try {
+      const { apiClient } = await import('@/lib/api')
+      await apiClient.request('POST', `/accounting/journal-entries/${entryId}/approve`)
+      toast.success("Journal entry approved")
+      fetchEntries() // Refresh the list
+    } catch (error) {
+      console.error("Error approving:", error)
+      toast.error("Error approving journal entry")
+    }
+  }, [fetchEntries])
+
+  const postEntry = useCallback(async (entryId: number) => {
+    try {
+      const { apiClient } = await import('@/lib/api')
+      await apiClient.request('POST', `/accounting/journal-entries/${entryId}/post`)
+      toast.success("Journal entry posted to general ledger")
+      fetchEntries() // Refresh the list
+    } catch (error) {
+      console.error("Error posting:", error)
+      toast.error("Error posting journal entry")
+    }
+  }, [fetchEntries])
+
+  const reverseEntry = useCallback(async (entryId: number, reason: string) => {
+    try {
+      const { apiClient } = await import('@/lib/api')
+      await apiClient.request('POST', `/accounting/journal-entries/${entryId}/reverse`, { reason })
+      toast.success("Journal entry reversed")
+      fetchEntries() // Refresh the list
+    } catch (error) {
+      console.error("Error reversing:", error)
+      toast.error("Error reversing journal entry")
+    }
+  }, [fetchEntries])
+
+  const revalidateEntry = useCallback(async (entryId: number) => {
+    try {
+      const { apiClient } = await import('@/lib/api')
+      await apiClient.request('POST', `/accounting/journal-entries/${entryId}/revalidate`)
+      toast.success("Journal entry re-validated with agent")
+      fetchEntries() // Refresh the list
+    } catch (error) {
+      console.error("Error re-validating:", error)
+      toast.error("Error re-validating journal entry")
+    }
+  }, [fetchEntries])
+
+  // Get status badge and workflow actions for an entry
+  const getStatusBadge = useCallback((entry: JournalEntry) => {
+    const statusConfig = {
+      'draft': { variant: 'secondary' as const, text: 'Draft', icon: Clock },
+      'agent_review': { variant: 'outline' as const, text: 'Agent Review', icon: Loader2 },
+      'pending_first_approval': { variant: 'default' as const, text: 'Pending First Approval', icon: AlertCircle },
+      'pending_final_approval': { variant: 'default' as const, text: 'Pending Final Approval', icon: AlertCircle },
+      'approved': { variant: 'default' as const, text: 'Approved', icon: CheckCircle2 },
+      'posted': { variant: 'default' as const, text: 'Posted', icon: CheckCircle2 },
+      'rejected': { variant: 'destructive' as const, text: 'Rejected', icon: AlertCircle }
+    }
+    
+    const config = statusConfig[entry.status as keyof typeof statusConfig] || statusConfig.draft
+    const Icon = config.icon
+    
+    return (
+      <Badge variant={config.variant} className="flex items-center gap-1">
+        <Icon className="h-3 w-3" />
+        {config.text}
+      </Badge>
+    )
+  }, [])
+
+  // Get agent validation badge
+  const getAgentValidationBadge = useCallback((entry: JournalEntry) => {
+    if (!entry.agent_validated_at) {
+      return (
+        <Badge variant="outline" className="text-xs">
+          Not Validated
+        </Badge>
+      )
+    }
+
+    const score = entry.agent_validation_score || 0
+    const variant = score >= 0.8 ? 'default' : score >= 0.6 ? 'secondary' : 'destructive'
+    
+    return (
+      <Badge variant={variant} className="text-xs">
+        Agent: {Math.round(score * 100)}%
+      </Badge>
+    )
+  }, [])
+
+  const getWorkflowActions = useCallback((entry: JournalEntry) => {
+    const actions = []
+    
+    if (entry.status === 'draft') {
+      actions.push(
+        <Button
+          key="submit"
+          size="sm"
+          variant="outline"
+          onClick={() => submitForApproval(entry.id)}
+        >
+          Submit for Agent Review
+        </Button>
+      )
+    }
+    
+    if (entry.status === 'agent_review') {
+      actions.push(
+        <Button
+          key="revalidate"
+          size="sm"
+          variant="outline"
+          onClick={() => revalidateEntry(entry.id)}
+        >
+          Re-validate
+        </Button>
+      )
+    }
+    
+    if (entry.status === 'pending_first_approval') {
+      actions.push(
+        <Button
+          key="approve"
+          size="sm"
+          variant="default"
+          onClick={() => handleOpenApprovalModal(entry)}
+        >
+          First Approval
+        </Button>
+      )
+    }
+    
+    if (entry.status === 'pending_final_approval') {
+      actions.push(
+        <Button
+          key="approve-final"
+          size="sm"
+          variant="default"
+          onClick={() => handleOpenApprovalModal(entry)}
+        >
+          Final Approval
+        </Button>
+      )
+    }
+    
+    if (entry.status === 'approved') {
+      actions.push(
+        <Button
+          key="post"
+          size="sm"
+          variant="default"
+          onClick={() => postEntry(entry.id)}
+        >
+          Post to GL
+        </Button>
+      )
+    }
+    
+    if (entry.status === 'posted') {
+      actions.push(
+        <Button
+          key="reverse"
+          size="sm"
+          variant="destructive"
+          onClick={() => {
+            const reason = prompt("Reversal reason:")
+            if (reason) reverseEntry(entry.id, reason)
+          }}
+        >
+          Reverse
+        </Button>
+      )
+    }
+    
+    return actions
+  }, [submitForApproval, approveEntry, rejectEntry, postEntry, reverseEntry, revalidateEntry])
+
   // Update line data
   const updateLine = useCallback((index: number, field: keyof JournalEntryLine, value: any) => {
     setNewEntry(prev => ({
@@ -192,41 +423,64 @@ export default function JournalEntriesView() {
     }
 
     try {
-      const response = await fetch("/api/accounting/journal-entries", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          entity_id: selectedEntityId,
-          entry_date: newEntry.entry_date,
-          description: newEntry.description,
-          lines: newEntry.lines.map(line => ({
-            account_number: line.account_number,
-            debit_amount: parseFloat(line.debit_amount.toString()) || 0,
-            credit_amount: parseFloat(line.credit_amount.toString()) || 0,
-            description: line.description
-          }))
-        })
+      const { apiClient } = await import('@/lib/api')
+      await apiClient.createJournalEntry({
+        entity_id: selectedEntityId,
+        entry_date: newEntry.entry_date,
+        description: newEntry.description,
+        lines: newEntry.lines.map(line => ({
+          account_number: line.account_number,
+          debit_amount: parseFloat(line.debit_amount.toString()) || 0,
+          credit_amount: parseFloat(line.credit_amount.toString()) || 0,
+          description: line.description
+        }))
       })
 
-      if (response.ok) {
-        toast.success("Journal entry created successfully!")
-        setShowNewEntryDialog(false)
-        setNewEntry({
-          entry_date: new Date().toISOString().split('T')[0],
-          description: "",
-          lines: []
-        })
-        await fetchEntries()
-      } else {
-        const error = await response.json()
-        toast.error(error.detail || "Failed to create journal entry")
-      }
+      toast.success("Journal entry created successfully!")
+      setShowNewEntryDialog(false)
+      setNewEntry({
+        entry_date: new Date().toISOString().split('T')[0],
+        description: "",
+        lines: []
+      })
+      await fetchEntries()
     } catch (error) {
       console.error("Error creating entry:", error)
       toast.error("Error creating journal entry")
     }
   }, [selectedEntityId, newEntry, calculateTotals, fetchEntries])
+
+  // Approval handlers
+  const handleOpenApprovalModal = (entry: JournalEntry) => {
+    setSelectedEntryForApproval(entry)
+    setShowApprovalModal(true)
+  }
+
+  const handleApproveEntry = async (entryId: number, notes: string) => {
+    try {
+      const { apiClient } = await import('@/lib/api')
+      await apiClient.approveJournalEntry(entryId, notes)
+      toast.success("Journal entry approved successfully!")
+      await fetchEntries()
+    } catch (error) {
+      console.error("Error approving entry:", error)
+      toast.error("Error approving journal entry")
+      throw error
+    }
+  }
+
+  const handleRejectEntry = async (entryId: number, notes: string) => {
+    try {
+      const { apiClient } = await import('@/lib/api')
+      await apiClient.rejectJournalEntry(entryId, notes)
+      toast.success("Journal entry rejected")
+      await fetchEntries()
+    } catch (error) {
+      console.error("Error rejecting entry:", error)
+      toast.error("Error rejecting journal entry")
+      throw error
+    }
+  }
 
   // Filter entries
   const filteredEntries = entries.filter(entry => {
@@ -248,11 +502,26 @@ export default function JournalEntriesView() {
     })
   }
 
+  const getMonthAndQuarter = (fiscalPeriod: number, fiscalYear: number): string => {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ]
+    
+    if (fiscalPeriod >= 1 && fiscalPeriod <= 12) {
+      const month = months[fiscalPeriod - 1]
+      const quarter = Math.ceil(fiscalPeriod / 3)
+      return `${month} Q${quarter} ${fiscalYear}`
+    }
+    
+    return `P${fiscalPeriod} ${fiscalYear}`
+  }
+
   const entryStats = {
     total: entries.length,
-    draft: entries.filter(e => e.status === "Draft").length,
-    posted: entries.filter(e => e.status === "Posted").length,
-    pending: entries.filter(e => e.status === "Pending Approval").length,
+    draft: entries.filter(e => e.status === "draft").length,
+    posted: entries.filter(e => e.status === "posted").length,
+    pending: entries.filter(e => e.status === "pending_approval" || e.status === "pending_final_approval").length,
   }
 
   const totals = calculateTotals()
@@ -281,12 +550,8 @@ export default function JournalEntriesView() {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold">Journal Entries</h3>
-          <p className="text-sm text-muted-foreground">Record and manage accounting transactions</p>
+          <p className="text-sm text-muted-foreground">System-generated journal entries for review and approval</p>
         </div>
-        <Button onClick={() => setShowNewEntryDialog(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          New Entry
-        </Button>
       </div>
 
       {/* Stats Cards */}
@@ -361,13 +626,13 @@ export default function JournalEntriesView() {
 
             <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
               <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Filter by period" />
+                <SelectValue placeholder="Filter by month" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Periods</SelectItem>
-                {[...Array(12)].map((_, i) => (
+                <SelectItem value="all">All Months</SelectItem>
+                {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((month, i) => (
                   <SelectItem key={i + 1} value={(i + 1).toString()}>
-                    Period {i + 1}
+                    {month} Q{Math.ceil((i + 1) / 3)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -401,6 +666,8 @@ export default function JournalEntriesView() {
                   <TableHead className="text-right">Debits</TableHead>
                   <TableHead className="text-right">Credits</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Agent</TableHead>
+                  <TableHead>Workflow</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -412,7 +679,7 @@ export default function JournalEntriesView() {
                     <TableCell className="max-w-xs truncate">{entry.description}</TableCell>
                     <TableCell>
                       <Badge variant="outline">
-                        P{entry.fiscal_period}
+                        {getMonthAndQuarter(entry.fiscal_period, entry.fiscal_year)}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right font-mono">
@@ -422,19 +689,15 @@ export default function JournalEntriesView() {
                       ${entry.total_credits.toLocaleString()}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant={
-                          entry.status === "Posted" ? "default" :
-                          entry.status === "Pending Approval" ? "secondary" :
-                          entry.status === "Draft" ? "outline" :
-                          "destructive"
-                        }
-                      >
-                        {entry.status === "Posted" && <CheckCircle2 className="mr-1 h-3 w-3" />}
-                        {entry.status === "Pending Approval" && <Clock className="mr-1 h-3 w-3" />}
-                        {entry.status === "Draft" && <AlertCircle className="mr-1 h-3 w-3" />}
-                        {entry.status}
-                      </Badge>
+                      {getStatusBadge(entry)}
+                    </TableCell>
+                    <TableCell>
+                      {getAgentValidationBadge(entry)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-2">
+                        {getWorkflowActions(entry)}
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
@@ -610,6 +873,16 @@ export default function JournalEntriesView() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Approval Modal */}
+      <JournalEntryApprovalModal
+        isOpen={showApprovalModal}
+        onClose={() => setShowApprovalModal(false)}
+        journalEntry={selectedEntryForApproval}
+        onApprove={handleApproveEntry}
+        onReject={handleRejectEntry}
+        isLoading={loading}
+      />
     </motion.div>
   )
 }

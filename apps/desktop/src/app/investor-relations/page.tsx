@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useApp } from '@/lib/context/AppContext'
-import { Button } from '@/components/ui/Button'
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import EntitySelectorInline from '@/components/finance/EntitySelectorInline'
 import {
   invGetKpis, invGetPipeline, invUpsertPipeline, invPatchPipeline,
@@ -109,14 +110,46 @@ export default function InvestorManagementPage() {
                   <option>Monthly</option>
                   <option>Ad Hoc</option>
                 </select>
-                <input type="date" className="px-3 py-2 border rounded bg-background" value={newReport.dueDate} onChange={e=>setNewReport({ ...newReport, dueDate: e.target.value })} />
+                <div className="flex gap-2 items-center">
+                  <input type="date" className="px-3 py-2 border rounded bg-background flex-1" value={newReport.dueDate}
+                         placeholder={recommendedDueDate(kpis) || ''}
+                         onChange={e=>setNewReport({ ...newReport, dueDate: e.target.value })} />
+                  <Button variant="outline" size="sm" onClick={()=>{
+                    const rec = recommendedDueDate(kpis)
+                    if (rec) setNewReport(r => ({ ...r, dueDate: rec }))
+                  }}>Use rec.</Button>
+                </div>
                 <Button variant="primary" size="md" onClick={async ()=>{ await invCreateReport({ entityId, period: newReport.period || currentQuarter(), type: newReport.type || 'Quarterly', dueDate: newReport.dueDate }); setNewReport({ period: '', type: 'Quarterly', dueDate: '' }); setReports(await invGetReports(entityId)) }}>Start Report</Button>
               </div>
             </div>
           )}
         </div>
         <div className="rounded-xl border border-border bg-card p-4">
-          <h2 className="font-semibold mb-3">Past Reports</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold">Past Reports</h2>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm">View All</Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Past Investor Reports</DialogTitle>
+                </DialogHeader>
+                <div className="max-h-[60vh] overflow-auto space-y-2">
+                  {reports.past?.map((r:any)=> (
+                    <div key={r.id} className="border rounded p-2 text-sm flex items-center justify-between">
+                      <div>
+                        <div className="font-medium">{r.period} - {r.type}</div>
+                        <div className="text-xs text-muted-foreground">{r.status} - {r.submittedAt ? new Date(r.submittedAt).toLocaleDateString() : '-'}</div>
+                      </div>
+                      {r.currentDocUrl && <a href={r.currentDocUrl} className="text-blue-600 text-xs hover:underline" target="_blank">Download</a>}
+                    </div>
+                  ))}
+                  {(!reports.past || reports.past.length===0) && <p className="text-sm text-muted-foreground">No past reports.</p>}
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
           <div className="space-y-2 max-h-64 overflow-auto">
             {reports.past?.map((r:any)=> (
               <div key={r.id} className="border rounded p-2 text-sm flex items-center justify-between">
@@ -310,3 +343,18 @@ function daysToFyEnd() {
   if (end < now) end = new Date(now.getFullYear()+1, (mm-1), dd)
   return Math.max(0, Math.ceil((end.getTime() - now.getTime())/86400000))
 }
+
+function recommendedDueDate(kpis: any | null): string | '' {
+  try {
+    const daysToQEnd = Number(kpis?.daysToQuarterEnd || 0)
+    const d = new Date()
+    d.setDate(d.getDate() + daysToQEnd + 45)
+    const yyyy = d.getFullYear()
+    const mm = String(d.getMonth()+1).padStart(2,'0')
+    const dd = String(d.getDate()).padStart(2,'0')
+    return `${yyyy}-${mm}-${dd}`
+  } catch {
+    return ''
+  }
+}
+

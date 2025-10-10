@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@ngi/ui'
 import { useTheme } from 'next-themes';
 import { useUser } from '@clerk/nextjs';
 import { 
@@ -60,7 +61,7 @@ export default function Settings() {
   const [linkedin, setLinkedin] = useState('');
   const [gpa, setGpa] = useState<number | ''>('');
   const [location, setLocation] = useState('');
-  const [ucAcademy, setUcAcademy] = useState<'yes' | 'no' | ''>('');
+  const [ucAcademy, setUcAcademy] = useState<'yes' | 'no' | 'none'>('none');
 
   // Prevent hydration mismatch
   useEffect(() => {
@@ -99,8 +100,8 @@ export default function Settings() {
         setGpa((typeof data.gpa === 'number' ? data.gpa : null) ?? '');
         setLocation(data.location || '');
         
-        // Handle UC Academy explicitly - don't use || which treats "no" as falsy
-        setUcAcademy(data.uc_investments_academy !== null && data.uc_investments_academy !== undefined ? data.uc_investments_academy : '');
+        // Handle UC Academy explicitly - convert null/undefined to "none"
+        setUcAcademy(data.uc_investments_academy !== null && data.uc_investments_academy !== undefined ? data.uc_investments_academy : 'none');
         
         console.log('[SETTINGS] UC Academy loaded:', data.uc_investments_academy);
       }
@@ -169,9 +170,8 @@ export default function Settings() {
         phoneForStorage = `+${cleanPhone}`;
       }
       
-      // UC Academy - use empty string explicitly instead of null to differentiate from "not set"
-      // Send the actual value, even if it's "no"
-      const ucAcademyValue = ucAcademy || null;
+      // UC Academy - convert "none" to null for API
+      const ucAcademyValue = ucAcademy === 'none' ? null : ucAcademy;
       
       const payload = {
         first_name: firstName,
@@ -627,19 +627,18 @@ export default function Settings() {
                   </label>
                   <div className="relative">
                     <GraduationCap className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none z-10" />
-                    <select
-                      value={ucAcademy}
-                      onChange={e => setUcAcademy(e.target.value as 'yes' | 'no' | '')}
-                      className="w-full pl-11 pr-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all appearance-none cursor-pointer"
-                    >
-                      <option value="">Select...</option>
-                      <option value="yes">Yes</option>
-                      <option value="no">No</option>
-                    </select>
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                      <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
+                    <div className="pl-9">
+                      {/* shadcn/Radix Select via @ngi/ui for consistent theming */}
+                      <Select value={ucAcademy} onValueChange={(v: any) => setUcAcademy(v as 'yes'|'no'|'none')}>
+                        <SelectTrigger className="w-full h-11 rounded-xl">
+                          <SelectValue placeholder="Select..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Select...</SelectItem>
+                          <SelectItem value="yes">Yes</SelectItem>
+                          <SelectItem value="no">No</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">

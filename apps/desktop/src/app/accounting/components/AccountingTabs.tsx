@@ -3,32 +3,20 @@
 import { useState, useEffect, Suspense, lazy } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  FileSpreadsheet, 
-  TrendingUp, 
-  TrendingDown, 
-  Building2,
-  Wallet, 
-  CreditCard, 
-  FileBarChart, 
-  Calculator,
-  Archive, 
-  FileText,
-  Loader2
-} from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useSearchParams, useRouter } from 'next/navigation';
 
 const TABS = [
-  { id: 'gl', label: 'General Ledger', icon: FileSpreadsheet },
-  { id: 'ar', label: 'Accounts Receivable', icon: TrendingUp },
-  { id: 'ap', label: 'Accounts Payable', icon: TrendingDown },
-  { id: 'fixed-assets', label: 'Fixed Assets', icon: Building2 },
-  { id: 'expenses', label: 'Expenses & Payroll', icon: Wallet },
-  { id: 'banking', label: 'Banking', icon: CreditCard },
-  { id: 'reporting', label: 'Reporting', icon: FileBarChart },
-  { id: 'taxes', label: 'Taxes', icon: Calculator },
-  { id: 'period-close', label: 'Period Close', icon: Archive },
-  { id: 'documents', label: 'Documents', icon: FileText },
+  { id: 'gl', label: 'General Ledger' },
+  { id: 'ar', label: 'Accounts Receivable' },
+  { id: 'ap', label: 'Accounts Payable' },
+  { id: 'fixed-assets', label: 'Fixed Assets' },
+  { id: 'expenses', label: 'Expenses & Payroll' },
+  { id: 'banking', label: 'Banking' },
+  { id: 'reporting', label: 'Reporting' },
+  { id: 'taxes', label: 'Taxes' },
+  { id: 'period-close', label: 'Period Close' },
+  { id: 'documents', label: 'Documents' },
 ];
 
 // Lazy load tabs for performance
@@ -43,7 +31,11 @@ const TaxesTab = lazy(() => import('../tabs/taxes/page'));
 const PeriodCloseTab = lazy(() => import('../tabs/period-close/page'));
 const DocumentsTab = lazy(() => import('../tabs/documents/page'));
 
-export function AccountingTabs() {
+interface AccountingTabsProps {
+  onTabChange?: (tabId: string) => void;
+}
+
+export function AccountingTabs({ onTabChange }: AccountingTabsProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('gl');
@@ -53,17 +45,22 @@ export function AccountingTabs() {
     const tabParam = searchParams?.get('tab');
     if (tabParam && TABS.find(t => t.id === tabParam)) {
       setActiveTab(tabParam);
+      onTabChange?.(tabParam);
     } else {
       const saved = localStorage.getItem('accounting-active-tab');
       if (saved && TABS.find(t => t.id === saved)) {
         setActiveTab(saved);
+        onTabChange?.(saved);
+      } else {
+        onTabChange?.('gl');
       }
     }
-  }, [searchParams]);
+  }, [searchParams, onTabChange]);
   
   // Persist active tab and update URL
   const handleTabChange = (value: string) => {
     setActiveTab(value);
+    onTabChange?.(value);
     localStorage.setItem('accounting-active-tab', value);
     
     // Update URL params
@@ -101,31 +98,29 @@ export function AccountingTabs() {
   
   return (
     <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-      <TabsList className="grid w-full mb-6 h-auto" style={{gridTemplateColumns: `repeat(${Math.min(TABS.length, 5)}, 1fr)`}}>
+      <TabsList className="grid w-full mb-6 h-auto" style={{gridTemplateColumns: `repeat(5, 1fr)`}}>
         {TABS.slice(0, 5).map(tab => (
           <TabsTrigger 
             key={tab.id} 
             value={tab.id} 
-            className="flex items-center gap-2 py-3"
+            className="flex items-center justify-center py-2"
             title={`${tab.label} (Cmd/Ctrl+${TABS.indexOf(tab) + 1})`}
           >
-            <tab.icon className="h-4 w-4" />
-            <span className="hidden sm:inline text-sm">{tab.label}</span>
+            <span className="text-base">{tab.label}</span>
           </TabsTrigger>
         ))}
       </TabsList>
       
       {/* Second row of tabs for better UX */}
-      <TabsList className="grid w-full mb-6 h-auto" style={{gridTemplateColumns: `repeat(${TABS.length - 5}, 1fr)`}}>
+      <TabsList className="grid w-full mb-6 h-auto" style={{gridTemplateColumns: `repeat(5, 1fr)`}}>
         {TABS.slice(5).map(tab => (
           <TabsTrigger 
             key={tab.id} 
             value={tab.id} 
-            className="flex items-center gap-2 py-3"
+            className="flex items-center justify-center py-2"
             title={`${tab.label} (Cmd/Ctrl+${TABS.indexOf(tab) + 1})`}
           >
-            <tab.icon className="h-4 w-4" />
-            <span className="hidden sm:inline text-sm">{tab.label}</span>
+            <span className="text-base">{tab.label}</span>
           </TabsTrigger>
         ))}
       </TabsList>

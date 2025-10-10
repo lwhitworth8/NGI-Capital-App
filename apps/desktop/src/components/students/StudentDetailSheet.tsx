@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import * as React from "react"
 import { format } from "date-fns"
@@ -32,14 +32,14 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-} from "@/components/ui/Sheet"
+} from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { Avatar, AvatarFallback } from "@/components/ui/Avatar"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,7 +50,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/AlertDialog"
+} from "@/components/ui/alert-dialog"
 import type { AdvisoryStudent } from "@/types"
 import { advisoryGetStudentTimeline, learningAdminListStudents } from "@/lib/api"
 
@@ -321,7 +321,7 @@ export function StudentDetailSheet({
                         </div>
                         <div className="p-3 rounded-md border">
                           <div className="text-muted-foreground">Last Activity</div>
-                          <div className="text-sm">{learning.last_activity || '—'}</div>
+                          <div className="text-sm">{learning.last_activity || 'Never'}</div>
                         </div>
                       </div>
                     </div>
@@ -335,7 +335,7 @@ export function StudentDetailSheet({
                             <div className="flex items-center space-x-2">
                               <FileText className="h-4 w-4 text-muted-foreground" />
                               <div>
-                                <div>Project {a.project_id ?? '-'} — <span className="uppercase text-xs">{a.status}</span></div>
+                                <div>Project {a.project_id ?? '-'} - <span className="uppercase text-xs">{a.status}</span></div>
                                 <div className="text-xs text-muted-foreground">{a.created_at}</div>
                               </div>
                             </div>
@@ -353,7 +353,7 @@ export function StudentDetailSheet({
                             <div className="flex items-center space-x-2">
                               <MessageSquare className="h-4 w-4 text-muted-foreground" />
                               <div>
-                                <div>{c.status} — {c.topic || c.provider}</div>
+                                <div>{c.status} - {c.topic || c.provider}</div>
                                 <div className="text-xs text-muted-foreground">{c.scheduled_start}</div>
                               </div>
                             </div>
@@ -371,7 +371,7 @@ export function StudentDetailSheet({
                             <div className="flex items-center space-x-2">
                               <Users className="h-4 w-4 text-muted-foreground" />
                               <div>
-                                <div>Template {o.template_id ?? ''} — {o.status}</div>
+                                <div>Template {o.template_id ?? ''} - {o.status}</div>
                                 <div className="text-xs text-muted-foreground">{o.created_at}</div>
                               </div>
                             </div>
@@ -559,4 +559,3 @@ export function StudentDetailSheet({
     </Sheet>
   )
 }
-

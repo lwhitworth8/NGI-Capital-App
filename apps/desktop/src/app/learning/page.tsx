@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@clerk/nextjs';
-import { AppLayout } from '@/components/layout/AppLayout';
 import { 
   Search, 
   Filter, 
@@ -239,8 +238,7 @@ export default function LearningAdminPage() {
   };
 
   return (
-    <AppLayout>
-      <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
@@ -251,6 +249,7 @@ export default function LearningAdminPage() {
             Track student progress, review artifacts, and identify top talent across the learning center platform
           </p>
         </div>
+
 
         {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -739,6 +738,5 @@ export default function LearningAdminPage() {
         )}
         </div>
       </div>
-    </AppLayout>
   );
 }

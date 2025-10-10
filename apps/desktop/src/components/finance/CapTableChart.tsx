@@ -36,7 +36,20 @@ export default function CapTableChart({ entityId }: Props) {
     load()
   }, [entityId])
 
-  const classes = data?.classes || []
+  // Normalize: support investor_relations.cap-table shape { members: [{name,balance}], total_equity }
+  let classes = data?.classes || []
+  if ((!classes || classes.length === 0) && Array.isArray(data?.members)) {
+    const total = Number(data?.total_equity || 0)
+    const top = (data.members as any[])
+      .sort((a,b)=> Number(b.balance||0) - Number(a.balance||0))
+      .slice(0, 6)
+    const holders = top.map((m:any) => ({
+      holder: m.name,
+      pctFD: total>0 ? `${((Number(m.balance||0)/total)*100).toFixed(1)}%` : '0.0%',
+      shares: `${Number(m.balance||0).toLocaleString()}`
+    }))
+    classes = [{ name: 'Equity', currency: 'USD', holders }]
+  }
   const chartData = classes.map((c:any) => ({ name: `${c.name}${c.series?` ${c.series}`:''}`, value: (c.holders?.length || 0) }))
 
   return (
@@ -64,7 +77,18 @@ export default function CapTableChart({ entityId }: Props) {
         </div>
       )}
       {detail && (
-        <div className="mt-2 text-xs text-muted-foreground">Click detected: {detail?.activeLabel}</div>
+        <div className="mt-3 text-xs">
+          <div className="font-medium text-foreground">{detail?.activeLabel}</div>
+          <div className="text-muted-foreground">Top holders</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-1 mt-1">
+            {(classes?.[0]?.holders||[]).slice(0,6).map((h:any, i:number)=>(
+              <div key={i} className="flex items-center justify-between border rounded px-2 py-1">
+                <span className="truncate mr-2">{h.holder || h.name}</span>
+                <span className="tabular-nums text-muted-foreground">{h.pctFD || '-'}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   )

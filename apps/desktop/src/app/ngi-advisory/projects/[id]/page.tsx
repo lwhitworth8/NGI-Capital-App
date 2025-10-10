@@ -8,7 +8,8 @@ import { useAuth } from '@/lib/auth'
 import { advisoryGetProject, advisoryListStudents, advisoryAddAssignment, advisoryUpdateAssignment, advisoryDeleteAssignment, apiClient, advisoryListCoffeeRequests, advisoryAcceptCoffeeRequest, advisoryCancelCoffeeRequest, advisoryListApplications, advisoryUpdateApplication, advisoryRejectApplication } from '@/lib/api'
 import type { AdvisoryProject, AdvisoryStudent } from '@/types'
 import Link from 'next/link'
-import { Modal } from '@/components/ui/Modal'
+import { Modal } from '@/components/ui/modal'
+import AdminAvailabilityModal from '@/components/advisory/AdminAvailabilityModal'
 
 const BASE_ALLOWED = new Set([
   'lwhitworth@ngicapitaladvisory.com',
@@ -58,6 +59,7 @@ export default function AdvisoryProjectDetailPage() {
   const [newAssign, setNewAssign] = useState<{ student_id?: number; role?: string; hours_planned?: number }>({})
   const [coffeeOpen, setCoffeeOpen] = useState(false)
   const [appsOpen, setAppsOpen] = useState(false)
+  const [availabilityOpen, setAvailabilityOpen] = useState(false)
   const [coffee, setCoffee] = useState<any[]>([])
   const [apps, setApps] = useState<any[]>([])
   const [busy, setBusy] = useState(false)
@@ -120,6 +122,82 @@ export default function AdvisoryProjectDetailPage() {
     const list = await advisoryListApplications({ project_id: id })
     setApps(list)
   }
+
+  // Email functions
+  const sendInterviewEmail = async (applicationId: number, email: string, firstName: string, lastName: string) => {
+    try {
+      const response = await fetch('/api/advisory/onboarding/flows', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          student_email: email,
+          student_name: `${firstName} ${lastName}`,
+          project_id: id,
+          project_name: project?.project_name || 'Project',
+          role: 'Student Analyst'
+        }),
+      });
+      
+      if (response.ok) {
+        const flow = await response.json();
+        // Send interview email with availability
+        const interviewResponse = await fetch(`/api/advisory/onboarding/flows/${flow.id}/send-interview-email`, {
+          method: 'POST'
+        });
+        
+        if (interviewResponse.ok) {
+          console.log('Interview email sent successfully');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to send interview email:', error);
+    }
+  };
+
+  const sendOfferEmail = async (applicationId: number, email: string, firstName: string, lastName: string) => {
+    try {
+      // Find or create onboarding flow
+      const flowsResponse = await fetch('/api/advisory/onboarding/flows');
+      const flowsData = await flowsResponse.json();
+      const flow = flowsData.flows.find((f: any) => f.student_email === email && f.project_id === id);
+      
+      if (flow) {
+        const offerResponse = await fetch(`/api/advisory/onboarding/flows/${flow.id}/send-offer-email`, {
+          method: 'POST'
+        });
+        
+        if (offerResponse.ok) {
+          console.log('Offer email sent successfully');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to send offer email:', error);
+    }
+  };
+
+  const sendRejectionEmail = async (email: string, firstName: string, lastName: string) => {
+    try {
+      const response = await fetch('/api/advisory/onboarding/flows/send-rejection-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          student_email: email,
+          student_name: `${firstName} ${lastName}`,
+          project_name: project?.project_name || 'Project'
+        }),
+      });
+      
+      if (response.ok) {
+        console.log('Rejection email sent successfully');
+      }
+    } catch (error) {
+      console.error('Failed to send rejection email:', error);
+    }
+  };
 
   if (authLoading || fetching) return <div className="p-6">Loading.</div>
   if (!allowed) return <div className="p-6">Access restricted.</div>
@@ -272,7 +350,15 @@ export default function AdvisoryProjectDetailPage() {
 
       {/* Applications Modal */}
       <Modal isOpen={appsOpen} onClose={()=>setAppsOpen(false)} title="Applications" size="xl">
-        <div className="text-sm text-muted-foreground mb-3">Project ID: {id}</div>
+        <div className="flex items-center justify-between mb-4">
+          <div className="text-sm text-muted-foreground">Project ID: {id}</div>
+          <button 
+            className="px-3 py-1 text-sm rounded border bg-blue-600 text-white hover:bg-blue-700"
+            onClick={() => setAvailabilityOpen(true)}
+          >
+            Set Interview Availability
+          </button>
+        </div>
         <div className="overflow-auto">
           <table className="w-full text-sm">
             <thead>
@@ -289,12 +375,65 @@ export default function AdvisoryProjectDetailPage() {
                 <tr key={a.id} className="border-b border-border">
                   <td className="p-2">{a.first_name} {a.last_name}</td>
                   <td className="p-2">{a.email}</td>
-                  <td className="p-2">{a.status}</td>
+                  <td className="p-2">
+                    <span className={`px-2 py-1 text-xs rounded ${
+                      a.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                      a.status === 'interview' ? 'bg-blue-100 text-blue-800' :
+                      a.status === 'offer' ? 'bg-green-100 text-green-800' :
+                      a.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                      'bg-gray-100 text-gray-800'
+                    }`}>
+                      {a.status}
+                    </span>
+                  </td>
                   <td className="p-2">{new Date(a.created_at).toLocaleString()}</td>
                   <td className="p-2 text-right">
-                    <button className="px-2 py-1 text-xs rounded border mr-2" disabled={busy} onClick={async()=>{ setBusy(true); try { await advisoryUpdateApplication(a.id, { status: 'interview' }); await loadApps() } finally { setBusy(false) } }}>Interview</button>
-                    <button className="px-2 py-1 text-xs rounded border mr-2" disabled={busy} onClick={async()=>{ setBusy(true); try { await advisoryUpdateApplication(a.id, { status: 'offer' }); await loadApps() } finally { setBusy(false) } }}>Offer</button>
-                    <button className="px-2 py-1 text-xs rounded border" disabled={busy} onClick={async()=>{ setBusy(true); try { await advisoryRejectApplication(a.id, 'admin') ; await loadApps() } finally { setBusy(false) } }}>Reject</button>
+                    {a.status === 'pending' && (
+                      <button 
+                        className="px-2 py-1 text-xs rounded border mr-2 bg-blue-600 text-white hover:bg-blue-700" 
+                        disabled={busy} 
+                        onClick={async()=>{ 
+                          setBusy(true); 
+                          try { 
+                            await sendInterviewEmail(a.id, a.email, a.first_name, a.last_name);
+                            await advisoryUpdateApplication(a.id, { status: 'interview' }); 
+                            await loadApps() 
+                          } finally { setBusy(false) } 
+                        }}
+                      >
+                        Send Interview Email
+                      </button>
+                    )}
+                    {a.status === 'interview' && (
+                      <button 
+                        className="px-2 py-1 text-xs rounded border mr-2 bg-green-600 text-white hover:bg-green-700" 
+                        disabled={busy} 
+                        onClick={async()=>{ 
+                          setBusy(true); 
+                          try { 
+                            await sendOfferEmail(a.id, a.email, a.first_name, a.last_name);
+                            await advisoryUpdateApplication(a.id, { status: 'offer' }); 
+                            await loadApps() 
+                          } finally { setBusy(false) } 
+                        }}
+                      >
+                        Send Offer
+                      </button>
+                    )}
+                    <button 
+                      className="px-2 py-1 text-xs rounded border" 
+                      disabled={busy} 
+                      onClick={async()=>{ 
+                        setBusy(true); 
+                        try { 
+                          await sendRejectionEmail(a.email, a.first_name, a.last_name);
+                          await advisoryRejectApplication(a.id, 'admin'); 
+                          await loadApps() 
+                        } finally { setBusy(false) } 
+                      }}
+                    >
+                      Reject
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -303,6 +442,18 @@ export default function AdvisoryProjectDetailPage() {
           </table>
         </div>
       </Modal>
+
+      {/* Admin Availability Modal */}
+      <AdminAvailabilityModal
+        isOpen={availabilityOpen}
+        onClose={() => setAvailabilityOpen(false)}
+        projectId={id}
+        projectName={project?.project_name || 'Project'}
+        onAvailabilitySet={(availability) => {
+          console.log('Availability set:', availability);
+          setAvailabilityOpen(false);
+        }}
+      />
     </div>
   )
 }

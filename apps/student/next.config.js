@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const BACKEND_ORIGIN = process.env.BACKEND_ORIGIN || (process.env.NODE_ENV === 'production'
   ? (process.env.NEXT_PUBLIC_API_URL || 'https://api.ngicapitaladvisory.com')
-  : 'http://localhost:8001')
+  : 'http://localhost:8002')
 
 const nextConfig = {
   typescript: { ignoreBuildErrors: true },
@@ -28,6 +28,4 @@ const nextConfig = {
   },
 }
 module.exports = nextConfig
-
-
 

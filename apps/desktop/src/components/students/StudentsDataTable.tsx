@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import * as React from "react"
 import {
@@ -25,7 +25,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/DropdownMenu"
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import {
   Table,
@@ -43,7 +43,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback } from "@/components/ui/Avatar"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Progress } from "@/components/ui/progress"
 import { useVirtualizer } from "@tanstack/react-virtual"
 import type { AdvisoryStudent } from "@/types"
@@ -144,7 +144,7 @@ export function StudentsDataTable({ data, loading, onStudentSelect, onBulkAction
       },
       cell: ({ row }) => {
         const school = row.getValue("school") as string
-        return <div className="text-sm">{school || "—"}</div>
+        return <div className="text-sm">{school || "Not specified"}</div>
       },
     },
 
@@ -153,7 +153,7 @@ export function StudentsDataTable({ data, loading, onStudentSelect, onBulkAction
       header: "Program",
       cell: ({ row }) => {
         const program = row.getValue("program") as string
-        return <div className="text-sm">{program || "—"}</div>
+        return <div className="text-sm">{program || "Not specified"}</div>
       },
     },
     {
@@ -171,7 +171,7 @@ export function StudentsDataTable({ data, loading, onStudentSelect, onBulkAction
       },
       cell: ({ row }) => {
         const year = row.getValue("grad_year") as number
-        return <div className="text-sm">{year || "—"}</div>
+        return <div className="text-sm">{year || "Not specified"}</div>
       },
     },
     {
@@ -201,7 +201,7 @@ export function StudentsDataTable({ data, loading, onStudentSelect, onBulkAction
       header: "Profile",
       cell: ({ row }) => {
         const completeness = row.original.profile_completeness
-        if (!completeness) return <div className="text-sm text-muted-foreground">—</div>
+        if (!completeness) return <div className="text-sm text-muted-foreground">Not available</div>
 
         return (
           <div className="flex items-center space-x-2">
@@ -238,7 +238,7 @@ export function StudentsDataTable({ data, loading, onStudentSelect, onBulkAction
       },
       cell: ({ row }) => {
         const date = row.getValue("last_activity_at") as string
-        if (!date) return <div className="text-sm text-muted-foreground">—</div>
+        if (!date) return <div className="text-sm text-muted-foreground">Never</div>
 
         const activityDate = new Date(date)
         const now = new Date()
@@ -575,4 +575,3 @@ export function StudentsDataTable({ data, loading, onStudentSelect, onBulkAction
     </div>
   )
 }
-

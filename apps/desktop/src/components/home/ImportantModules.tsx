@@ -1,5 +1,5 @@
 "use client";
-import { Card } from "@/components/ui/Card";
+import { Card } from "@/components/ui/card";
 import Link from 'next/link';
 
 export function ImportantModules(){
@@ -22,3 +22,4 @@ export function ImportantModules(){
     </div>
   );
 }
+

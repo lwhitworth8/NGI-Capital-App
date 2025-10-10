@@ -6,41 +6,44 @@ Author: NGI Capital Development Team
 Date: October 3, 2025
 """
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, desc
+from sqlalchemy import select, and_, or_, func, desc, text
 from typing import List, Optional
 from datetime import datetime
+from ..utils.datetime_utils import get_pst_now
 from decimal import Decimal
 
 from pydantic import BaseModel, Field, ConfigDict
 from ..database_async import get_async_db
 from ..models_accounting import ChartOfAccounts, AccountingEntity, AccountMappingRule
+from ..models_accounting_part2 import AccountingDocument
 from ..services.coa_seeder import seed_chart_of_accounts
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/api/accounting/coa", tags=["Accounting - Chart of Accounts"])
 
-# Add entities endpoint to accounting router
-@router.get("/../../accounting/entities")
-async def get_accounting_entities(
-    db: AsyncSession = Depends(get_async_db)
-):
-    """Get all active accounting entities for entity selector"""
-    query = select(AccountingEntity).where(AccountingEntity.is_active == True).order_by(AccountingEntity.entity_name)
-    result = await db.execute(query)
-    entities = result.scalars().all()
-    return [
-        {
-            "id": e.id,
-            "entity_name": e.entity_name,
-            "entity_type": e.entity_type,
-            "ein": e.ein,
-            "is_active": e.is_active
-        }
-        for e in entities
-    ]
+# Entities endpoint is handled by accounting_entities.py
 
+# Test endpoints - must be defined before any parameterized routes
+@router.get("/test")
+async def test_endpoint():
+    return {"message": "Chart of accounts route is working"}
+
+@router.get("/test-db")
+async def test_db_connection(db: AsyncSession = Depends(get_async_db)):
+    try:
+        print("DEBUG: test_db_connection called")
+        result = await db.execute(text("SELECT 1 as test"))
+        row = result.fetchone()
+        print(f"DEBUG: Database query result: {row}")
+        return {"message": "Database connection working", "test_value": row[0]}
+    except Exception as e:
+        print(f"DEBUG: Error in test_db_connection: {e}")
+        return {"error": str(e)}
 
 # ============================================================================
 # SCHEMAS
@@ -166,6 +169,7 @@ async def get_all_accounts(
     db: AsyncSession = Depends(get_async_db)
 ):
     """Get all accounts with optional filters"""
+    logger.info(f"get_all_accounts called with entity_id={entity_id}")
     
     query = select(ChartOfAccounts).where(
         ChartOfAccounts.entity_id == entity_id
@@ -195,6 +199,8 @@ async def get_all_accounts(
     result = await db.execute(query)
     accounts = result.scalars().all()
     
+    logger.info(f"Found {len(accounts)} accounts for entity_id={entity_id}")
+    
     # Check for children
     responses = []
     for account in accounts:
@@ -211,6 +217,7 @@ async def get_all_accounts(
         
         responses.append(account_response)
     
+    logger.info(f"Returning {len(responses)} responses")
     return responses
 
 
@@ -335,32 +342,6 @@ async def get_accounts_by_type(
     return grouped
 
 
-@router.get("/{account_id}", response_model=AccountResponse)
-async def get_account(
-    account_id: int,
-    db: AsyncSession = Depends(get_async_db)
-):
-    """Get account by ID"""
-    
-    result = await db.execute(
-        select(ChartOfAccounts).where(ChartOfAccounts.id == account_id)
-    )
-    account = result.scalar_one_or_none()
-    
-    if not account:
-        raise HTTPException(status_code=404, detail="Account not found")
-    
-    account_response = AccountResponse.model_validate(account)
-    
-    # Check for children
-    children_result = await db.execute(
-        select(func.count(ChartOfAccounts.id)).where(
-            ChartOfAccounts.parent_account_id == account.id
-        )
-    )
-    account_response.has_children = children_result.scalar() > 0
-    
-    return account_response
 
 
 # ============================================================================
@@ -460,7 +441,7 @@ async def update_account(
         account.require_cost_center = request.require_cost_center
     
     # account.updated_by_id = current_user.id  # Auth disabled for dev
-    account.updated_at = datetime.utcnow()
+    account.updated_at = get_pst_now()
     
     await db.commit()
     await db.refresh(account)
@@ -502,7 +483,7 @@ async def deactivate_account(
     # For now, just deactivate
     account.is_active = False
     # account.updated_by_id = current_user.id  # Auth disabled for dev
-    account.updated_at = datetime.utcnow()
+    account.updated_at = get_pst_now()
     
     await db.commit()
     
@@ -569,4 +550,36 @@ async def get_mapping_rules(
         }
         for rule in rules
     ]
+
+
+# ============================================================================
+# GET ACCOUNT BY ID (moved to end to avoid route conflicts)
+# ============================================================================
+
+@router.get("/{account_id}", response_model=AccountResponse)
+async def get_account(
+    account_id: int,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Get account by ID"""
+    
+    result = await db.execute(
+        select(ChartOfAccounts).where(ChartOfAccounts.id == account_id)
+    )
+    account = result.scalar_one_or_none()
+    
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    account_response = AccountResponse.model_validate(account)
+    
+    # Check for children
+    children_result = await db.execute(
+        select(func.count(ChartOfAccounts.id)).where(
+            ChartOfAccounts.parent_account_id == account.id
+        )
+    )
+    account_response.has_children = children_result.scalar() > 0
+    
+    return account_response
 

@@ -1,6 +1,9 @@
 # Backend Dockerfile
 FROM python:3.11-slim
 
+# Create non-root user for security
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
 WORKDIR /app
 
 # Ensure Python can import the 'src' package reliably
@@ -29,7 +32,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libfreetype6-dev \
     libffi-dev \
     ffmpeg \
- && rm -rf /var/lib/apt/lists/*
+ && apt-get upgrade -y \
+ && rm -rf /var/lib/apt/lists/* \
+ && apt-get clean
 
 # Copy requirements
 COPY requirements.txt .
@@ -44,11 +49,15 @@ RUN python -m pip install --upgrade pip \
 # Copy application code
 COPY src/ ./src/
 
-# Ensure data directory exists for DB volume mount
-RUN mkdir -p /app/data
+# Ensure data directory exists for DB volume mount and set proper permissions
+RUN mkdir -p /app/data \
+ && chown -R appuser:appuser /app
 
 # Copy scripts for operational tasks (e.g., DB init)
 COPY scripts/ ./scripts/
+
+# Switch to non-root user
+USER appuser
 
 # Expose port
 EXPOSE 8001

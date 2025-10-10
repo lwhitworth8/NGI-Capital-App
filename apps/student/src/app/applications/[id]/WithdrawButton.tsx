@@ -8,7 +8,7 @@ export default function WithdrawButton({ id }: { id: number }) {
     setLoading(true)
     try {
       await fetch(`/api/public/applications/${id}/withdraw`, { method: 'POST' })
-      window.location.href = '/applications'
+      window.location.href = '/projects'
     } catch (e) {
       alert('Failed to withdraw. Please try again later.')
     } finally {
@@ -17,4 +17,3 @@ export default function WithdrawButton({ id }: { id: number }) {
   }
   return <button onClick={onClick} disabled={loading} style={{ padding:'6px 10px', background:'#dc2626', color:'#fff', borderRadius:6 }}>{loading ? 'Withdrawing...' : 'Withdraw'}</button>
 }
-

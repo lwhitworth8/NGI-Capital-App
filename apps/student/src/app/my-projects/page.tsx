@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { useUser } from '@clerk/nextjs'
+import { ModuleHeader } from '@ngi/ui/components/layout'
 
 type MyProject = { id:number; project_code?:string; project_name:string; summary?:string; status:'active'|'past' }
 
@@ -37,8 +38,16 @@ export default function MyProjectsPage() {
   const past = items.filter(p => (p.status||'active') !== 'active')
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-semibold">My Projects</h1>
+    <div className="flex flex-col h-full bg-background">
+      {/* Fixed header - consistent with Finance module */}
+      <ModuleHeader 
+        title="My Projects" 
+        subtitle="Your assigned projects and tasks"
+      />
+      
+      {/* Scrollable content area */}
+      <div className="flex-1 overflow-auto">
+        <div className="p-6">
       {loading && <div className="text-sm text-muted-foreground mt-2">Loading...</div>}
       {error && <div className="text-sm text-red-600 mt-2">{error}</div>}
       <div className="mt-6">
@@ -75,6 +84,7 @@ export default function MyProjectsPage() {
           {!loading && past.length === 0 && (
             <div className="text-sm text-muted-foreground">No past projects.</div>
           )}
+        </div>
         </div>
       </div>
     </div>

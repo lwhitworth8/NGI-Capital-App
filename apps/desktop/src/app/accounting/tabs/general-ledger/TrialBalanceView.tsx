@@ -60,6 +60,8 @@ export default function TrialBalanceView() {
     }
   }, [selectedEntityId, asOfDate])
 
+  // Removed auto-refresh - data loads once and stays loaded
+
   // Download trial balance
   const handleDownload = useCallback(async () => {
     if (!selectedEntityId || !asOfDate) return

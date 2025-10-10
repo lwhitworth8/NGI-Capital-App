@@ -14,6 +14,21 @@ export interface LearningModule {
   order: number;
 }
 
+// Grouped Learning Center structure for homepage organization
+export interface GroupedLearningModule {
+  mainModule: string;
+  order: number;
+  // submodules reference module ids from LEARNING_MODULES where possible
+  submodules: Array<{
+    id: string;
+    // optional custom label override; defaults to the module title if found
+    submoduleName?: string;
+    // status is derived from LEARNING_MODULES when id exists; otherwise may be set explicitly
+    status?: 'available' | 'coming_soon' | 'error';
+    errorMessage?: string;
+  }>;
+}
+
 export interface ModuleProgress {
   module_id: string;
   completed_units: number;
@@ -181,6 +196,73 @@ export const LEARNING_MODULES: LearningModule[] = [
     icon: 'megaphone',
     color: 'gray',
     order: 10,
+  },
+];
+
+// Logical groupings for the Learning Center homepage.
+// Note: Where a submodule id does not exist in LEARNING_MODULES yet, we mark status=error
+// so the UI can visually indicate unavailable content per spec.
+export const LEARNING_GROUPS: GroupedLearningModule[] = [
+  {
+    mainModule: 'Business Foundations',
+    order: 1,
+    submodules: [
+      { id: 'business_foundations' },
+      { id: 'strategy' },
+      { id: 'corporate_law' },
+      { id: 'operations' },
+      { id: 'marketing' },
+    ],
+  },
+  {
+    mainModule: 'Accounting and Finance',
+    order: 2,
+    submodules: [
+      { id: 'accounting_1', submoduleName: 'Accounting I' },
+      { id: 'accounting_2', submoduleName: 'Accounting II' },
+      { id: 'managerial_accounting', submoduleName: 'Managerial Accounting' },
+      // The following two are planned separations; not yet present as standalone modules
+      { id: 'finance', submoduleName: 'Finance' },
+      { id: 'valuation', submoduleName: 'Valuation' },
+    ],
+  },
+  {
+    mainModule: 'Economics',
+    order: 3,
+    submodules: [
+      { id: 'macroeconomics', submoduleName: 'Macroeconomics', status: 'coming_soon' },
+      { id: 'microeconomics', submoduleName: 'Microeconomics', status: 'coming_soon' },
+    ],
+  },
+  {
+    mainModule: 'Technology & Innovation',
+    order: 4,
+    submodules: [
+      { id: 'computer_science', submoduleName: 'Computer Science', status: 'coming_soon' },
+      { id: 'software_engineering', submoduleName: 'Software Engineering', status: 'coming_soon' },
+      { id: 'data_science_analytics', submoduleName: 'Data Science & Analytics', status: 'coming_soon' },
+      { id: 'artificial_intelligence', submoduleName: 'Artificial Intelligence', status: 'coming_soon' },
+    ],
+  },
+  {
+    mainModule: 'Leadership & Management',
+    order: 5,
+    submodules: [
+      { id: 'project_management', submoduleName: 'Project Management', status: 'coming_soon' },
+      { id: 'team_leadership', submoduleName: 'Team Leadership', status: 'coming_soon' },
+      { id: 'organizational_behavior', submoduleName: 'Organizational Behavior', status: 'coming_soon' },
+      { id: 'change_management', submoduleName: 'Change Management', status: 'coming_soon' },
+    ],
+  },
+  {
+    mainModule: 'Communication & Presentation',
+    order: 6,
+    submodules: [
+      { id: 'business_communication', submoduleName: 'Business Communication', status: 'coming_soon' },
+      { id: 'presentation_skills', submoduleName: 'Presentation Skills', status: 'coming_soon' },
+      { id: 'public_speaking', submoduleName: 'Public Speaking', status: 'coming_soon' },
+      { id: 'writing_skills', submoduleName: 'Professional Writing', status: 'coming_soon' },
+    ],
   },
 ];
 

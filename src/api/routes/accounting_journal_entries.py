@@ -11,7 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func, desc
 from typing import List, Optional
 from datetime import datetime, date
+from ..utils.datetime_utils import get_pst_now
 from decimal import Decimal
+import logging
+
+logger = logging.getLogger(__name__)
 
 from pydantic import BaseModel, Field, field_validator, ConfigDict, computed_field
 from ..database_async import get_async_db
@@ -20,10 +24,78 @@ from ..models_accounting import (
     JournalEntry, JournalEntryLine, ChartOfAccounts,
     AccountingEntity, JournalEntryAuditLog
 )
+from ..services.journal_workflow import JournalWorkflowService
+from ..services.journal_workflow_enhanced import JournalWorkflowServiceEnhanced
 
 
 router = APIRouter(prefix="/api/accounting/journal-entries", tags=["Accounting - Journal Entries"])
 
+# Test endpoint to verify routing works
+@router.get("/health")
+async def test_journal_entries():
+    """Test endpoint to verify routing works"""
+    return {"message": "Journal entries API is working", "status": "ok"}
+
+# Test endpoint to get journal entries without authentication
+@router.get("/data")
+async def get_test_journal_entries(db: AsyncSession = Depends(get_async_db)):
+    """Test endpoint to get journal entries data without authentication"""
+    try:
+        # Get all journal entries
+        result = await db.execute(select(JournalEntry).order_by(JournalEntry.id))
+        entries = result.scalars().all()
+        
+        # Convert to response format
+        response_data = []
+        for entry in entries:
+            # Get journal entry lines
+            lines_result = await db.execute(
+                select(JournalEntryLine).where(JournalEntryLine.journal_entry_id == entry.id)
+            )
+            lines = lines_result.scalars().all()
+            
+            # Get account names for lines
+            line_data = []
+            for line in lines:
+                account_result = await db.execute(
+                    select(ChartOfAccounts).where(ChartOfAccounts.id == line.account_id)
+                )
+                account = account_result.scalar_one_or_none()
+                
+                line_data.append({
+                    "line_number": line.line_number,
+                    "account_number": account.account_number if account else "Unknown",
+                    "account_name": account.account_name if account else "Unknown",
+                    "debit_amount": float(line.debit_amount),
+                    "credit_amount": float(line.credit_amount),
+                    "description": line.description
+                })
+            
+            response_data.append({
+                "id": entry.id,
+                "entry_number": entry.entry_number,
+                "entity_id": entry.entity_id,
+                "entry_date": entry.entry_date.isoformat() if entry.entry_date else None,
+                "fiscal_year": entry.fiscal_year,
+                "fiscal_period": entry.fiscal_period,
+                "entry_type": entry.entry_type,
+                "memo": entry.memo,
+                "reference": entry.reference,
+                "source_type": entry.source_type,
+                "source_id": entry.source_id,
+                "status": entry.status,
+                "workflow_stage": entry.workflow_stage,
+                "created_at": entry.created_at.isoformat() if entry.created_at else None,
+                "lines": line_data
+            })
+        
+        return {
+            "message": "Journal entries retrieved successfully",
+            "count": len(response_data),
+            "entries": response_data
+        }
+    except Exception as e:
+        return {"error": str(e), "message": "Failed to retrieve journal entries"}
 
 # ============================================================================
 # SCHEMAS
@@ -63,8 +135,8 @@ class JournalEntryLineResponse(BaseModel):
     account_id: int
     account_number: str
     account_name: str
-    debit_amount: Decimal
-    credit_amount: Decimal
+    debit_amount: float
+    credit_amount: float
     description: Optional[str]
     project_id: Optional[int] = None
     cost_center: Optional[str] = None
@@ -121,10 +193,16 @@ class JournalEntryResponse(BaseModel):
     final_approved_at: Optional[datetime]
     is_locked: bool
     lines: List[JournalEntryLineResponse]
-    total_debits: Decimal
-    total_credits: Decimal
+    total_debits: float
+    total_credits: float
     
     model_config = ConfigDict(from_attributes=True)
+    
+    @computed_field
+    @property
+    def description(self) -> Optional[str]:
+        """Alias for memo to match frontend expectations"""
+        return self.memo
     
     @computed_field
     @property
@@ -216,7 +294,7 @@ async def create_journal_entry(
         status="draft",
         workflow_stage=0,
         created_by_id=1,  # current_user.id - Auth disabled for dev
-        created_at=datetime.utcnow()
+        created_at=get_pst_now()
     )
     
     db.add(journal_entry)
@@ -242,7 +320,7 @@ async def create_journal_entry(
         journal_entry_id=journal_entry.id,
         action="created",
         performed_by_id=1,  # current_user.id - Auth disabled for dev
-        performed_at=datetime.utcnow(),
+        performed_at=get_pst_now(),
         comment="Journal entry created"
     )
     db.add(audit)
@@ -288,7 +366,7 @@ async def submit_for_approval(
         journal_entry_id=entry.id,
         action="submitted_for_approval",
         performed_by_id=1,  # current_user.id - Auth disabled for dev
-        performed_at=datetime.utcnow()
+        performed_at=get_pst_now()
     )
     db.add(audit)
     
@@ -334,7 +412,7 @@ async def approve_journal_entry(
             journal_entry_id=entry.id,
             action="rejected",
             performed_by_id=1,  # current_user.id - Auth disabled for dev
-            performed_at=datetime.utcnow(),
+            performed_at=get_pst_now(),
             comment=request.notes
         )
         db.add(audit)
@@ -349,7 +427,7 @@ async def approve_journal_entry(
             raise HTTPException(status_code=400, detail="Entry already has first approval")
         
         entry.first_approved_by_id = 1  # current_user.id - Auth disabled for dev
-        entry.first_approved_at = datetime.utcnow()
+        entry.first_approved_at = get_pst_now()
         entry.workflow_stage = 2
         
         audit_action = "first_approval"
@@ -364,7 +442,7 @@ async def approve_journal_entry(
             raise HTTPException(status_code=400, detail="Entry already has final approval")
         
         entry.final_approved_by_id = 1  # current_user.id - Auth disabled for dev
-        entry.final_approved_at = datetime.utcnow()
+        entry.final_approved_at = get_pst_now()
         entry.workflow_stage = 3
         entry.status = "approved"
         
@@ -379,7 +457,7 @@ async def approve_journal_entry(
         journal_entry_id=entry.id,
         action=audit_action,
         performed_by_id=1,  # current_user.id - Auth disabled for dev
-        performed_at=datetime.utcnow(),
+        performed_at=get_pst_now(),
         comment=request.notes
     )
     db.add(audit)
@@ -387,83 +465,6 @@ async def approve_journal_entry(
     await db.commit()
     
     return {"message": message}
-
-
-@router.post("/{entry_id}/post")
-async def post_journal_entry(
-    entry_id: int,
-    db: AsyncSession = Depends(get_async_db)
-):
-    """
-    Post approved journal entry
-    Updates account balances
-    Entry becomes immutable after posting
-    """
-    
-    result = await db.execute(
-        select(JournalEntry).where(JournalEntry.id == entry_id)
-    )
-    entry = result.scalar_one_or_none()
-    
-    if not entry:
-        raise HTTPException(status_code=404, detail="Journal entry not found")
-    
-    if entry.status != "approved":
-        raise HTTPException(status_code=400, detail="Entry must be approved before posting")
-    
-    if entry.workflow_stage != 3:
-        raise HTTPException(status_code=400, detail="Entry requires dual approval before posting")
-    
-    # Get lines
-    lines_result = await db.execute(
-        select(JournalEntryLine).where(JournalEntryLine.journal_entry_id == entry.id)
-    )
-    lines = lines_result.scalars().all()
-    
-    # Update account balances
-    for line in lines:
-        account_result = await db.execute(
-            select(ChartOfAccounts).where(ChartOfAccounts.id == line.account_id)
-        )
-        account = account_result.scalar_one()
-        
-        # Update balance based on normal balance
-        if line.debit_amount > 0:
-            if account.normal_balance == "Debit":
-                account.current_balance += line.debit_amount
-            else:
-                account.current_balance -= line.debit_amount
-            account.ytd_activity += line.debit_amount
-        else:
-            if account.normal_balance == "Credit":
-                account.current_balance += line.credit_amount
-            else:
-                account.current_balance -= line.credit_amount
-            account.ytd_activity += line.credit_amount
-        
-        account.last_transaction_date = entry.entry_date
-    
-    # Update entry
-    entry.status = "posted"
-    entry.posted_at = datetime.utcnow()
-    entry.posted_by_id = 1  # current_user.id - Auth disabled for dev
-    entry.posting_date = entry.entry_date
-    entry.is_locked = True
-    entry.locked_at = datetime.utcnow()
-    entry.locked_by_id = 1  # current_user.id - Auth disabled for dev
-    
-    # Audit log
-    audit = JournalEntryAuditLog(
-        journal_entry_id=entry.id,
-        action="posted",
-        performed_by_id=1,  # current_user.id - Auth disabled for dev
-        performed_at=datetime.utcnow()
-    )
-    db.add(audit)
-    
-    await db.commit()
-    
-    return {"message": "Journal entry posted successfully"}
 
 
 # ============================================================================
@@ -558,7 +559,7 @@ async def build_journal_entry_response(
         select(Partner).where(Partner.id == entry.created_by_id)
     )
     creator = creator_result.scalar_one_or_none()
-    created_by_name = f"{creator.first_name} {creator.last_name}" if creator else "Unknown User"
+    created_by_name = creator.name if creator else "Unknown User"
     
     # Get approver names
     first_approved_by_name = None
@@ -568,7 +569,7 @@ async def build_journal_entry_response(
         )
         approver = approver_result.scalar_one_or_none()
         if approver:
-            first_approved_by_name = f"{approver.first_name} {approver.last_name}"
+            first_approved_by_name = approver.name
     
     final_approved_by_name = None
     if entry.final_approved_by_id:
@@ -577,7 +578,7 @@ async def build_journal_entry_response(
         )
         approver = approver_result.scalar_one_or_none()
         if approver:
-            final_approved_by_name = f"{approver.first_name} {approver.last_name}"
+            final_approved_by_name = approver.name
     
     # Get lines
     lines_result = await db.execute(
@@ -605,8 +606,8 @@ async def build_journal_entry_response(
             account_id=line.account_id,
             account_number=account.account_number,
             account_name=account.account_name,
-            debit_amount=line.debit_amount,
-            credit_amount=line.credit_amount,
+            debit_amount=float(line.debit_amount),
+            credit_amount=float(line.credit_amount),
             description=line.description,
             project_id=line.project_id,
             cost_center=line.cost_center,
@@ -617,13 +618,13 @@ async def build_journal_entry_response(
         total_debits += line.debit_amount
         total_credits += line.credit_amount
     
-    return JournalEntryResponse(
+    response = JournalEntryResponse(
         id=entry.id,
         entry_number=entry.entry_number,
         entity_id=entry.entity_id,
         entity_name=entity_name,
         entry_date=entry.entry_date,
-        posting_date=entry.posting_date,
+        posting_date=entry.posted_at,
         fiscal_year=entry.fiscal_year,
         fiscal_period=entry.fiscal_period,
         entry_type=entry.entry_type,
@@ -639,7 +640,234 @@ async def build_journal_entry_response(
         final_approved_at=entry.final_approved_at,
         is_locked=entry.is_locked,
         lines=line_responses,
-        total_debits=total_debits,
-        total_credits=total_credits
+        total_debits=float(total_debits),
+        total_credits=float(total_credits)
     )
+    
+    # Add description field for frontend compatibility
+    response_dict = response.model_dump()
+    response_dict['description'] = entry.memo
+    
+    # Convert string amounts to numbers for frontend compatibility
+    response_dict['total_debits'] = float(response_dict['total_debits'])
+    response_dict['total_credits'] = float(response_dict['total_credits'])
+    
+    # Convert line amounts to numbers
+    for line in response_dict['lines']:
+        line['debit_amount'] = float(line['debit_amount'])
+        line['credit_amount'] = float(line['credit_amount'])
+    
+    # Debug logging
+    print(f"DEBUG: Added description field: {response_dict.get('description')}")
+    print(f"DEBUG: Total debits type: {type(response_dict['total_debits'])}")
+    
+    return response_dict
+
+
+# ============================================================================
+# JOURNAL ENTRY WORKFLOW ENDPOINTS
+# ============================================================================
+
+@router.post("/{entry_id}/submit-for-approval")
+async def submit_for_approval(
+    entry_id: int,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Submit a draft journal entry for first partner approval"""
+    workflow_service = JournalWorkflowService(db)
+    result = await workflow_service.submit_for_approval(entry_id, 1)  # TODO: Get from auth context
+    
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["message"])
+    
+    return result
+
+
+@router.post("/{entry_id}/approve-first")
+async def approve_first(
+    entry_id: int,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """First partner approves the journal entry"""
+    workflow_service = JournalWorkflowService(db)
+    result = await workflow_service.approve_first(entry_id, 1)  # TODO: Get from auth context
+    
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["message"])
+    
+    return result
+
+
+@router.post("/{entry_id}/approve-final")
+async def approve_final(
+    entry_id: int,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Second partner gives final approval and posts the entry"""
+    workflow_service = JournalWorkflowService(db)
+    result = await workflow_service.approve_final(entry_id, 1)  # TODO: Get from auth context
+    
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["message"])
+    
+    return result
+
+
+@router.post("/{entry_id}/reject")
+async def reject_entry(
+    entry_id: int,
+    rejection_data: dict,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Reject a journal entry and return to draft"""
+    reason = rejection_data.get("reason", "No reason provided")
+    workflow_service = JournalWorkflowService(db)
+    result = await workflow_service.reject(entry_id, 1, reason)  # TODO: Get from auth context
+    
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["message"])
+    
+    return result
+
+
+@router.get("/{entry_id}/workflow-status")
+async def get_workflow_status(
+    entry_id: int,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Get the current workflow status of a journal entry"""
+    workflow_service = JournalWorkflowService(db)
+    result = await workflow_service.get_workflow_status(entry_id)
+    
+    if not result["success"]:
+        raise HTTPException(status_code=404, detail=result["message"])
+    
+    return result
+
+
+# ============================================================================
+# SIMPLIFIED APPROVAL WORKFLOW
+# ============================================================================
+
+@router.post("/{entry_id}/submit")
+async def submit_journal_entry(
+    entry_id: int,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Submit journal entry for human approval"""
+    try:
+        # Submit for human approval
+        workflow_service = JournalWorkflowServiceEnhanced(db)
+        # TODO: Get actual user email from auth context, using system for now
+        result = await workflow_service.submit_for_approval(entry_id, "system@ngicapitaladvisory.com")
+        
+        if not result["success"]:
+            raise HTTPException(status_code=400, detail=result["message"])
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error submitting journal entry {entry_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Submission failed: {str(e)}")
+
+
+@router.post("/{entry_id}/approve")
+async def approve_journal_entry(
+    entry_id: int,
+    approval_data: dict = None,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Approve journal entry (handles both first and final approval)"""
+    try:
+        workflow_service = JournalWorkflowServiceEnhanced(db)
+        
+        # TODO: Get actual user email from Clerk auth context
+        # For now, use a test email from approval_data or default
+        approver_email = (approval_data or {}).get("approver_email", "lwhitworth@ngicapitaladvisory.com")
+        
+        # The enhanced service automatically determines if this is first or final approval
+        result = await workflow_service.approve(entry_id, approver_email)
+        
+        if not result["success"]:
+            raise HTTPException(status_code=400, detail=result["message"])
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error approving journal entry {entry_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Approval failed: {str(e)}")
+
+
+@router.post("/{entry_id}/post")
+async def post_journal_entry(
+    entry_id: int,
+    post_data: dict = None,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Post approved journal entry to general ledger"""
+    try:
+        workflow_service = JournalWorkflowServiceEnhanced(db)
+        
+        # TODO: Get actual user email from Clerk auth context
+        posted_by_email = (post_data or {}).get("posted_by_email", "system@ngicapitaladvisory.com")
+        
+        result = await workflow_service.post_to_gl(entry_id, posted_by_email)
+        
+        if not result["success"]:
+            raise HTTPException(status_code=400, detail=result["message"])
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error posting journal entry {entry_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Posting failed: {str(e)}")
+
+
+@router.post("/{entry_id}/reject")
+async def reject_journal_entry(
+    entry_id: int,
+    rejection_data: dict,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Reject journal entry with notes"""
+    try:
+        reason = rejection_data.get("reason", "No reason provided")
+        # TODO: Get actual user email from Clerk auth context
+        rejected_by_email = rejection_data.get("rejected_by_email", "lwhitworth@ngicapitaladvisory.com")
+        
+        workflow_service = JournalWorkflowServiceEnhanced(db)
+        result = await workflow_service.reject(entry_id, rejected_by_email, reason)
+        
+        if not result["success"]:
+            raise HTTPException(status_code=400, detail=result["message"])
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error rejecting journal entry {entry_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Rejection failed: {str(e)}")
+
+
+@router.post("/{entry_id}/reverse")
+async def reverse_journal_entry(
+    entry_id: int,
+    reversal_data: dict,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Create reversal entry for posted journal entry"""
+    try:
+        reason = reversal_data.get("reason", "Reversal entry")
+        workflow_service = JournalWorkflowService(db)
+        result = await workflow_service.reverse(entry_id, 1, reason)  # TODO: Get from auth context
+        
+        if not result["success"]:
+            raise HTTPException(status_code=400, detail=result["message"])
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error reversing journal entry {entry_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Reversal failed: {str(e)}")
+
+
 

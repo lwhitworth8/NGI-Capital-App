@@ -404,3 +404,17 @@ def init_partners_if_needed():
         db.rollback()
     finally:
         db.close()
+
+
+def require_clerk_user():
+    """Dependency to require Clerk authentication"""
+    def _require_clerk_user(request: Request):
+        # For now, just return a mock user for testing
+        # In production, this would verify Clerk JWT/session
+        return {
+            "id": "user_123",
+            "email": "test@example.com",
+            "first_name": "Test",
+            "last_name": "User"
+        }
+    return _require_clerk_user

@@ -1,0 +1,45 @@
+<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="nexGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3B82F6;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#1D4ED8;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1E40AF;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="nexAccent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#60A5FA;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3B82F6;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Outer ring -->
+  <circle cx="24" cy="24" r="22" fill="url(#nexGradient)" opacity="0.1"/>
+  <circle cx="24" cy="24" r="20" fill="url(#nexGradient)"/>
+  
+  <!-- Neural network nodes -->
+  <circle cx="24" cy="12" r="3" fill="url(#nexAccent)" opacity="0.9"/>
+  <circle cx="12" cy="24" r="3" fill="url(#nexAccent)" opacity="0.9"/>
+  <circle cx="36" cy="24" r="3" fill="url(#nexAccent)" opacity="0.9"/>
+  <circle cx="18" cy="36" r="3" fill="url(#nexAccent)" opacity="0.9"/>
+  <circle cx="30" cy="36" r="3" fill="url(#nexAccent)" opacity="0.9"/>
+  
+  <!-- Central hub -->
+  <circle cx="24" cy="24" r="5" fill="white" opacity="0.95"/>
+  <circle cx="24" cy="24" r="3" fill="url(#nexGradient)"/>
+  
+  <!-- Neural connections -->
+  <line x1="24" y1="12" x2="24" y2="19" stroke="url(#nexAccent)" stroke-width="2" opacity="0.7"/>
+  <line x1="12" y1="24" x2="18" y2="24" stroke="url(#nexAccent)" stroke-width="2" opacity="0.7"/>
+  <line x1="36" y1="24" x2="30" y2="24" stroke="url(#nexAccent)" stroke-width="2" opacity="0.7"/>
+  <line x1="18" y1="36" x2="21" y2="29" stroke="url(#nexAccent)" stroke-width="2" opacity="0.7"/>
+  <line x1="30" y1="36" x2="27" y2="29" stroke="url(#nexAccent)" stroke-width="2" opacity="0.7"/>
+  
+  <!-- Data flow indicators -->
+  <circle cx="24" cy="15" r="1" fill="white" opacity="0.8"/>
+  <circle cx="15" cy="24" r="1" fill="white" opacity="0.8"/>
+  <circle cx="33" cy="24" r="1" fill="white" opacity="0.8"/>
+  <circle cx="21" cy="33" r="1" fill="white" opacity="0.8"/>
+  <circle cx="27" cy="33" r="1" fill="white" opacity="0.8"/>
+  
+  <!-- AI sparkle -->
+  <path d="M24 6 L25 8 L27 8 L25.5 9 L26 11 L24 10 L22 11 L22.5 9 L21 8 L23 8 Z" fill="white" opacity="0.9"/>
+</svg>

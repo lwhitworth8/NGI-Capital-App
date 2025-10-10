@@ -1,7 +1,7 @@
 ﻿"use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { useEntityContext } from "@/hooks/useEntityContext"
+import { useEntity } from "@/lib/context/UnifiedEntityContext"
 import { EntitySelector } from "@/components/accounting/EntitySelector"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -44,7 +44,8 @@ interface AccountTreeNode {
 }
 
 export default function ChartOfAccountsView() {
-  const { selectedEntityId } = useEntityContext()
+  const { selectedEntity } = useEntity()
+  const selectedEntityId = selectedEntity?.id
   const [accounts, setAccounts] = useState<Account[]>([])
   const [treeData, setTreeData] = useState<AccountTreeNode[]>([])
   const [loading, setLoading] = useState(true)
@@ -77,23 +78,31 @@ export default function ChartOfAccountsView() {
 
   // Fetch accounts - memoized with useCallback (Context7 pattern)
   const fetchAccounts = useCallback(async () => {
-    if (!selectedEntityId) return
+    console.log("fetchAccounts called with selectedEntityId:", selectedEntityId)
+    if (!selectedEntityId) {
+      console.log("No selectedEntityId, returning early")
+      return
+    }
     
     try {
       setLoading(true)
+      console.log("Making API call to:", `/api/accounting/coa?entity_id=${selectedEntityId}`)
 
       const response = await fetch(`/api/accounting/coa?entity_id=${selectedEntityId}`, {
         credentials: "include",
       })
 
+      console.log("API Response status:", response.status)
       if (response.ok) {
         const data = await response.json()
+        console.log("Accounts data received:", data.length, "accounts")
         setAccounts(data)
         
         // Build tree structure
         const tree = buildTree(data)
         setTreeData(tree)
       } else {
+        console.error("Failed to load accounts:", response.status, response.statusText)
         toast.error("Failed to load accounts")
       }
     } catch (error) {
@@ -103,6 +112,8 @@ export default function ChartOfAccountsView() {
       setLoading(false)
     }
   }, [selectedEntityId, buildTree])
+
+  // Removed auto-refresh - data loads once and stays loaded
 
   // Seed chart of accounts
   const seedChartOfAccounts = async () => {
@@ -114,11 +125,10 @@ export default function ChartOfAccountsView() {
     try {
       setSeeding(true)
       
-      const response = await fetch("/api/accounting/coa/seed", {
+      const response = await fetch(`/api/accounting/coa/seed/${selectedEntityId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ entity_id: selectedEntityId }),
       })
 
       if (response.ok) {
@@ -224,6 +234,7 @@ export default function ChartOfAccountsView() {
   })
 
   useEffect(() => {
+    console.log("ChartOfAccountsView useEffect - selectedEntityId:", selectedEntityId)
     if (selectedEntityId) {
       fetchAccounts()
     }
@@ -251,6 +262,9 @@ export default function ChartOfAccountsView() {
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
             This entity doesn't have a chart of accounts yet. Seed the default US GAAP chart to get started.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Debug: selectedEntityId = {selectedEntityId}, loading = {loading.toString()}, accounts.length = {accounts.length}
           </p>
           <Button onClick={seedChartOfAccounts} disabled={seeding}>
             {seeding ? (

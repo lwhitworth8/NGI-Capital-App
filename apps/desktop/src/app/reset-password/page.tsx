@@ -4,7 +4,7 @@ import React, { Suspense, useMemo, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api';
 import { toast } from 'sonner';
-import { Card } from '@/components/ui/Card';
+import { Card } from '@/components/ui/card';
 
 function ResetPasswordInner() {
   const params = useSearchParams();
@@ -124,3 +124,4 @@ export default function ResetPasswordPage() {
     </Suspense>
   )
 }
+

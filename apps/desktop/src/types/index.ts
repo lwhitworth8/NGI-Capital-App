@@ -194,6 +194,10 @@ export type AdvisoryProject = {
   is_public?: number | boolean;
   coffeechat_calendly?: string | null;
   showcase_pdf_url?: string | null;
+  // Compensation
+  default_hourly_rate?: number | null;
+  pay_currency?: string | null;
+  compensation_notes?: string | null;
   // Slack
   slack_channel_id?: string | null;
   slack_channel_name?: string | null;

@@ -7,8 +7,9 @@ import { StudentsDataTable } from '@/components/students/StudentsDataTable'
 import { StudentDetailSheet } from '@/components/students/StudentDetailSheet'
 import { AssignToProjectDialog } from '@/components/students/AssignToProjectDialog'
 import { StatusOverrideDialog } from '@/components/students/StatusOverrideDialog'
+import { AdvisoryLayout } from '@/components/advisory/AdvisoryLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/Tabs'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,8 +18,8 @@ import { Users, Archive, TrendingUp, AlertCircle, Download, Filter } from 'lucid
 import type { AdvisoryStudent } from '@/types'
 import { UC_SCHOOLS } from '@/lib/uc-schools'
 import { UC_MAJORS } from '@/lib/uc-majors'
-import { MultiSelect } from '@/components/ui/MultiSelect'
-import { ProjectPicker } from '@/components/ui/ProjectPicker'
+import { MultiSelect } from '@/components/ui/multi-select'
+import { ProjectPicker } from '@/components/ui/project-picker'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
 const BASE_ALLOWED = new Set([
@@ -233,29 +234,23 @@ export default function AdvisoryStudentsPage() {
     }
   }
 
-  if (loading || authCheckLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-      </div>
-    )
-  }
-
-  if (!allowed) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h2 className="text-lg font-semibold mb-2">Access Restricted</h2>
-          <p className="text-muted-foreground">You don't have permission to view this page.</p>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <>
-      <div className="mx-auto w-full max-w-screen-2xl px-6 py-6 space-y-6">
+      {loading || authCheckLoading ? (
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      ) : !allowed ? (
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <h2 className="text-lg font-semibold mb-2">Access Restricted</h2>
+            <p className="text-muted-foreground">You don't have permission to view this page.</p>
+          </div>
+        </div>
+      ) : (
+        <div className="mx-auto w-full max-w-screen-2xl space-y-6">
+
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -465,9 +460,8 @@ export default function AdvisoryStudentsPage() {
             </TabsContent>
           </Tabs>
         </div>
-      </div>
 
-      {/* Student Detail Sheet */}
+        {/* Student Detail Sheet */}
       <StudentDetailSheet
         student={selectedStudent}
         isOpen={detailOpen}
@@ -506,6 +500,9 @@ export default function AdvisoryStudentsPage() {
           await loadStudents()
         }}
       />
+        </div>
+      )}
     </>
   )
 }
+

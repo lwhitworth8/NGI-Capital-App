@@ -130,8 +130,7 @@ class Entities(Base):
     # Relationships
     parent_entity = relationship("Entities", remote_side=[id], overlaps="child_entities")
     child_entities = relationship("Entities", overlaps="parent_entity")
-    transactions = relationship("Transactions", back_populates="entity")
-    # OLD DEPRECATED: chart_of_accounts, journal_entries, bank_accounts relationships removed
+    # OLD DEPRECATED: transactions, chart_of_accounts, journal_entries, bank_accounts relationships removed
     # Use new accounting module models instead
 
 
@@ -149,7 +148,7 @@ class Transactions(Base):
     __tablename__ = 'transactions'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    entity_id = Column(Integer, ForeignKey('entities.id'), nullable=False)
+    entity_id = Column(Integer, ForeignKey('accounting_entities.id'), nullable=False)
     account_id = Column(Integer, ForeignKey('chart_of_accounts.id'), nullable=False)
     transaction_date = Column(Date, nullable=False)
     amount = Column(SQLDecimal(15, 2), nullable=False)
@@ -173,7 +172,7 @@ class Transactions(Base):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     
     # Relationships
-    entity = relationship("Entities", back_populates="transactions")
+    # OLD DEPRECATED: entity relationship removed - use accounting module instead
     # OLD DEPRECATED: account relationship to old ChartOfAccounts removed
     creator = relationship("Partners", foreign_keys=[created_by_id], back_populates="created_transactions")
     approver = relationship("Partners", foreign_keys=[approved_by_id], back_populates="approved_transactions")
@@ -199,7 +198,7 @@ class ExpenseReports(Base):
     __tablename__ = 'expense_reports'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    entity_id = Column(Integer, ForeignKey('entities.id'), nullable=False)
+    entity_id = Column(Integer, ForeignKey('accounting_entities.id'), nullable=False)
     report_number = Column(String(20), nullable=False)
     title = Column(String(200), nullable=False)
     submitted_by_id = Column(Integer, ForeignKey('partners.id'), nullable=False)
@@ -214,7 +213,7 @@ class ExpenseReports(Base):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     
     # Relationships
-    entity = relationship("Entities")
+    # OLD DEPRECATED: entity relationship removed - use accounting module instead
     submitted_by_partner = relationship("Partners", foreign_keys=[submitted_by_id], back_populates="expense_reports")
     approved_by_partner = relationship("Partners", foreign_keys=[approved_by_id])
     expense_items = relationship("ExpenseItems", back_populates="expense_report", cascade="all, delete-orphan")
@@ -329,7 +328,7 @@ class RevenueRecognition(Base):
     __tablename__ = 'revenue_recognition'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    entity_id = Column(Integer, ForeignKey('entities.id'), nullable=False)
+    entity_id = Column(Integer, ForeignKey('accounting_entities.id'), nullable=False)
     contract_id = Column(String(100), nullable=False)
     performance_obligation = Column(Text, nullable=False)
     transaction_price = Column(SQLDecimal(15, 2), nullable=False)
@@ -345,7 +344,7 @@ class RevenueRecognition(Base):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     
     # Relationships
-    entity = relationship("Entities")
+    # OLD DEPRECATED: entity relationship removed - use accounting module instead
     recognition_entries = relationship("RevenueRecognitionEntries", back_populates="revenue_recognition")
     
     # Constraints

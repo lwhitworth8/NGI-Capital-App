@@ -16,9 +16,9 @@ export default function ClientRoot({ children }: { children: React.ReactNode }) 
         // Allow auth pages (sign-in/up and resolver) to control their own layout
         <div className="min-h-screen bg-background text-foreground">{children}</div>
       ) : (
-        <div className="h-screen bg-background text-foreground">
+        <div className="flex h-screen bg-background text-foreground">
           <StudentSidebar />
-          <main className="ml-64 h-screen overflow-y-auto">{children}</main>
+          <main className="flex-1 h-full overflow-y-auto no-scrollbar">{children}</main>
         </div>
       )}
     </ThemeProvider>

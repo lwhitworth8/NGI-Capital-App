@@ -1,9 +1,10 @@
 "use client"
 
 import React, { useEffect, useMemo, useState, useCallback } from 'react'
+import Link from 'next/link'
 import { useApp } from '@/lib/context/AppContext'
 import { useAuth } from '@/lib/auth'
-import { advisoryListProjects, advisoryCreateProject, advisoryUpdateProject, apiClient, advisoryGetProjectLeads, advisorySetProjectLeads, advisoryGetProjectQuestions, advisorySetProjectQuestions, advisorySetProjectQuestionsTyped, advisoryUploadProjectHero, advisoryUploadProjectShowcase, advisoryGetProjectLogos, advisoryUploadProjectLogo, advisoryGetKnownClients, advisoryGetProject } from '@/lib/api'
+import { advisoryListProjects, advisoryCreateProject, advisoryUpdateProject, advisoryAutoCloseProjects, apiClient, advisoryGetProjectLeads, advisorySetProjectLeads, advisoryGetProjectQuestions, advisorySetProjectQuestions, advisorySetProjectQuestionsTyped, advisoryUploadProjectHero, advisoryUploadProjectShowcase, advisoryGetProjectLogos, advisoryUploadProjectLogo, advisoryGetKnownClients, advisoryGetProject } from '@/lib/api'
 import type { AdvisoryProject } from '@/types'
 import { toast } from 'sonner'
 import { motion } from 'framer-motion'
@@ -11,6 +12,9 @@ import ModernProjectCard from '@/components/advisory/ModernProjectCard'
 import ImageCropModal from '@/components/advisory/ImageCropModal'
 import ProjectDetailModal from '@/components/advisory/ProjectDetailModal'
 import { ProjectEditorModal } from '@/components/advisory/ProjectEditorModal'
+import { AdvisoryLayout } from '@/components/advisory/AdvisoryLayout'
+// Use the same shadcn/radix Select used in student app
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@ngi/ui'
 
 // Known client registry (name -> logo URL) - using Clearbit Logo API
 const KNOWN_CLIENTS: Record<string, string> = {
@@ -28,7 +32,6 @@ const KNOWN_CLIENTS: Record<string, string> = {
   'UBS': 'https://logo.clearbit.com/ubs.com',
   'HSBC': 'https://logo.clearbit.com/hsbc.com',
   'Bank of America': 'https://logo.clearbit.com/bankofamerica.com',
-  'Haas Finance Group': '/clients/haas-finance.svg',
   'KKR': 'https://logo.clearbit.com/kkr.com',
   'Apollo Global': 'https://logo.clearbit.com/apollo.com',
   'Carlyle Group': 'https://logo.clearbit.com/carlyle.com',
@@ -262,6 +265,18 @@ export default function AdvisoryProjectsPage() {
     if (!allowed) return
     setListLoading(true)
     try {
+      // First, check for and auto-close expired projects
+      try {
+        const autoCloseResult = await advisoryAutoCloseProjects()
+        if (autoCloseResult.closed_projects.length > 0) {
+          console.log(`Auto-closed ${autoCloseResult.closed_projects.length} projects:`, autoCloseResult.closed_projects)
+          toast.success(`Auto-closed ${autoCloseResult.closed_projects.length} expired projects`)
+        }
+      } catch (err) {
+        console.warn('Auto-close check failed:', err)
+        // Don't show error to user, just log it
+      }
+      
       const params: any = {}
       if (filterStatus !== 'all') params.status = filterStatus
       if (searchDebounced) params.q = searchDebounced
@@ -274,6 +289,33 @@ export default function AdvisoryProjectsPage() {
   useEffect(() => {
     loadProjects()
   }, [loadProjects])
+
+  // Periodic auto-close check every 5 minutes
+  useEffect(() => {
+    if (!allowed) return
+    
+    const checkAutoClose = async () => {
+      try {
+        const autoCloseResult = await advisoryAutoCloseProjects()
+        if (autoCloseResult.closed_projects.length > 0) {
+          console.log(`Auto-closed ${autoCloseResult.closed_projects.length} projects:`, autoCloseResult.closed_projects)
+          toast.success(`Auto-closed ${autoCloseResult.closed_projects.length} expired projects`)
+          // Reload projects to reflect the changes
+          loadProjects()
+        }
+      } catch (err) {
+        console.warn('Periodic auto-close check failed:', err)
+      }
+    }
+    
+    // Run immediately
+    checkAutoClose()
+    
+    // Then run every 5 minutes
+    const interval = setInterval(checkAutoClose, 5 * 60 * 1000)
+    
+    return () => clearInterval(interval)
+  }, [allowed, loadProjects])
 
   // Load leads for each project to display names on cards
   useEffect(() => {
@@ -300,7 +342,17 @@ export default function AdvisoryProjectsPage() {
     setForm({ entity_id: entityId as any, project_name: '', client_name: '', summary: '', status: 'draft', mode: 'remote', allow_applications: 1 as any })
     setShowDesigner(true)
   }
-  const openEdit = (p: AdvisoryProject) => { setEditing(p); setForm(p); setShowDesigner(true) }
+  const openEdit = async (p: AdvisoryProject) => {
+    try {
+      const full = await advisoryGetProject(p.id)
+      setEditing(full as any)
+      setForm(full as any)
+    } catch {
+      setEditing(p)
+      setForm(p)
+    }
+    setShowDesigner(true)
+  }
   const closeDesigner = () => setShowDesigner(false)
 
   useEffect(() => {
@@ -480,92 +532,84 @@ export default function AdvisoryProjectsPage() {
     }
   }
 
-  if (loading || authCheckLoading) {
-    return (<div className="p-6">Loading...</div>)
-  }
-  if (!allowed) {
-    return (
-      <div className="p-6">
-        <h1 className="text-2xl font-semibold">NGI Capital Advisory</h1>
-        <p className="text-sm text-muted-foreground mt-2">Access restricted.</p>
-      </div>
-    )
-  }
-
   return (
-    <div className="p-6 space-y-8">
-      {/* Modern Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="flex flex-col gap-6"
-      >
-        <div className="flex items-center justify-between">
-          <h1 className="text-4xl font-bold tracking-tight text-foreground">
-            NGI Capital Advisory
-          </h1>
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="px-6 py-3 rounded-xl bg-blue-600 text-white font-semibold shadow-lg hover:shadow-xl hover:bg-blue-700 transition-all"
-            onClick={openNew}
+    <>
+      {loading || authCheckLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      ) : !allowed ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <h1 className="text-2xl font-semibold">NGI Capital Advisory</h1>
+            <p className="text-sm text-muted-foreground mt-2">Access restricted.</p>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Modern Header */}
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="flex flex-col gap-4 mt-3"
           >
-            + New Project
-          </motion.button>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">
+              Projects
+            </h1>
+            <p className="text-muted-foreground mt-2">
+              Create, manage, and view advisory projects and assignments
+            </p>
+          </div>
         </div>
 
         {/* Filters and Sorting */}
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Status Filter */}
-          <div className="relative">
-            <select
-              aria-label="Filter status"
-              className="appearance-none pl-4 pr-10 py-2.5 rounded-xl bg-background border border-border text-sm font-medium text-foreground cursor-pointer hover:bg-accent transition-colors focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:outline-none"
-              value={filterStatus}
-              onChange={e => setFilterStatus(e.target.value as any)}
-            >
-              <option value="all" className="bg-background text-foreground">All Projects</option>
-              <option value="active" className="bg-background text-foreground">Open</option>
-              <option value="draft" className="bg-background text-foreground">Draft</option>
-              <option value="closed" className="bg-background text-foreground">Closed</option>
-            </select>
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </div>
-          </div>
+        <div className="flex flex-wrap items-center gap-3 mt-2 mb-2">
+          {/* Status Filter (shadcn Select) */}
+          <Select value={filterStatus} onValueChange={(v: any) => setFilterStatus(v)}>
+            <SelectTrigger className="w-[150px] h-10 rounded-xl">
+              <SelectValue placeholder="All Projects" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Projects</SelectItem>
+              <SelectItem value="active">Open</SelectItem>
+              <SelectItem value="draft">Draft</SelectItem>
+              <SelectItem value="closed">Closed</SelectItem>
+            </SelectContent>
+          </Select>
 
-          {/* Sort Control */}
-          <div className="relative">
-            <select
-              aria-label="Sort projects"
-              className="appearance-none pl-4 pr-10 py-2.5 rounded-xl bg-background border border-border text-sm font-medium text-foreground cursor-pointer hover:bg-accent transition-colors focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:outline-none"
-              value={sortBy}
-              onChange={e => setSortBy(e.target.value as any)}
-            >
-              <option value="newest" className="bg-background text-foreground">Newest First</option>
-              <option value="oldest" className="bg-background text-foreground">Oldest First</option>
-              <option value="name" className="bg-background text-foreground">Project Name</option>
-              <option value="client" className="bg-background text-foreground">Client Name</option>
-            </select>
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </div>
-          </div>
+          {/* Sort Control (shadcn Select) */}
+          <Select value={sortBy} onValueChange={(v: any) => setSortBy(v)}>
+            <SelectTrigger className="w-[170px] h-10 rounded-xl">
+              <SelectValue placeholder="Sort" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="newest">Newest First</SelectItem>
+              <SelectItem value="oldest">Oldest First</SelectItem>
+              <SelectItem value="name">Project Name</SelectItem>
+              <SelectItem value="client">Client Name</SelectItem>
+            </SelectContent>
+          </Select>
 
           {/* Search */}
-          <div className="flex-1 min-w-[200px] max-w-md">
+          <div className="flex-1 flex items-center gap-3">
             <input
               aria-label="Search projects"
-              className="w-full px-4 py-2.5 rounded-xl border border-border bg-card focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              className="flex-1 px-4 py-2.5 rounded-xl border border-border bg-card focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
               placeholder="Search projects..."
               value={search}
               onChange={e => setSearch(e.target.value)}
             />
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="px-4 py-2.5 rounded-xl bg-blue-600 text-white font-medium shadow-md hover:shadow-lg hover:bg-blue-700 transition-all text-sm whitespace-nowrap"
+              onClick={openNew}
+            >
+              + New Project
+            </motion.button>
           </div>
         </div>
       </motion.div>
@@ -598,7 +642,7 @@ export default function AdvisoryProjectsPage() {
           )}
         </motion.div>
       ) : (
-        <div className="w-full grid grid-cols-1 gap-5">
+        <div className="w-full grid grid-cols-1 gap-5 mt-1">
           {displayedProjects.map((p, idx) => (
             <ModernProjectCard
               key={p.id}
@@ -630,7 +674,7 @@ export default function AdvisoryProjectsPage() {
           }
           
           // Extract fields that are handled by separate endpoints
-          const { project_leads, application_questions, required_majors, ...restData } = data as any
+          const { project_leads, application_questions, required_majors, team_composition, ...restData } = data as any
           
           // Build payload with only fields the backend accepts
           const acceptedFields = [
@@ -641,7 +685,8 @@ export default function AdvisoryProjectsPage() {
             'showcase_pdf_url', 'applications_close_date', 'is_public', 'allow_applications',
             // Compensation fields
             'default_hourly_rate', 'pay_currency', 'compensation_notes',
-            'partner_badges', 'backer_badges', 'tags', 'gallery_urls', 'partner_logos', 'backer_logos'
+            'partner_badges', 'backer_badges', 'tags', 'gallery_urls', 'partner_logos', 'backer_logos',
+            'team_composition'
           ]
           
           const payload: any = {}
@@ -656,11 +701,18 @@ export default function AdvisoryProjectsPage() {
             payload.team_requirements = required_majors
           }
           
+          // Add team_composition if provided
+          if (team_composition) {
+            payload.team_composition = team_composition
+          }
+          
           payload.entity_id = entityId
           
           console.log('=== SAVE DEBUG ===')
           console.log('Editing:', editing)
           console.log('Full data received:', data)
+          console.log('Team composition:', team_composition)
+          console.log('Application questions:', application_questions)
           console.log('Payload being sent:', payload)
           console.log('Project leads:', project_leads)
           console.log('==================')
@@ -756,7 +808,7 @@ export default function AdvisoryProjectsPage() {
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 flex-1 overflow-hidden">
               {/* Form */}
-              <div className="p-6 space-y-3 overflow-auto">
+              <div className="p-6 space-y-3 overflow-auto no-scrollbar">
                 <h2 className="text-xl font-semibold mb-2">Details</h2>
                 <div className="grid grid-cols-1 gap-3">
                   <input className="w-full px-3 py-2 border rounded-md bg-background" placeholder="Project name" value={form.project_name || ''} onChange={e=>setForm(f=>({ ...f, project_name: e.target.value }))} />
@@ -774,7 +826,7 @@ export default function AdvisoryProjectsPage() {
                     </div>
                     <input className="w-full px-3 py-2 border rounded-md bg-background" placeholder="Client name" value={form.client_name || ''} onChange={e=>setForm(f=>({ ...f, client_name: e.target.value }))} />
                     {(form.client_name || '').trim() && (knownClients || []).length > 0 && (
-                      <div className="mt-1 border rounded-md bg-popover text-popover-foreground shadow max-h-48 overflow-auto">
+                      <div className="mt-1 border rounded-md bg-popover text-popover-foreground shadow max-h-48 overflow-auto no-scrollbar">
                         {knownClients
                           .filter(c => c.name.toLowerCase().includes(String(form.client_name||'').toLowerCase()))
                           .slice(0,10)
@@ -1043,7 +1095,7 @@ export default function AdvisoryProjectsPage() {
               </div>
               </div>
               {/* Live Preview */}
-              <div className="p-6 bg-muted/40 overflow-auto">
+              <div className="p-6 bg-muted/40 overflow-auto no-scrollbar">
                 <h2 className="text-sm font-medium text-muted-foreground mb-2">Live Preview</h2>
                 <StudentStylePreview p={{
                   id: editing?.id || 0,
@@ -1115,11 +1167,13 @@ export default function AdvisoryProjectsPage() {
         aspectRatio={16 / 9}
       />
       
-      <ProjectDetailModal
-        project={previewProject}
-        onClose={() => setPreviewProject(null)}
-      />
-    </div>
+          <ProjectDetailModal
+            project={previewProject}
+            onClose={() => setPreviewProject(null)}
+          />
+        </>
+      )}
+    </>
   )
 }
 
@@ -1141,12 +1195,15 @@ function ProjectCard({ p, onEdit, onPreview }: { p: AdvisoryProject; onEdit: () 
     if (s.startsWith('/clients/')) return `${basePath}${s}`
     return s
   }
+  const [logoError, setLogoError] = useState(false);
+  
   const autoClientLogo = (() => {
     const name = (p.client_name || '').trim()
     if (!name) return null
     const url = KNOWN_CLIENTS[name]
     return url ? { name, url } : null
   })()
+  
   return (
     <div
       className="w-full rounded-xl border border-border bg-card cursor-pointer hover:bg-accent/20 transition-colors"
@@ -1166,24 +1223,80 @@ function ProjectCard({ p, onEdit, onPreview }: { p: AdvisoryProject; onEdit: () 
             <div className="text-base md:text-lg font-semibold truncate">{p.project_name}</div>
             <span className={`text-xxs ml-auto ${statusIsActive ? 'text-green-600' : 'text-muted-foreground'}`}>{statusIsActive ? 'Active' : (String(p.status || '').charAt(0).toUpperCase() + String(p.status || '').slice(1))}</span>
           </div>
-          {/* Client identity (logo + name) */}
-          <div className="mt-1 flex items-center gap-2 min-w-0">
-            {(autoClientLogo || partnerLogos[0]) && (
-              <img src={withBasePath((autoClientLogo?.url || (partnerLogos[0] as any)?.url) as string)} alt={p.client_name || 'Client'} className="h-5 w-5 object-contain" />
+          {/* Client identity (logo + name) - Enhanced visibility */}
+          <div className="mt-2 flex items-center gap-2.5 min-w-0">
+            {(autoClientLogo || partnerLogos[0]) && !logoError ? (
+              <>
+                <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-white dark:bg-gray-800 rounded-md p-1.5 shadow-sm border border-border/20">
+                  <img 
+                    src={withBasePath((autoClientLogo?.url || (partnerLogos[0] as any)?.url) as string)} 
+                    alt={p.client_name || 'Client'} 
+                    className="w-full h-full object-contain" 
+                    onError={() => setLogoError(true)}
+                  />
+                </div>
+                <div className="text-sm font-semibold text-foreground truncate">{p.client_name}</div>
+              </>
+            ) : (
+              <div className="text-sm font-semibold text-foreground truncate">{p.client_name}</div>
             )}
-            <div className="text-xs text-foreground truncate">{p.client_name}</div>
           </div>
           <div className="text-sm text-muted-foreground mt-1 line-clamp-2">{p.summary}</div>
-          {/* Stats tags */}
+          {/* Blue Metadata Tags - Matching student design */}
           <div className="flex flex-wrap items-center gap-2 mt-2">
-            {p.duration_weeks ? (<span className="text-xxs px-2 py-0.5 rounded border">{p.duration_weeks} weeks</span>) : null}
-            {p.commitment_hours_per_week ? (<span className="text-xxs px-2 py-0.5 rounded border">{p.commitment_hours_per_week} hrs/wk</span>) : null}
-            {typeof (p as any).team_size === 'number' && (p as any).team_size > 0 ? (<span className="text-xxs px-2 py-0.5 rounded border">Team {(p as any).team_size}</span>) : null}
-            {(p.start_date || p.end_date) ? (
-              <span className="text-xxs px-2 py-0.5 rounded border">
-                {(p.start_date || '').slice(0,10)}{p.end_date ? ' to ' + String(p.end_date).slice(0,10) : ''}
-              </span>
-            ) : null}
+            {(p.location_text || p.mode) && (
+              <div className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-blue-500/10 border-2 border-blue-500/20 text-xs font-medium text-blue-600 dark:text-blue-400 flex-shrink-0">
+                <span className="truncate">
+                  {(() => {
+                    const mode = String(p.mode || '').toLowerCase();
+                    const loc = String(p.location_text || '').trim();
+                    if (mode === 'hybrid' && loc) return `Hybrid - ${loc}`;
+                    if (mode === 'in_person' && loc) return `In Person - ${loc}`;
+                    return loc || (mode === 'remote' ? 'Remote' : '');
+                  })()}
+                </span>
+              </div>
+            )}
+            {(p.start_date && p.end_date) && (
+              <div className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-blue-500/10 border-2 border-blue-500/20 text-xs font-medium text-blue-600 dark:text-blue-400 flex-shrink-0">
+                <span className="truncate">
+                  {(() => {
+                    const getOrdinal = (day: number) => {
+                      if (day > 3 && day < 21) return 'th';
+                      switch (day % 10) {
+                        case 1: return 'st';
+                        case 2: return 'nd';
+                        case 3: return 'rd';
+                        default: return 'th';
+                      }
+                    };
+                    const formatDate = (dateStr: string) => {
+                      const d = new Date(dateStr);
+                      const month = d.toLocaleDateString('en-US', { month: 'short' });
+                      const day = d.getDate();
+                      return `${month} ${day}${getOrdinal(day)}`;
+                    };
+                    return `${formatDate(p.start_date)} - ${formatDate(p.end_date)}`;
+                  })()}
+                </span>
+              </div>
+            )}
+            {typeof (p as any).team_size === 'number' && (p as any).team_size > 0 && (
+              <div className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-blue-500/10 border-2 border-blue-500/20 text-xs font-medium text-blue-600 dark:text-blue-400 flex-shrink-0">
+                <span>{(p as any).team_size} {(p as any).team_size === 1 ? 'Open Position' : 'Open Positions'}</span>
+              </div>
+            )}
+            {typeof (p as any).default_hourly_rate === 'number' && (
+              <div className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-blue-500/10 border-2 border-blue-500/20 text-xs font-medium text-blue-600 dark:text-blue-400 flex-shrink-0">
+                <span>
+                  {(() => {
+                    const r = (p as any).default_hourly_rate as number;
+                    const cur = String((p as any).pay_currency || 'USD').toUpperCase();
+                    try { return `${new Intl.NumberFormat(undefined, { style: 'currency', currency: cur, maximumFractionDigits: 0 }).format(r)}/hr`; } catch { return `$${r}/hr`; }
+                  })()}
+                </span>
+              </div>
+            )}
           </div>
           {/* Logos or badges */}
           <div className="flex items-center gap-3 mt-2">
@@ -1245,7 +1358,7 @@ function ProjectOverlay({ project, onClose }: { project: AdvisoryProject; onClos
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center" onClick={onClose}>
       <div className="relative w-[92vw] h-[90vh] max-w-6xl bg-background border border-border rounded-xl shadow-2xl overflow-hidden" onClick={e=>e.stopPropagation()}>
         <button className="absolute top-3 right-3 z-10 px-3 py-1.5 text-sm rounded-md border bg-background/80 hover:bg-muted" onClick={onClose}>Close</button>
-        <div className="w-full h-full overflow-auto p-4">
+        <div className="w-full h-full overflow-auto no-scrollbar p-4">
           <div className="rounded-2xl border border-border bg-card overflow-hidden p-6">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Main content */}
@@ -1279,7 +1392,7 @@ function ProjectOverlay({ project, onClose }: { project: AdvisoryProject; onClos
                 <div className="rounded-xl border border-border bg-card p-4">
                   <div className="text-sm font-medium">Coffee Chat</div>
                   <div className="text-xs text-muted-foreground">Pick a time (All times PT)</div>
-                  <div className="mt-2 max-h-40 overflow-auto space-y-1">
+                  <div className="mt-2 max-h-40 overflow-auto no-scrollbar space-y-1">
                     {(avail || []).slice(0,6).map((s, i) => (
                       <div key={i} className="text-xs text-foreground/90">
                         {new Date(s.start_ts).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', month:'short', day:'2-digit', hour:'numeric', minute:'2-digit' })}
@@ -1317,7 +1430,7 @@ function ApplyModal({ questions, onClose }: { questions: Array<{ idx:number; typ
           <h3 className="text-lg font-semibold">Application Preview</h3>
           <button className="px-3 py-1.5 text-sm rounded-md border hover:bg-muted" onClick={onClose}>Close</button>
         </div>
-        <div className="space-y-4 max-h-[60vh] overflow-auto">
+        <div className="space-y-4 max-h-[60vh] overflow-auto no-scrollbar">
           {(questions || []).map((q, i) => {
             const qType = (q.type || 'text') as ('text'|'mcq')
             if (qType === 'mcq' && (q.choices || []).length > 0) {

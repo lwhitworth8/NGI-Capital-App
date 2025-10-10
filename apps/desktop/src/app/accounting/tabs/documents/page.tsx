@@ -49,15 +49,19 @@ import {
   FolderOpen,
 } from 'lucide-react';
 import { useEntityContext } from '@/hooks/useEntityContext';
-import { api } from '@/lib/api';
+// import { api } from '@/lib/api'; // not used; using direct fetch instead
 
 // Document categories
 const DOCUMENT_CATEGORIES = [
   { value: 'formation', label: 'Formation Docs', icon: FileText, color: 'blue' },
-  { value: 'tax', label: 'Tax Documents', icon: FileSpreadsheet, color: 'purple' },
-  { value: 'receipts', label: 'Receipts/Invoices', icon: FileText, color: 'green' },
+  { value: 'ein', label: 'EIN Documents', icon: FileSpreadsheet, color: 'purple' },
+  { value: 'invoices', label: 'Invoices', icon: FileText, color: 'green' },
+  { value: 'board_resolution', label: 'Board Resolutions', icon: FileText, color: 'orange' },
+  { value: 'operating_agreement', label: 'Operating Agreements', icon: FileText, color: 'indigo' },
   { value: 'contracts', label: 'Contracts', icon: FileText, color: 'orange' },
   { value: 'bank_statements', label: 'Bank Statements', icon: FileArchive, color: 'indigo' },
+  { value: 'tax', label: 'Tax Documents', icon: FileSpreadsheet, color: 'purple' },
+  { value: 'receipts', label: 'Receipts', icon: FileText, color: 'green' },
   { value: 'other', label: 'Other', icon: FolderOpen, color: 'gray' },
 ];
 
@@ -70,14 +74,27 @@ interface Document {
   category: string;
   entity: string | null;
   upload_date: string;
-  status: 'uploaded' | 'processing' | 'processed' | 'error';
+  status: 'uploaded' | 'processing' | 'extracted' | 'journal_entries_created' | 'no_journal_entries_created' | 'journal_creation_failed' | 'failed' | 'error';
   file_path: string;
   extracted_text?: string;
+  extracted_data?: any;
+  extraction_confidence?: number;
+  vision_model_version?: string;
+  vision_processing_time_ms?: number;
+  agent_validation_id?: number;
+  agent_validation_status?: string;
   linked_to?: {
     type: string;
     id: number;
     description: string;
   };
+  journal_entries?: Array<{
+    id: number;
+    entry_number: string;
+    status: string;
+    total_debits: number;
+    total_credits: number;
+  }>;
 }
 
 export default function DocumentsTab() {
@@ -91,12 +108,6 @@ export default function DocumentsTab() {
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
-
-  useEffect(() => {
-    if (selectedEntityId) {
-      fetchDocuments();
-    }
-  }, [selectedEntityId, categoryFilter]);
 
   const fetchDocuments = async () => {
     setLoading(true);
@@ -129,8 +140,15 @@ export default function DocumentsTab() {
         upload_date: doc.upload_date || doc.created_at || new Date().toISOString(),
         status: doc.processing_status || doc.status || 'uploaded',
         file_path: doc.file_path || doc.file_url || '',
-        extracted_text: doc.extracted_text,
+        extracted_text: doc.extracted_text || doc.searchable_text,
+        extracted_data: doc.extracted_data,
+        extraction_confidence: doc.extraction_confidence,
+        vision_model_version: doc.vision_model_version,
+        vision_processing_time_ms: doc.vision_processing_time_ms,
+        agent_validation_id: doc.agent_validation_id,
+        agent_validation_status: doc.agent_validation_status,
         linked_to: doc.linked_to,
+        journal_entries: doc.journal_entries || [],
       }));
       
       setDocuments(mappedDocs);
@@ -142,6 +160,14 @@ export default function DocumentsTab() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (selectedEntityId) {
+      fetchDocuments();
+    }
+  }, [selectedEntityId, categoryFilter]);
+
+  // Removed auto-refresh - only refresh when user uploads documents
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -234,11 +260,15 @@ export default function DocumentsTab() {
   };
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, { color: string; icon: React.ReactNode }> = {
-      uploaded: { color: 'blue', icon: <CheckCircle2 className="h-3 w-3" /> },
-      processing: { color: 'yellow', icon: <Loader2 className="h-3 w-3 animate-spin" /> },
-      processed: { color: 'green', icon: <CheckCircle2 className="h-3 w-3" /> },
-      error: { color: 'red', icon: <AlertCircle className="h-3 w-3" /> },
+    const variants: Record<string, { color: string; icon: React.ReactNode; text: string }> = {
+      uploaded: { color: 'blue', icon: <CheckCircle2 className="h-3 w-3" />, text: 'Uploaded' },
+      processing: { color: 'yellow', icon: <Loader2 className="h-3 w-3 animate-spin" />, text: 'Processing' },
+      extracted: { color: 'green', icon: <CheckCircle2 className="h-3 w-3" />, text: 'GPT-5 Extracted' },
+      journal_entries_created: { color: 'green', icon: <CheckCircle2 className="h-3 w-3" />, text: 'JE Created' },
+      no_journal_entries_created: { color: 'blue', icon: <CheckCircle2 className="h-3 w-3" />, text: 'No JE Needed' },
+      journal_creation_failed: { color: 'red', icon: <AlertCircle className="h-3 w-3" />, text: 'JE Failed' },
+      failed: { color: 'red', icon: <AlertCircle className="h-3 w-3" />, text: 'Failed' },
+      error: { color: 'red', icon: <AlertCircle className="h-3 w-3" />, text: 'Error' },
     };
     
     const variant = variants[status] || variants.uploaded;
@@ -246,9 +276,21 @@ export default function DocumentsTab() {
     return (
       <Badge variant="outline" className="flex items-center gap-1">
         {variant.icon}
-        <span className="capitalize">{status}</span>
+        <span>{variant.text}</span>
       </Badge>
     );
+  };
+
+  const getProcessingInfo = (doc: Document) => {
+    if (!doc.extracted_data) return null;
+    
+    return {
+      confidence: doc.extraction_confidence || 0,
+      model: doc.vision_model_version || 'GPT-5',
+      processingTime: doc.vision_processing_time_ms || 0,
+      agentStatus: doc.agent_validation_status,
+      journalEntries: doc.journal_entries || []
+    };
   };
 
   const handleViewDocument = async (doc: Document) => {
@@ -337,13 +379,22 @@ export default function DocumentsTab() {
             Upload, organize, and manage all entity documents
           </p>
         </div>
-        <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Upload className="h-4 w-4 mr-2" />
-              Upload Documents
-            </Button>
-          </DialogTrigger>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={fetchDocuments}
+            disabled={loading}
+          >
+            <Search className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
+          <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Upload className="h-4 w-4 mr-2" />
+                Upload Documents
+              </Button>
+            </DialogTrigger>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>Upload Documents</DialogTitle>
@@ -462,6 +513,7 @@ export default function DocumentsTab() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -497,7 +549,7 @@ export default function DocumentsTab() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {documents.filter(d => d.category === 'tax').length}
+              {documents.filter(d => d.category === 'ein' || d.category === 'tax').length}
             </div>
             <p className="text-xs text-muted-foreground">Returns, receipts, forms</p>
           </CardContent>
@@ -510,7 +562,7 @@ export default function DocumentsTab() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {documents.filter(d => d.category === 'receipts').length}
+              {documents.filter(d => d.category === 'invoices' || d.category === 'receipts').length}
             </div>
             <p className="text-xs text-muted-foreground">Bills, invoices, receipts</p>
           </CardContent>
@@ -588,6 +640,8 @@ export default function DocumentsTab() {
                     <TableHead>Size</TableHead>
                     <TableHead>Uploaded</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Processing</TableHead>
+                    <TableHead>Journal Entries</TableHead>
                     <TableHead>Linked To</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -623,6 +677,54 @@ export default function DocumentsTab() {
                             {new Date(doc.upload_date).toLocaleDateString()}
                           </TableCell>
                           <TableCell>{getStatusBadge(doc.status)}</TableCell>
+                          <TableCell>
+                            {(() => {
+                              const processingInfo = getProcessingInfo(doc);
+                              if (!processingInfo) return <span className="text-muted-foreground text-sm">No data</span>;
+                              
+                              return (
+                                <div className="space-y-1">
+                                  <div className="text-xs">
+                                    <span className="font-medium">{processingInfo.model}</span>
+                                    <span className="text-muted-foreground ml-1">
+                                      {Math.round(processingInfo.confidence * 100)}%
+                                    </span>
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {processingInfo.processingTime}ms
+                                  </div>
+                                  {processingInfo.agentStatus && (
+                                    <Badge variant="outline" className="text-xs">
+                                      Agent: {processingInfo.agentStatus}
+                                    </Badge>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </TableCell>
+                          <TableCell>
+                            {(() => {
+                              const processingInfo = getProcessingInfo(doc);
+                              if (!processingInfo || processingInfo.journalEntries.length === 0) {
+                                return <span className="text-muted-foreground text-sm">None</span>;
+                              }
+                              
+                              return (
+                                <div className="space-y-1">
+                                  {processingInfo.journalEntries.map((je, idx) => (
+                                    <div key={idx} className="text-xs">
+                                      <Badge variant="outline" className="text-xs">
+                                        {je.entry_number}
+                                      </Badge>
+                                      <div className="text-muted-foreground">
+                                        ${je.total_debits.toLocaleString()}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              );
+                            })()}
+                          </TableCell>
                           <TableCell>
                             {doc.linked_to ? (
                               <Badge variant="secondary" className="flex items-center gap-1 w-fit">

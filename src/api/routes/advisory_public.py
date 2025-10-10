@@ -161,8 +161,8 @@ async def public_projects(
                 params[key] = f"%{t}%"
             where.append("(" + " OR ".join(ors) + ")")
     sql = (
-        "SELECT p.id, p.project_name, p.client_name, p.summary, p.hero_image_url, p.tags, p.partner_badges, p.backer_badges, p.start_date, p.allow_applications, p.coffeechat_calendly, "
-        "p.status, p.mode, p.location_text, "
+        "SELECT p.id, p.project_name, p.client_name, p.summary, p.hero_image_url, p.gallery_urls, p.showcase_pdf_url, p.tags, p.partner_badges, p.backer_badges, p.start_date, p.end_date, p.allow_applications, p.coffeechat_calendly, "
+        "p.status, p.mode, p.location_text, p.team_size, p.default_hourly_rate, p.pay_currency, "
         "(SELECT COUNT(1) FROM advisory_applications a WHERE a.target_project_id = p.id) AS applied_count "
         "FROM advisory_projects p WHERE " + " AND ".join(where)
     )
@@ -191,10 +191,13 @@ async def public_projects(
     for r in rows:
         out.append({
             "id": r[0], "project_name": r[1], "client_name": r[2], "summary": r[3],
-            "hero_image_url": r[4], "tags": (_json.loads(r[5]) if r[5] else []),
-            "partner_badges": (_json.loads(r[6]) if r[6] else []), "backer_badges": (_json.loads(r[7]) if r[7] else []),
-            "start_date": r[8], "allow_applications": int(r[9] or 0), "coffeechat_calendly": r[10],
-            "status": r[11], "mode": r[12], "location_text": r[13], "applied_count": int(r[14] or 0),
+            "hero_image_url": r[4], "gallery_urls": (_json.loads(r[5]) if r[5] else []), "showcase_pdf_url": r[6],
+            "tags": (_json.loads(r[7]) if r[7] else []),
+            "partner_badges": (_json.loads(r[8]) if r[8] else []), "backer_badges": (_json.loads(r[9]) if r[9] else []),
+            "start_date": r[10], "end_date": r[11], "allow_applications": int(r[12] or 0), "coffeechat_calendly": r[13],
+            "status": r[14], "mode": r[15], "location_text": r[16],
+            "team_size": r[17], "default_hourly_rate": r[18], "pay_currency": r[19],
+            "applied_count": int(r[20] or 0),
         })
     return out
 

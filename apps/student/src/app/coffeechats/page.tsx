@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useUser } from '@clerk/nextjs'
 import { getCoffeeAvailability, createCoffeeRequest, listMyCoffeeRequests, type PublicCoffeeSlot } from '@/lib/api'
+import { ModuleHeader } from '@ngi/ui/components/layout'
 
 export default function CoffeeChatsPage() {
   const { user } = useUser()
@@ -32,9 +33,16 @@ export default function CoffeeChatsPage() {
   const myPending = useMemo(() => mine.find(r => r.status === 'pending'), [mine])
 
   return (
-    <div className="max-w-3xl mx-auto p-6 space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight text-foreground">Coffee Chats</h1>
-      <p className="text-sm text-muted-foreground">Hi {user?.firstName || user?.primaryEmailAddress?.emailAddress}, pick a time below to request a coffee chat. Times are shown in your local timezone.</p>
+    <div className="flex flex-col h-full bg-background">
+      {/* Fixed header - consistent with Finance module */}
+      <ModuleHeader 
+        title="Coffee Chats" 
+        subtitle={`Hi ${user?.firstName || user?.primaryEmailAddress?.emailAddress}, pick a time below to request a coffee chat. Times are shown in your local timezone.`}
+      />
+      
+      {/* Scrollable content area */}
+      <div className="flex-1 overflow-auto">
+        <div className="max-w-3xl mx-auto p-6 space-y-6">
 
       {error && <div className="text-sm text-red-600">{error}</div>}
 
@@ -71,6 +79,8 @@ export default function CoffeeChatsPage() {
             )}
           </tbody>
         </table>
+        </div>
+      </div>
       </div>
     </div>
   )

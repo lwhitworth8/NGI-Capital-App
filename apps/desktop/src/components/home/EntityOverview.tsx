@@ -1,36 +1,34 @@
-"use client";
-import { Card } from "@/components/ui/Card";
-import { useApp } from "@/lib/context/AppContext";
+'use client'
 
-export function EntityOverview(){
-  const { state, setCurrentEntity } = useApp()
-  const ent = state.currentEntity
+import { Card } from '@/components/ui/card'
+import { useEntity } from '@/lib/context/UnifiedEntityContext'
+
+export function EntityOverview() {
+  const { selectedEntity } = useEntity()
+  
   return (
-    <Card className="p-4">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="font-semibold">Entity Overview</h3>
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-muted-foreground">Entity</label>
-          <select
-            className="px-2 py-1 rounded-md border border-input bg-background text-foreground text-sm"
-            value={ent?.id || ''}
-            onChange={e => {
-              const next = state.entities.find(x => (x.id as any) === e.target.value)
-              setCurrentEntity(next || null)
-            }}
-          >
-            {state.entities.map(e => (
-              <option key={e.id} value={e.id}>{e.legal_name}</option>
-            ))}
-          </select>
+    <Card className="p-6">
+      <h3 className="text-lg font-semibold mb-4">Entity Overview</h3>
+      
+      <dl className="grid grid-cols-2 gap-4 text-sm">
+        <div>
+          <dt className="text-muted-foreground mb-1">Legal Name</dt>
+          <dd className="font-medium">{selectedEntity?.entity_name || '-'}</dd>
         </div>
-      </div>
-      <div className="grid sm:grid-cols-2 gap-3 text-sm">
-        <div><div className="text-muted-foreground">Legal Name</div><div>{ent?.legal_name ?? "-"}</div></div>
-        <div><div className="text-muted-foreground">State</div><div>{(ent as any)?.state ?? "-"}</div></div>
-        <div><div className="text-muted-foreground">EIN</div><div>{(ent as any)?.ein ?? "-"}</div></div>
-        <div><div className="text-muted-foreground">Formation Date</div><div>{(ent as any)?.formation_date ?? "-"}</div></div>
-      </div>
+        <div>
+          <dt className="text-muted-foreground mb-1">Type</dt>
+          <dd className="font-medium">{selectedEntity?.entity_type || '-'}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground mb-1">EIN</dt>
+          <dd className="font-medium">{selectedEntity?.ein || '-'}</dd>
+        </div>
+        <div>
+          <dt className="text-muted-foreground mb-1">Status</dt>
+          <dd className="font-medium capitalize">{selectedEntity?.entity_status || '-'}</dd>
+        </div>
+      </dl>
     </Card>
-  );
+  )
 }
+

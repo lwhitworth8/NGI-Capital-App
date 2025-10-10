@@ -15,8 +15,8 @@ import {
 import { cn, formatCurrency } from '@/lib/utils';
 import { useApp } from '@/lib/context/AppContext';
 import { useTheme } from '@/lib/context/ThemeContext';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 interface HeaderProps {
   onSidebarToggle?: () => void;
@@ -233,3 +233,4 @@ export function Header({ onSidebarToggle, sidebarCollapsed }: HeaderProps) {
     </header>
   );
 }
+

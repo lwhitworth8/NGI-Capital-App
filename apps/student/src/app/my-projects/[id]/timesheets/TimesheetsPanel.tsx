@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useUser } from '@clerk/nextjs'
 import { getMyTimesheet, saveTimesheetEntry, listMyTasks, type ProjectTask } from '@/lib/api'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@ngi/ui'
 
 function startOfWeek(d: Date) {
   const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
@@ -107,12 +108,19 @@ export default function TimesheetsPanel({ projectId }: { projectId: number }) {
           <button className="px-2 py-1 border rounded" onClick={() => shiftWeek(1)}>&gt;</button>
         </div>
       </div>
-      <div className="mt-3 text-sm">
-        <label className="mr-2">Task:</label>
-        <select className="border rounded px-2 py-1" value={taskId || ''} onChange={e => setTaskId(e.target.value ? Number(e.target.value) : undefined)}>
-          <option value="">(none)</option>
-          {tasks.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
-        </select>
+      <div className="mt-3 text-sm flex items-center gap-2">
+        <label className="mr-1">Task:</label>
+        <Select value={(taskId ?? 'none').toString()} onValueChange={(v: string) => setTaskId(v === 'none' ? undefined : Number(v))}>
+          <SelectTrigger className="w-[220px] h-9 rounded-md">
+            <SelectValue placeholder="(none)" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">(none)</SelectItem>
+            {tasks.map(t => (
+              <SelectItem key={t.id} value={String(t.id)}>{t.title}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <table className="mt-3 w-full text-sm">
         <thead>

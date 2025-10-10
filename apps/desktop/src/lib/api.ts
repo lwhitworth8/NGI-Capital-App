@@ -102,7 +102,7 @@ class ApiClient {
   constructor() {
     this.client = axios.create({
       baseURL: API_BASE_URL,
-      timeout: 30000,
+      timeout: 10000, // Reduced from 30s to 10s for faster failures
       withCredentials: true,
       headers: {
         'Content-Type': 'application/json',
@@ -195,7 +195,12 @@ class ApiClient {
       '/api/goals',
       '/dashboard/metrics',
       '/approvals',
-      'pending-approvals'
+      'pending-approvals',
+      '/investor-relations/cap-table',
+      '/api/auth/profile',
+      '/api/profile',
+      '/finance/metrics/',
+      '/finance/ai-insights'
     ]
     const isOptionalEndpoint = optionalEndpoints.some(endpoint => url.includes(endpoint))
     
@@ -205,10 +210,15 @@ class ApiClient {
     }
     
     console.error('API Error Details:', {
-      message: error.message,
-      code: error.code,
-      response: error.response?.data,
-      status: error.response?.status,
+      message: error.message || 'Unknown error',
+      code: error.code || 'UNKNOWN',
+      response: error.response?.data || 'No response data',
+      status: error.response?.status || 'No status',
+      url: url || 'Unknown URL',
+      config: {
+        method: error.config?.method || 'Unknown method',
+        url: error.config?.url || 'Unknown URL'
+      },
       request: url,
       fullError: error
     })
@@ -285,18 +295,32 @@ class ApiClient {
 
   // Profile endpoint (maps /auth/me to Partner)
   async getProfile(): Promise<AppPartner> {
-    const response = await this.client.get('/auth/me')
-    const me = response.data
-    const partner: AppPartner = {
-      id: me.id?.toString?.() || '0',
-      name: me.name || 'Partner',
-      email: me.email,
-      ownership_percentage: me.ownership_percentage ?? 0,
-      capital_account_balance: me.capital_account_balance ?? 0,
-      is_active: me.is_active ?? true,
-      created_at: me.created_at || new Date().toISOString(),
+    try {
+      const response = await this.client.get('/auth/me')
+      const me = response.data
+      const partner: AppPartner = {
+        id: me.id?.toString?.() || '0',
+        name: me.name || 'Partner',
+        email: me.email,
+        ownership_percentage: me.ownership_percentage ?? 0,
+        capital_account_balance: me.capital_account_balance ?? 0,
+        is_active: me.is_active ?? true,
+        created_at: me.created_at || new Date().toISOString(),
+      }
+      return partner
+    } catch (error: any) {
+      // Return a default partner if profile fetch fails
+      console.warn('Failed to fetch profile, using default:', error.message)
+      return {
+        id: '0',
+        name: 'User',
+        email: 'user@ngicapital.com',
+        ownership_percentage: 0,
+        capital_account_balance: 0,
+        is_active: true,
+        created_at: new Date().toISOString(),
+      }
     }
-    return partner
   }
 
   async logout(): Promise<void> {
@@ -342,7 +366,7 @@ class ApiClient {
 
   // Entity management endpoints
   async getEntities(): Promise<AppEntity[]> {
-    const response = await this.client.get('/entities')
+    const response = await this.client.get('/accounting/entities/')
     const items = Array.isArray(response.data) ? response.data : (response.data?.entities ?? [])
     const mapped: AppEntity[] = items.map((e: any) => ({
       id: e.id?.toString?.() ?? '0',
@@ -359,7 +383,7 @@ class ApiClient {
   }
 
   async createEntity(entityData: Partial<AppEntity>): Promise<AppEntity> {
-    const response = await this.client.post('/entities', entityData)
+    const response = await this.client.post('/accounting/entities/', entityData)
     const e = response.data
     const mapped: AppEntity = {
       id: e.id?.toString?.() ?? '0',
@@ -409,11 +433,24 @@ class ApiClient {
     return response.data
   }
 
-  async getJournalEntries(params?: { entity_id?: number; start_date?: string; end_date?: string; status?: string }): Promise<ApiTransaction[]> {
+  async getJournalEntries(params?: { entity_id?: number; start_date?: string; end_date?: string; status?: string }): Promise<any[]> {
     if (!params?.entity_id) return []
     const { entity_id, ...rest } = params
     const response = await this.client.get('/accounting/journal-entries', { params: { entity_id, ...rest } })
-    return response.data
+    
+    // Map the API response to match the frontend interface
+    return response.data.map((entry: any) => ({
+      ...entry,
+      total_debits: parseFloat(entry.total_debit || '0'),
+      total_credits: parseFloat(entry.total_credit || '0'),
+      status: entry.is_posted ? 'posted' : (entry.approval_status || 'draft'),
+      fiscal_year: entry.fiscal_year || new Date().getFullYear(),
+      fiscal_period: entry.fiscal_period || 1,
+      created_by: entry.created_by || 1,
+      approved_by: entry.approved_by || null,
+      created_at: entry.created_at || new Date().toISOString(),
+      updated_at: entry.updated_at || new Date().toISOString()
+    }))
   }
 
   async createJournalEntry(entryData: any): Promise<ApiTransaction> {
@@ -845,6 +882,10 @@ export async function advisoryUpdateProject(id: number, patch: Partial<AdvisoryP
   return apiClient.request('PUT', `/advisory/projects/${id}`, patch)
 }
 
+export async function advisoryAutoCloseProjects(): Promise<{ message: string; closed_projects: Array<{ id: number; project_name: string; applications_close_date: string }> }> {
+  return apiClient.request('POST', '/advisory/projects/auto-close')
+}
+
 // Lead Manager (PLM)
 export async function plmListTasks(projectId: number): Promise<any[]> {
   return apiClient.request('GET', `/advisory/projects/${projectId}/tasks`)
@@ -1268,6 +1309,53 @@ export async function advisoryListOnboardingInstances(params?: { student_id?: nu
 
 export async function advisoryMarkOnboardingStep(iid: number, stepKey: string, data: { status: 'pending' | 'sent' | 'completed' | 'failed'; evidence_url?: string; external_id?: string }): Promise<{ id: number; step_key: string; status: string }> {
   return apiClient.request('POST', `/advisory/onboarding/instances/${iid}/steps/${encodeURIComponent(stepKey)}/mark`, data)
+}
+
+// Onboarding Flows (V2 - Fixed Workflow)
+export async function advisoryListOnboardingFlows(params?: { student_id?: number; project_id?: number }): Promise<any[]> {
+  return apiClient.request('GET', '/advisory/onboarding/flows', undefined, { params })
+}
+
+export async function advisoryCreateOnboardingFlow(data: { student_id: number; project_id: number; nda_required?: boolean }): Promise<{ id: number }> {
+  return apiClient.request('POST', '/advisory/onboarding/flows', data)
+}
+
+export async function advisoryPatchOnboardingFlow(id: number, patch: any): Promise<{ id: number }> {
+  return apiClient.request('PATCH', `/advisory/onboarding/flows/${id}`, patch)
+}
+
+export async function advisoryUploadOnboardingDocument(id: number, file: File): Promise<{ file_url: string; file_name: string }> {
+  const formData = new FormData()
+  formData.append('file', file)
+  return apiClient.request('POST', `/advisory/onboarding/flows/${id}/upload`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}
+
+export async function advisoryFinalizeOnboarding(id: number): Promise<{ id: number; status: string }> {
+  return apiClient.request('POST', `/advisory/onboarding/flows/${id}/finalize`)
+}
+
+export async function advisoryProvisionEmail(id: number): Promise<{ email: string; provisioned: boolean; message: string }> {
+  return apiClient.request('POST', `/advisory/onboarding/flows/${id}/provision-email`)
+}
+
+export async function advisorySendWelcomeEmail(id: number): Promise<{ id: number; email_sent: boolean; message: string }> {
+  return apiClient.request('POST', `/advisory/onboarding/flows/${id}/send-welcome-email`)
+}
+
+// Admin availability API methods
+export async function getAdminAvailability(adminEmail?: string): Promise<{ availability: any[] }> {
+  const params = adminEmail ? `?admin_email=${encodeURIComponent(adminEmail)}` : ''
+  return apiClient.request('GET', `/admin/availability${params}`)
+}
+
+export async function setAdminAvailability(payload: { admin_email: string; date: string; time_slots: string[] }): Promise<{ message: string }> {
+  return apiClient.request('POST', `/admin/availability`, payload)
+}
+
+export async function getNextWeekAvailability(): Promise<{ next_week: string[]; availability: Record<string, any[]> }> {
+  return apiClient.request('GET', `/admin/availability/next-week`)
 }
 // Accounting: Unposted entries and batch post
 export async function accountingGetUnpostedEntries(entityId: number): Promise<{ id: number; entry_number: string; entry_date: string; description: string }[]> {

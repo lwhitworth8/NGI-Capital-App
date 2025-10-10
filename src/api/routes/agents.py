@@ -12,6 +12,8 @@ import hashlib
 import hmac
 import json
 import os
+import urllib.request
+import urllib.error
 
 from src.api.database import get_db
 from src.api.agent_client import ensure_agent_tables
@@ -122,6 +124,89 @@ async def agent_webhook_triage(request: Request, db: Session = Depends(get_db)):
             pass
 
     return {"ok": True}
+
+
+@router.get('/agents/inputs/scheduler/latest')
+async def get_latest_scheduler_input(db: Session = Depends(get_db)):
+    """Return the most recent queued scheduler input payload for Agent Builder Evaluate."""
+    ensure_agent_tables(db)
+    row = db.execute(sa_text(
+        "SELECT id, input_json FROM agent_runs WHERE workflow = 'scheduler' ORDER BY id DESC LIMIT 1"
+    )).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail='No scheduler runs found')
+    try:
+        import json as _json
+        payload = _json.loads(row[1] or '{}')
+    except Exception:
+        payload = {}
+    return {"run_id": int(row[0] or 0), "input": payload}
+
+
+@router.post('/agents/chatkit/session')
+async def chatkit_create_session(request: Request):
+    """Create a ChatKit session via OpenAI REST and return { client_secret }.
+
+    Body (optional):
+      { "user": "<deviceId-or-userId>", "workflow_id": "wf_...", "version": "1" }
+
+    Env:
+      - OPENAI_API_KEY or OPENAI_WORKFLOWS_API_KEY
+      - OPENAI_PROJECT (optional; sets OpenAI-Project header)
+      - CHATKIT_WORKFLOW_ID (default if not provided in body)
+      - CHATKIT_WORKFLOW_VERSION (default version, e.g., "1")
+    """
+    try:
+        body = await request.body()
+        payload = json.loads(body.decode('utf-8') or '{}') if body else {}
+    except Exception:
+        payload = {}
+
+    api_key = os.getenv('OPENAI_API_KEY') or os.getenv('OPENAI_WORKFLOWS_API_KEY')
+    if not api_key:
+        raise HTTPException(status_code=500, detail='OPENAI_API_KEY not configured')
+
+    wid = (payload.get('workflow_id') or payload.get('workflow') or os.getenv('CHATKIT_WORKFLOW_ID') or os.getenv('WORKFLOW_SCHEDULER_ID') or '').strip()
+    if isinstance(wid, dict):
+        wid = wid.get('id') or ''
+    version = str(payload.get('version') or os.getenv('CHATKIT_WORKFLOW_VERSION') or '1').strip()
+    user = str(payload.get('user') or payload.get('device_id') or '').strip() or request.client.host if request.client else 'anon'
+
+    if not wid:
+        raise HTTPException(status_code=400, detail='workflow_id is required')
+
+    url = 'https://api.openai.com/v1/chatkit/sessions'
+    body_out = {
+        'workflow': {'id': wid, 'version': version},
+        'user': user,
+    }
+    data = json.dumps(body_out).encode('utf-8')
+    req = urllib.request.Request(url, data=data, method='POST')
+    req.add_header('Authorization', f'Bearer {api_key}')
+    req.add_header('Content-Type', 'application/json')
+    req.add_header('OpenAI-Beta', 'chatkit_beta=v1')
+    proj = os.getenv('OPENAI_PROJECT')
+    if proj:
+        req.add_header('OpenAI-Project', proj)
+    org = os.getenv('OPENAI_ORG') or os.getenv('OPENAI_ORGANIZATION')
+    if org:
+        req.add_header('OpenAI-Organization', org)
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            raw = resp.read().decode('utf-8')
+            js = json.loads(raw)
+            cs = js.get('client_secret')
+            if not cs:
+                raise ValueError('No client_secret in response')
+            return {'client_secret': cs}
+    except urllib.error.HTTPError as he:  # type: ignore
+        try:
+            err = he.read().decode('utf-8')
+        except Exception:
+            err = str(he)
+        raise HTTPException(status_code=he.code, detail=err)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post('/agents/tools/sign')

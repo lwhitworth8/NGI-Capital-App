@@ -17,12 +17,16 @@ from ..models_learning import (
     LearningCompany, LearningProgress, LearningPackage, 
     LearningSubmission, LearningFeedback, LearningLeaderboard
 )
+import os
 try:
     from ..auth_deps import require_clerk_user as require_auth
 except ImportError:
-    # Fallback for development - create a mock auth
-    def require_auth():
-        """Mock auth for development"""
+    require_auth = None  # type: ignore
+
+# In dev, allow bypassing auth for learning routes when OPEN_NON_ACCOUNTING enabled
+_DEV_OPEN = str(os.getenv('OPEN_NON_ACCOUNTING', '0')).strip().lower() in ('1', 'true', 'yes')
+if _DEV_OPEN or require_auth is None:
+    def require_auth():  # type: ignore
         class MockUser:
             id = "dev_user_123"
             email = "dev@ngicapital.com"

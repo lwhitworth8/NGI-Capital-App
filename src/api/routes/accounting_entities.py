@@ -27,8 +27,27 @@ class EntityResponse(BaseModel):
     is_available: bool
     parent_entity_id: int | None
     ownership_percentage: float | None
+    display_label: str
+    status_label: str
 
     model_config = ConfigDict(from_attributes=True)
+
+
+def _get_status_label(entity: AccountingEntity) -> str:
+    """Generate clean status label for entity"""
+    parts = []
+    
+    if entity.entity_status == "active":
+        parts.append("Active")
+    elif entity.entity_status == "planned":
+        parts.append("Pending Conversion")
+    
+    if entity.parent_entity_id is None:
+        parts.append("Parent Entity")
+    else:
+        parts.append("Subsidiary")
+    
+    return " - ".join(parts)
 
 
 @router.get("/entities", response_model=List[EntityResponse])
@@ -63,7 +82,9 @@ async def get_accounting_entities(
                 entity_status=e.entity_status,
                 is_available=e.is_available if hasattr(e, 'is_available') else True,
                 parent_entity_id=e.parent_entity_id if hasattr(e, 'parent_entity_id') else None,
-                ownership_percentage=float(e.ownership_percentage) if hasattr(e, 'ownership_percentage') and e.ownership_percentage else None
+                ownership_percentage=float(e.ownership_percentage) if hasattr(e, 'ownership_percentage') and e.ownership_percentage else None,
+                display_label=e.entity_name,
+                status_label=_get_status_label(e)
             )
             for e in entities
         ]

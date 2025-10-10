@@ -53,11 +53,12 @@ import {
   Award,
   Loader2,
 } from 'lucide-react';
-import { useEntityContext } from '@/hooks/useEntityContext';
-import { EntitySelector } from '@/components/accounting/EntitySelector';
+import { useEntity } from '@/lib/context/UnifiedEntityContext';
+import { EntitySelector } from '@/components/common/EntitySelector';
 import { useUser } from '@clerk/nextjs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
+import { ModuleHeader } from '@ngi/ui/components/layout';
 
 // Interfaces
 interface Employee {
@@ -117,7 +118,8 @@ interface TimesheetEntry {
 }
 
 export default function EmployeesPage() {
-  const { selectedEntityId, setSelectedEntityId } = useEntityContext();
+  const { selectedEntity } = useEntity();
+  const selectedEntityId = selectedEntity?.id || null;
   const { user } = useUser();
   const currentUserEmail = user?.primaryEmailAddress?.emailAddress || '';
   
@@ -198,6 +200,51 @@ export default function EmployeesPage() {
       generateWeeklyEntries();
     }
   }, [selectedEntityId, currentWeekStart]);
+
+  // ChatKit event listeners
+  useEffect(() => {
+    const handleCreateEmployee = (e: CustomEvent) => {
+      setCreateEmployeeModal(true);
+      // Pre-fill form with e.detail data if available
+      if (e.detail) {
+        console.log('Pre-filling employee form with:', e.detail);
+        // You can pre-fill form fields here
+      }
+    };
+
+    const handleCreateTeam = (e: CustomEvent) => {
+      setCreateTeamModal(true);
+      if (e.detail) {
+        console.log('Pre-filling team form with:', e.detail);
+      }
+    };
+
+    const handleCreateTimesheet = (e: CustomEvent) => {
+      setCreateTimesheetModal(true);
+      if (e.detail) {
+        console.log('Pre-filling timesheet form with:', e.detail);
+      }
+    };
+
+    const handleSubmitTimesheet = (e: CustomEvent) => {
+      if (e.detail?.timesheet_id) {
+        // Handle timesheet submission
+        console.log('Submitting timesheet:', e.detail.timesheet_id);
+      }
+    };
+    
+    window.addEventListener('nex:create_employee', handleCreateEmployee);
+    window.addEventListener('nex:create_team', handleCreateTeam);
+    window.addEventListener('nex:create_timesheet', handleCreateTimesheet);
+    window.addEventListener('nex:submit_timesheet', handleSubmitTimesheet);
+    
+    return () => {
+      window.removeEventListener('nex:create_employee', handleCreateEmployee);
+      window.removeEventListener('nex:create_team', handleCreateTeam);
+      window.removeEventListener('nex:create_timesheet', handleCreateTimesheet);
+      window.removeEventListener('nex:submit_timesheet', handleSubmitTimesheet);
+    };
+  }, []);
   
   const generateWeeklyEntries = () => {
     const start = new Date(currentWeekStart);
@@ -607,7 +654,7 @@ export default function EmployeesPage() {
             <CardDescription>Choose an entity to manage employees</CardDescription>
           </CardHeader>
           <CardContent>
-            <EntitySelector value={selectedEntityId} onChange={setSelectedEntityId} />
+            <EntitySelector />
           </CardContent>
         </Card>
       </div>
@@ -615,22 +662,22 @@ export default function EmployeesPage() {
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.3 }}
-      className="space-y-6 p-8"
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Employee Management</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage employees, teams, projects, and timesheets
-          </p>
-        </div>
-        <EntitySelector value={selectedEntityId} onChange={setSelectedEntityId} />
-      </div>
+    <div className="flex flex-col h-full bg-background">
+      {/* Fixed header - consistent with Finance module */}
+      <ModuleHeader 
+        title="Employee Management" 
+        subtitle={`${selectedEntity?.entity_name} - Manage employees, teams, projects, and timesheets`}
+        rightContent={<EntitySelector />}
+      />
+      
+      {/* Scrollable content area */}
+      <div className="flex-1 overflow-auto">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3 }}
+          className="space-y-6 p-8"
+        >
 
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -1976,6 +2023,8 @@ export default function EmployeesPage() {
           </CardContent>
         </Card>
       )}
-    </motion.div>
+        </motion.div>
+      </div>
+    </div>
   );
 }

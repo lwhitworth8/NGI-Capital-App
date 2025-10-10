@@ -29,7 +29,8 @@
                         },
     "overrides":  {
                       "@types/react":  "18.3.17",
-                      "@types/react-dom":  "18.3.7"
+                      "@types/react-dom":  "18.3.7",
+                      "cross-spawn":  "7.0.5"
                   }
 }
 

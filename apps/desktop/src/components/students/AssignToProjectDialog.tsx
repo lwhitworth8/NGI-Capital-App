@@ -1,10 +1,10 @@
 "use client"
 
 import React, { useMemo, useState } from "react"
-import { Modal, ModalFooter } from "@/components/ui/Modal"
-import { Button } from "@/components/ui/Button"
-import { Input } from "@/components/ui/Input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/Select"
+import { Modal, ModalFooter } from "@/components/ui/modal"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import type { AdvisoryProject, AdvisoryStudent } from "@/types"
 import { AlertCircle } from "lucide-react"
 
@@ -125,4 +125,5 @@ export function AssignToProjectDialog({ open, onClose, student, projects, onConf
     </Modal>
   )
 }
+
 

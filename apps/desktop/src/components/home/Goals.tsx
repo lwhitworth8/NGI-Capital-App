@@ -1,6 +1,6 @@
 "use client";
 import useSWR from "swr";
-import { Card } from "@/components/ui/Card";
+import { Card } from "@/components/ui/card";
 const fetcher=(u:string)=>fetch(u).then(r=>r.json());
 
 export function Goals(){
@@ -24,4 +24,5 @@ export function Goals(){
     </Card>
   );
 }
+
 

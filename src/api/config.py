@@ -58,3 +58,12 @@ CORS_ORIGINS = [
 
 # Logging
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+
+# Simple settings object for compatibility
+class Settings:
+    def __init__(self):
+        self.OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+        self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
+        self.log_level = LOG_LEVEL
+
+settings = Settings()

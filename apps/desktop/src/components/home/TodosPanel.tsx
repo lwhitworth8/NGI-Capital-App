@@ -1,5 +1,5 @@
 "use client";
-import { Card } from "@/components/ui/Card";
+import { Card } from "@/components/ui/card";
 
 export function TodosPanel(){
   return (
@@ -9,3 +9,4 @@ export function TodosPanel(){
     </Card>
   );
 }
+

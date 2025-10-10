@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { DataTable } from '@/components/ui/DataTable';
+import { DataTable } from '@/components/ui/data-table';
 import { apiClient } from '@/lib/api';
 
 interface HolderRow {
@@ -102,3 +102,5 @@ export default function CapTable({ entityId }: { entityId?: number }) {
     </div>
   );
 }
+
+

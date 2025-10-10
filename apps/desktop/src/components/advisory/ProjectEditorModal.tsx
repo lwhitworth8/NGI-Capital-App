@@ -2,13 +2,18 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Upload, FileText, Trash2, Plus, Image as ImageIcon, Calendar, Clock, Users, MapPin, Briefcase } from 'lucide-react'
+import { X, Upload, FileText, Trash2, Plus, Image as ImageIcon, Calendar, Clock, Users, MapPin, Briefcase, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import type { AdvisoryProject } from '@/types'
 import ImageCropModal from './ImageCropModal'
 import { advisoryUploadProjectHero, advisoryUploadProjectShowcase, advisoryUploadProjectLogo, advisoryAddAssignment } from '@/lib/api'
 import { UC_MAJORS, MAJOR_ALIASES } from '@/lib/uc-majors'
 import { addWeeks, weeksBetween, formatDateTimePST } from '@/lib/timezone'
+import { Button } from '@ngi/ui/components/button'
+import { Textarea } from '@ngi/ui/components/textarea'
+import { Label } from '@ngi/ui/components/label'
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@ngi/ui/components/card'
+import { Popover, PopoverTrigger, PopoverContent } from '@ngi/ui/components/popover'
 
 interface ProjectEditorModalProps {
   isOpen: boolean
@@ -65,6 +70,7 @@ export function ProjectEditorModal({
   const [selectedClients, setSelectedClients] = useState<Array<{name: string; logo: string}>>([])
   const [selectedBackers, setSelectedBackers] = useState<any[]>([])
   const [applicationQuestions, setApplicationQuestions] = useState<any[]>([])
+  const [teamComposition, setTeamComposition] = useState<Array<{teamType: string; count: number; majors: string[]}>>([])
   const [saving, setSaving] = useState(false)
   const [uploadingHero, setUploadingHero] = useState(false)
   const [uploadingShowcase, setUploadingShowcase] = useState(false)
@@ -73,16 +79,24 @@ export function ProjectEditorModal({
   const [newPartnerName, setNewPartnerName] = useState('')
   const [newBackerName, setNewBackerName] = useState('')
   const [activeTab, setActiveTab] = useState<'basic'|'details'|'team'|'media'|'settings'>('basic')
-  // Simple assignment inputs (v1)
-  const [assignStudentId, setAssignStudentId] = useState<string>('')
-  const [assignRole, setAssignRole] = useState<string>('analyst')
-  const [assignHours, setAssignHours] = useState<string>('')
+  // AI draft helpers
+  const [aiPrompt, setAiPrompt] = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
+  // Always enable AI UI in modal to simplify manual testing; backend/env will gate execution
+  const aiEnabled = true
+  const [aiSuggestion, setAiSuggestion] = useState<null | { title: string; summary: string; description: string }>(null)
+  const [promptOpen, setPromptOpen] = useState(false)
+  const [aiPendingReview, setAiPendingReview] = useState(false)
+  const [aiPrevValues, setAiPrevValues] = useState<{title:string;summary:string;description:string}|null>(null)
+  const [aiHighlight, setAiHighlight] = useState<{title:boolean;summary:boolean;description:boolean}>({title:false,summary:false,description:false})
   
   // Autocomplete states
   const [clientSearchTerm, setClientSearchTerm] = useState('')
   const [majorSearchTerm, setMajorSearchTerm] = useState('')
   const [showClientDropdown, setShowClientDropdown] = useState(false)
   const [showMajorDropdown, setShowMajorDropdown] = useState(false)
+  const [teamMajorSearchTerms, setTeamMajorSearchTerms] = useState<Record<string, string>>({})
+  const [showTeamMajorDropdowns, setShowTeamMajorDropdowns] = useState<Record<string, boolean>>({})
   const clientInputRef = useRef<HTMLInputElement>(null)
   const majorInputRef = useRef<HTMLInputElement>(null)
 
@@ -164,6 +178,111 @@ export function ProjectEditorModal({
 
   const removeMajor = (major: string) => {
     setSelectedMajors(selectedMajors.filter(m => m !== major))
+    // Also remove from all team compositions
+    setTeamComposition(teamComposition.map(tc => ({
+      ...tc,
+      majors: tc.majors.filter(m => m !== major)
+    })))
+  }
+
+  // Simplified team types
+  const TEAM_TYPES = [
+    'Financial Analysts',
+    'Software Engineers',
+    'Marketing Analysts',
+    'AI Engineers',
+    'Data Engineers',
+    'Business Strategy Analysts',
+    'Supply Chain Analysts',
+    'Creative Analysts'
+  ]
+
+  // Team composition helpers
+  const addTeamType = (teamType: string) => {
+    const currentComposition = Array.isArray(teamComposition) ? teamComposition : []
+    if (!currentComposition.some(tc => tc.teamType === teamType)) {
+      setTeamComposition([...currentComposition, { teamType, count: 1, majors: [] }])
+    }
+  }
+
+  const updateTeamComposition = (teamType: string, field: 'count', value: number) => {
+    const currentComposition = Array.isArray(teamComposition) ? teamComposition : []
+    setTeamComposition(currentComposition.map(tc => 
+      tc.teamType === teamType ? { ...tc, [field]: value } : tc
+    ))
+  }
+
+  const addMajorToTeam = (teamType: string, major: string) => {
+    const currentComposition = Array.isArray(teamComposition) ? teamComposition : []
+    setTeamComposition(currentComposition.map(tc => 
+      tc.teamType === teamType 
+        ? { ...tc, majors: [...tc.majors, major] }
+        : tc
+    ))
+  }
+
+  const removeMajorFromTeam = (teamType: string, major: string) => {
+    const currentComposition = Array.isArray(teamComposition) ? teamComposition : []
+    setTeamComposition(currentComposition.map(tc => 
+      tc.teamType === teamType 
+        ? { ...tc, majors: tc.majors.filter(m => m !== major) }
+        : tc
+    ))
+  }
+
+  const removeTeamType = (teamType: string) => {
+    const currentComposition = Array.isArray(teamComposition) ? teamComposition : []
+    setTeamComposition(currentComposition.filter(tc => tc.teamType !== teamType))
+    // Clean up team-specific state
+    setTeamMajorSearchTerms(prev => {
+      const newState = { ...prev }
+      delete newState[teamType]
+      return newState
+    })
+    setShowTeamMajorDropdowns(prev => {
+      const newState = { ...prev }
+      delete newState[teamType]
+      return newState
+    })
+  }
+
+  const getTotalTeamSize = () => {
+    return Array.isArray(teamComposition) ? teamComposition.reduce((total, tc) => total + tc.count, 0) : 0
+  }
+
+  const getRemainingSlots = () => {
+    const teamSize = (form as any).team_size || 0
+    return Math.max(0, teamSize - getTotalTeamSize())
+  }
+
+  // Team-specific dropdown helpers
+  const updateTeamMajorSearchTerm = (teamType: string, value: string) => {
+    setTeamMajorSearchTerms(prev => ({ ...prev, [teamType]: value }))
+  }
+
+  const setTeamMajorDropdownVisible = (teamType: string, visible: boolean) => {
+    setShowTeamMajorDropdowns(prev => ({ ...prev, [teamType]: visible }))
+  }
+
+  const getTeamMajorSearchTerm = (teamType: string) => {
+    return teamMajorSearchTerms[teamType] || ''
+  }
+
+  const isTeamMajorDropdownVisible = (teamType: string) => {
+    return showTeamMajorDropdowns[teamType] || false
+  }
+
+  const getFilteredMajorsForTeam = (teamType: string) => {
+    const searchTerm = getTeamMajorSearchTerm(teamType)
+    if (!searchTerm.trim()) return UC_MAJORS.slice(0, 15)
+    const search = searchTerm.toLowerCase()
+    return UC_MAJORS.filter(major => {
+      const matchesDirect = major.toLowerCase().includes(search)
+      const alias = Object.entries(MAJOR_ALIASES).find(([key]) => 
+        key.toLowerCase().includes(search)
+      )?.[1]
+      return matchesDirect || major === alias
+    }).slice(0, 15)
   }
 
   useEffect(() => {
@@ -190,6 +309,7 @@ export function ProjectEditorModal({
       
       setSelectedBackers((project as any).backer_logos || [])
       setApplicationQuestions((project as any).application_questions || [])
+      setTeamComposition(Array.isArray((project as any).team_composition) ? (project as any).team_composition : [])
     } else if (isOpen && !project) {
       // New project defaults
       setForm({
@@ -203,13 +323,17 @@ export function ProjectEditorModal({
         team_size: 4,
         duration_weeks: 12,
         commitment_hours_per_week: 10,
-        allow_applications: 1
+        allow_applications: 1,
+        pay_currency: 'USD'
       })
       setSelectedLeads([])
       setSelectedMajors([])
       setSelectedClients([])
       setSelectedBackers([])
       setApplicationQuestions([])
+      setTeamComposition([])
+      setTeamMajorSearchTerms({})
+      setShowTeamMajorDropdowns({})
       setActiveTab('basic')
     }
   }, [isOpen, project?.id, entityId])
@@ -233,7 +357,8 @@ export function ProjectEditorModal({
         required_majors: selectedMajors,
         partner_logos: selectedClients,
         backer_logos: selectedBackers,
-        application_questions: applicationQuestions
+        application_questions: applicationQuestions,
+        team_composition: teamComposition
       }
       
       console.log('=== MODAL SAVE DEBUG ===')
@@ -285,7 +410,7 @@ export function ProjectEditorModal({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+            className="fixed inset-0 bg-black/80 backdrop-blur-md z-50"
             onClick={onClose}
           />
           <motion.div
@@ -351,7 +476,7 @@ export function ProjectEditorModal({
                     </label>
                     <input
                       type="text"
-                      className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      className={`w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${aiLoading ? 'opacity-60 blur-[1px] pointer-events-none' : ''} ${aiHighlight.title ? 'ring-2 ring-primary/60 bg-primary/5' : ''}`}
                       placeholder="e.g., ESG Investment Strategy Analysis"
                       value={form.project_name || ''}
                       onChange={e => setForm({ ...form, project_name: e.target.value })}
@@ -456,7 +581,7 @@ export function ProjectEditorModal({
                     </label>
                     <input
                       type="text"
-                      className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                      className={`w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${aiLoading ? 'opacity-60 blur-[1px] pointer-events-none' : ''} ${aiHighlight.summary ? 'ring-2 ring-primary/60 bg-primary/5' : ''}`}
                       placeholder="A brief one-sentence description"
                       value={form.summary || ''}
                       onChange={e => setForm({ ...form, summary: e.target.value })}
@@ -464,19 +589,112 @@ export function ProjectEditorModal({
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
-                      Description
-                    </label>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-sm font-medium text-foreground">Description</label>
+                      {aiEnabled && (
+                        <Popover open={promptOpen} onOpenChange={setPromptOpen}>
+                          <PopoverTrigger asChild>
+                            <Button type="button" size="sm" variant="secondary" onClick={() => setPromptOpen(true)}>
+                              <Sparkles className="w-4 h-4 mr-1" />
+                              Generate AI Draft
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent align="end" className="w-[380px] p-0 overflow-hidden rounded-xl border border-border/70 bg-background/90 backdrop-blur-xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0 data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95">
+                            <div className="p-3">
+                              <Textarea
+                                autoFocus
+                                rows={4}
+                                className="min-h-[120px] bg-background/70"
+                                placeholder="Describe the tone or focus (Shift+Enter for newline)"
+                                value={aiPrompt}
+                                onChange={(e) => setAiPrompt(e.target.value)}
+                                onKeyDown={async (e) => {
+                                  if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault()
+                                    try {
+                                      setAiLoading(true)
+                                      setPromptOpen(false)
+                                      const prevVals = { title: form.project_name || '', summary: form.summary || '', description: form.description || '' }
+                                      setAiPrevValues(prevVals)
+                                      const payload = {
+                                        projectName: form.project_name || '',
+                                        summary: form.summary || '',
+                                        clients: (Array.isArray(selectedClients) ? selectedClients.map(c => c.name) : []),
+                                        existingDescription: form.description || '',
+                                        prompt: aiPrompt || '',
+                                      }
+                                      const resp = await fetch('/api/projects/ai/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+                                      const data = await resp.json()
+                                      if (!resp.ok || data?.error || (!data?.title && !data?.summary && !data?.description)) {
+                                        console.error('AI generation error:', data?.details || data)
+                                        toast.error('Failed to generate draft — try again')
+                                      } else {
+                                        const newVals = { title: String(data.title || prevVals.title), summary: String(data.summary || prevVals.summary), description: String(data.description || prevVals.description) }
+                                        setForm(prev => ({ ...prev, project_name: newVals.title, summary: newVals.summary, description: newVals.description }))
+                                        setAiHighlight({ title: newVals.title !== prevVals.title, summary: newVals.summary !== prevVals.summary, description: newVals.description !== prevVals.description })
+                                        setAiPendingReview(true)
+                                        setTimeout(() => setAiHighlight({ title:false, summary:false, description:false }), 1600)
+                                      }
+                                    } catch (err) {
+                                      console.error(err)
+                                      toast.error('Failed to generate draft — try again')
+                                    } finally {
+                                      setAiLoading(false)
+                                    }
+                                  }
+                                }}
+                              />
+                              <div className="mt-2 flex justify-end">
+                                <Button size="sm" disabled={aiLoading} onClick={async () => {
+                                  try {
+                                    setAiLoading(true)
+                                    setPromptOpen(false)
+                                    const prevVals = { title: form.project_name || '', summary: form.summary || '', description: form.description || '' }
+                                    setAiPrevValues(prevVals)
+                                    const payload = { projectName: form.project_name || '', summary: form.summary || '', clients: (Array.isArray(selectedClients) ? selectedClients.map(c => c.name) : []), existingDescription: form.description || '', prompt: aiPrompt || '' }
+                                    const resp = await fetch('/api/projects/ai/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+                                    const data = await resp.json()
+                                    if (!resp.ok || data?.error || (!data?.title && !data?.summary && !data?.description)) {
+                                      console.error('AI generation error:', data?.details || data)
+                                      toast.error('Failed to generate draft — try again')
+                                    } else {
+                                      const newVals = { title: String(data.title || prevVals.title), summary: String(data.summary || prevVals.summary), description: String(data.description || prevVals.description) }
+                                      setForm(prev => ({ ...prev, project_name: newVals.title, summary: newVals.summary, description: newVals.description }))
+                                      setAiHighlight({ title: newVals.title !== prevVals.title, summary: newVals.summary !== prevVals.summary, description: newVals.description !== prevVals.description })
+                                      setAiPendingReview(true)
+                                      setTimeout(() => setAiHighlight({ title:false, summary:false, description:false }), 1600)
+                                    }
+                                  } catch (err) {
+                                    console.error(err)
+                                    toast.error('Failed to generate draft — try again')
+                                  } finally {
+                                    setAiLoading(false)
+                                  }
+                                }}>
+                                  {aiLoading ? 'Generating...' : 'Generate'}
+                                </Button>
+                              </div>
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      )}
+                    </div>
                     <textarea
                       rows={8}
-                      className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
+                      className={`w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none ${aiLoading ? 'opacity-60 blur-[1px] pointer-events-none' : ''} ${aiHighlight.description ? 'ring-2 ring-primary/60 bg-primary/5' : ''}`}
                       placeholder="Detailed project description..."
                       value={form.description || ''}
                       onChange={e => setForm({ ...form, description: e.target.value })}
                     />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
+                    {aiPendingReview && (
+                      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} className="mt-3 flex items-center justify-between rounded-xl border bg-gradient-to-r from-background to-muted/40 px-3 py-2 shadow-sm">
+                        <div className="text-sm text-muted-foreground">AI draft applied</div>
+                        <div className="flex items-center gap-2">
+                          <Button variant="outline" size="sm" onClick={() => { if (aiPrevValues) { setForm(prev => ({ ...prev, project_name: aiPrevValues.title, summary: aiPrevValues.summary, description: aiPrevValues.description })) } setAiPendingReview(false); setAiPrevValues(null) }}>Undo</Button>
+                          <Button size="sm" onClick={() => { setAiPendingReview(false); setAiPrevValues(null); toast.success('AI draft kept') }}>Keep</Button>
+                        </div>
+                      </motion.div>
+                    )}
                     <div>
                       <label className="block text-sm font-medium text-foreground mb-2">
                         Mode
@@ -617,13 +835,10 @@ export function ProjectEditorModal({
                       <label className="block text-sm font-medium text-foreground mb-2">
                         Pay Currency
                       </label>
-                      <select
-                        className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                        value={String((form as any).pay_currency || 'USD')}
-                        onChange={e => setForm({ ...form, pay_currency: e.target.value } as any)}
-                      >
-                        {['USD','EUR','GBP','CAD','AUD'].map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
+                      <div className="w-full px-4 py-3 rounded-xl border border-border bg-muted text-muted-foreground cursor-not-allowed">
+                        USD (Fixed)
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">Currency is fixed to USD</p>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-foreground mb-2">
@@ -714,71 +929,147 @@ export function ProjectEditorModal({
 
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-2">
-                      Required Majors (leave empty for all UC majors)
+                      Team Composition & Required Majors
                     </label>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Team Size: {(form as any).team_size || 0} | Assigned: {getTotalTeamSize()} | Remaining: {getRemainingSlots()}
+                    </p>
 
-                    {/* Selected Majors */}
-                    {selectedMajors.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        {selectedMajors.map(major => (
-                          <div
+                    {/* Team Types */}
+                    <div className="space-y-4 mb-6">
+                      <div>
+                        <label className="block text-sm font-medium text-foreground mb-2">
+                          Add Team Types
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          {TEAM_TYPES.map(teamType => (
+                            <button
+                              key={teamType}
+                              type="button"
+                              onClick={() => addTeamType(teamType)}
+                              disabled={teamComposition.some(tc => tc.teamType === teamType)}
+                              className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
+                                teamComposition.some(tc => tc.teamType === teamType)
+                                  ? 'border-blue-500 bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 cursor-not-allowed'
+                                  : 'border-border hover:bg-accent hover:border-blue-500'
+                              }`}
+                            >
+                              {teamComposition.some(tc => tc.teamType === teamType) ? '✓ ' : '+ '}{teamType}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Selected Team Types */}
+                      {Array.isArray(teamComposition) && teamComposition.length > 0 && (
+                        <div className="space-y-3">
+                          {teamComposition.map(team => (
+                            <div key={team.teamType} className="p-4 rounded-xl border border-border bg-card">
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-medium text-foreground">{team.teamType}</span>
+                                  <span className="px-2 py-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-full">
+                                    {team.count} members
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeTeamType(team.teamType)}
+                                  className="text-red-600 hover:text-red-700 text-sm"
+                                >
+                                  Remove Team
+                                </button>
+                              </div>
+                              
+                              <div className="grid grid-cols-2 gap-3 mb-3">
+                                <div>
+                                  <label className="block text-xs text-muted-foreground mb-1">Team Size</label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max={getRemainingSlots() + team.count}
+                                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm"
+                                    value={team.count}
+                                    onChange={e => updateTeamComposition(team.teamType, 'count', Math.max(1, Number(e.target.value)))}
+                                  />
+                                </div>
+                                <div>
+                                  <label className="block text-xs text-muted-foreground mb-1">Preferred Majors</label>
+                                  <div className="text-xs text-muted-foreground">
+                                    {team.majors.length} majors selected
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Major selection for this team */}
+                              <div>
+                                <label className="block text-xs text-muted-foreground mb-2">Add Preferred Majors for {team.teamType}</label>
+                                
+                                {/* Selected majors for this team */}
+                                {team.majors.length > 0 && (
+                                  <div className="flex flex-wrap gap-2 mb-2">
+                                    {team.majors.map(major => (
+                                      <span
                             key={major}
-                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm"
+                                        className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded-full"
                           >
-                            <span>{major}</span>
+                                        {major}
                             <button
                               type="button"
-                              onClick={() => removeMajor(major)}
-                              className="hover:text-blue-200"
+                                          onClick={() => removeMajorFromTeam(team.teamType, major)}
+                                          className="hover:text-green-500"
                             >
                               ×
                             </button>
-                          </div>
+                                      </span>
                         ))}
                       </div>
                     )}
 
-                    {/* Major Search Input */}
+                                {/* Major search for this team */}
                     <div className="relative">
                       <input
-                        ref={majorInputRef}
                         type="text"
-                        className="w-full px-4 py-3 rounded-xl border border-border bg-background text-foreground focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                        placeholder="Type to search majors (e.g., CS, Econ, Bio)..."
-                        value={majorSearchTerm}
+                                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-sm"
+                                    placeholder="Search majors for this team..."
+                                    value={getTeamMajorSearchTerm(team.teamType)}
                         onChange={e => {
-                          setMajorSearchTerm(e.target.value)
-                          setShowMajorDropdown(true)
-                        }}
-                        onFocus={() => setShowMajorDropdown(true)}
-                        onBlur={() => setTimeout(() => setShowMajorDropdown(false), 200)}
-                      />
+                                      updateTeamMajorSearchTerm(team.teamType, e.target.value)
+                                      setTeamMajorDropdownVisible(team.teamType, true)
+                                    }}
+                                    onFocus={() => setTeamMajorDropdownVisible(team.teamType, true)}
+                                    onBlur={() => setTimeout(() => setTeamMajorDropdownVisible(team.teamType, false), 200)}
+                                  />
 
-                      {/* Major Dropdown */}
-                      {showMajorDropdown && filteredMajors.length > 0 && (
-                        <div className="absolute z-10 w-full mt-1 max-h-60 overflow-auto rounded-xl border border-border bg-popover shadow-lg">
-                          {filteredMajors.map(major => (
+                                  {/* Major Dropdown for this team */}
+                                  {isTeamMajorDropdownVisible(team.teamType) && getFilteredMajorsForTeam(team.teamType).length > 0 && (
+                                    <div className="absolute z-10 w-full mt-1 max-h-40 overflow-auto rounded-lg border border-border bg-popover shadow-lg">
+                                      {getFilteredMajorsForTeam(team.teamType)
+                                        .filter(major => !team.majors.includes(major))
+                                        .map(major => (
                             <button
                               key={major}
                               type="button"
                               onMouseDown={(e) => {
                                 e.preventDefault()
-                                addMajor(major)
+                                            addMajorToTeam(team.teamType, major)
+                                            updateTeamMajorSearchTerm(team.teamType, '')
                               }}
-                              className={`w-full px-4 py-2 text-left hover:bg-accent transition-colors text-sm ${
-                                selectedMajors.includes(major) ? 'bg-accent/50' : ''
-                              }`}
+                                          className="w-full px-3 py-2 text-left hover:bg-accent transition-colors text-sm"
                             >
                               {major}
                             </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
                           ))}
                         </div>
                       )}
                     </div>
                     
-                    <p className="text-xs text-muted-foreground mt-2">
-                      {UC_MAJORS.length} UC majors available. Supports aliases like CS, EECS, MCB.
-                    </p>
                   </div>
 
                   <div>
@@ -870,50 +1161,6 @@ export function ProjectEditorModal({
                     </div>
                   </div>
 
-                  {/* Assignments (add from editor) */}
-                  <div className="rounded-xl border border-border p-4 bg-card">
-                    <div className="font-semibold mb-3">Assignments</div>
-                    {!project ? (
-                      <div className="text-sm text-muted-foreground">Save project first to add assignments.</div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
-                        <div>
-                          <label className="block text-xs text-muted-foreground mb-1">Student ID</label>
-                          <input type="number" className="w-full px-3 py-2 rounded border bg-background" placeholder="e.g., 101" value={assignStudentId} onChange={e=>setAssignStudentId(e.target.value)} />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-muted-foreground mb-1">Role</label>
-                          <input type="text" className="w-full px-3 py-2 rounded border bg-background" value={assignRole} onChange={e=>setAssignRole(e.target.value)} />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-muted-foreground mb-1">Hours (planned)</label>
-                          <input type="number" className="w-full px-3 py-2 rounded border bg-background" placeholder="e.g., 5" value={assignHours} onChange={e=>setAssignHours(e.target.value)} />
-                        </div>
-                        <div>
-                          <button
-                            className="w-full px-3 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
-                            disabled={!assignStudentId || !project || saving}
-                            onClick={async()=>{
-                              try {
-                                await advisoryAddAssignment(project!.id, {
-                                  student_id: Number(assignStudentId),
-                                  role: assignRole || 'analyst',
-                                  hours_planned: assignHours ? Number(assignHours) : undefined,
-                                } as any)
-                                toast.success('Assignment added')
-                                setAssignStudentId(''); setAssignRole('analyst'); setAssignHours('')
-                              } catch (e:any) {
-                                toast.error(e?.message || 'Failed to add assignment')
-                              }
-                            }}
-                          >
-                            Add Assignment
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    <div className="text-xs text-muted-foreground mt-2">Assignments default to the project hourly rate (USD).</div>
-                  </div>
                 </motion.div>
               )}
 
@@ -932,13 +1179,24 @@ export function ProjectEditorModal({
                       This is how your hero image will appear on the project page (21:9 aspect ratio)
                     </p>
                     {form.hero_image_url && (
-                      <div className="mb-3 rounded-xl overflow-hidden border border-border bg-muted">
+                      <div className="mb-3 rounded-xl overflow-hidden border border-border bg-muted relative group">
                         <div className="relative w-full" style={{ paddingBottom: '42.857%' }}>
                           <img 
                             src={form.hero_image_url} 
                             alt="Hero" 
                             className="absolute inset-0 w-full h-full object-cover" 
                           />
+                          {/* Delete button overlay */}
+                          <button
+                            onClick={() => {
+                              setForm({ ...form, hero_image_url: '' });
+                              toast.success('Hero image removed');
+                            }}
+                            className="absolute top-2 right-2 p-2 rounded-full bg-red-500/80 hover:bg-red-500 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Delete hero image"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </div>
                     )}
@@ -1185,4 +1443,10 @@ export function ProjectEditorModal({
     </AnimatePresence>
   )
 }
+
+
+
+
+
+
 

@@ -1,5 +1,5 @@
 "use client";
-import { Card } from "@/components/ui/Card";
+import { Card } from "@/components/ui/card";
 
 export function CalendarsPanel(){
   return (
@@ -11,3 +11,4 @@ export function CalendarsPanel(){
     </Card>
   );
 }
+

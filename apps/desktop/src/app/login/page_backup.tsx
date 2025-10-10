@@ -3,9 +3,9 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff, Shield } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { ThemeToggle } from '@/components/ui/ThemeToggle';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { ThemeToggle } from '@/components/ui/theme-toggle';
 
 // Hardcode for now to ensure it works
 const API_URL = '/api';
@@ -207,3 +207,4 @@ export default function LoginPage() {
     </div>
   );
 }
+

@@ -15,6 +15,7 @@ function isUSMarketOpen(date = new Date()) {
 
 export async function GET() {
   try {
+    console.log('[getMarketMetrics] Fetching real-time market data from Yahoo Finance...')
     const indexSymbols = ['^GSPC', '^IXIC', '^DJI', '^VIX', 'DX-Y.NYB', 'GC=F', 'CL=F']
     const quotes = await yahooFinance.quote(indexSymbols as any)
     const indices = (Array.isArray(quotes) ? quotes : [quotes]).map((q: any) => ({
@@ -46,8 +47,10 @@ export async function GET() {
 
     const asOf = new Date().toISOString()
     const marketOpen = isUSMarketOpen()
+    console.log(`[getMarketMetrics] Successfully fetched market data: ${indices.length} indices, ${yields.length} yields, ${fx.length} FX pairs`)
     return NextResponse.json({ indices, yields, fx, asOf, marketOpen })
   } catch (e) {
+    console.error('[getMarketMetrics] Error fetching market data:', e)
     const asOf = new Date().toISOString()
     return NextResponse.json({ indices: [], yields: [], fx: [], asOf, marketOpen: false })
   }

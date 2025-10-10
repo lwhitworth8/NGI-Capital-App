@@ -7,6 +7,8 @@ import { Toaster } from 'sonner'
 import { ClerkProvider } from '@clerk/nextjs'
 import { AuthProvider } from '@/lib/auth'
 import { AppProvider } from '@/lib/context/AppContext'
+import { EntityProvider } from '@/hooks/useEntityContext'
+import { UnifiedEntityProvider } from '@/lib/context/UnifiedEntityContext'
 import { useState, useEffect } from 'react'
 import { useTheme } from 'next-themes'
 import { useUser, useClerk } from '@clerk/nextjs'
@@ -50,9 +52,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
           <AuthProvider>
             <ThemeHydrator />
             <AppProvider>
-              <AuthGate>
-                {children}
-              </AuthGate>
+              <EntityProvider>
+                <UnifiedEntityProvider>
+                  <AuthGate>
+                    {children}
+                  </AuthGate>
+                </UnifiedEntityProvider>
+              </EntityProvider>
             </AppProvider>
           </AuthProvider>
         </ClerkProvider>

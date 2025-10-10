@@ -47,10 +47,10 @@ describe('StudentSidebar navigation per spec', () => {
     expect(screen.queryByText('My Projects')).toBeNull()
   })
 
-  it('shows Applications when signed-in and no active project', async () => {
+  it('hides Applications in left nav even when signed-in (moved to modal)', async () => {
     mockUser = { id: 'u1', primaryEmailAddress: { emailAddress: 'student@berkeley.edu' } }
     render(<StudentSidebar />)
-    expect(await screen.findByText('Applications')).toBeInTheDocument()
+    expect(screen.queryByText('Applications')).toBeNull()
     expect(screen.queryByText('My Projects')).toBeNull()
   })
 

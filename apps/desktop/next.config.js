@@ -3,7 +3,7 @@
 // so a missing env on Vercel still points to the correct API.
 const BACKEND_ORIGIN = process.env.BACKEND_ORIGIN || (process.env.NODE_ENV === 'production'
   ? (process.env.NEXT_PUBLIC_API_URL || 'https://api.ngicapitaladvisory.com')
-  : 'http://localhost:8001')
+  : 'http://localhost:8002')
 
 // If deploying the Admin app to its own domain (e.g., admin.example.com),
 // we should not prefix routes with /admin and should not redirect '/' away.
@@ -13,7 +13,7 @@ const IS_STANDALONE = (process.env.ADMIN_STANDALONE_DOMAIN || '0') === '1'
 const nextConfig = {
   // Only apply basePath when NOT on a standalone admin domain
   ...(IS_STANDALONE ? {} : { basePath: '/admin' }),
-  transpilePackages: ['@ngi/ui'],
+  transpilePackages: ['@ngi/ui', '@openai/chatkit-react'],
   // Note: Next.js 14 does not support trustHostHeader; rely on nginx proxy headers
   typescript: {
     // Temporarily ignore build errors due to @types/react version conflicts in monorepo
@@ -49,7 +49,9 @@ const nextConfig = {
       { source: '/api/financial-reporting/:path*', destination: `${BACKEND_ORIGIN}/api/financial-reporting/:path*` },
       { source: '/api/journal-entries/:path*', destination: `${BACKEND_ORIGIN}/api/journal-entries/:path*` },
       { source: '/api/internal-controls/:path*', destination: `${BACKEND_ORIGIN}/api/internal-controls/:path*` },
+      { source: '/api/accounting/:path*', destination: `${BACKEND_ORIGIN}/api/accounting/:path*` },
       { source: '/api/health', destination: `${BACKEND_ORIGIN}/api/health` },
+      { source: '/api/chatkit/:path*', destination: `${BACKEND_ORIGIN}/api/chatkit/:path*` },
     ]
   },
   env: {
@@ -62,6 +64,8 @@ const nextConfig = {
     NEXT_PUBLIC_CLERK_ISSUER: process.env.NEXT_PUBLIC_CLERK_ISSUER || process.env.CLERK_ISSUER,
     // Disable legacy session bridge retries by default (backend returns 410)
     NEXT_PUBLIC_DISABLE_SESSION_BRIDGE: process.env.NEXT_PUBLIC_DISABLE_SESSION_BRIDGE || '1',
+    // Base path for API routes
+    NEXT_PUBLIC_BASE_PATH: IS_STANDALONE ? '' : '/admin',
   },
   experimental: {
     externalDir: true,

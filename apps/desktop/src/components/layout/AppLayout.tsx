@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useState } from 'react';
+import { usePathname } from 'next/navigation';
 import Sidebar from './Sidebar';
+import { NGIChatKitAgent } from '@/components/chatkit/NGIChatKitAgent';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -9,6 +11,11 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const pathname = usePathname();
+  
+  // Show ChatKit agent on admin pages only
+  const showChatKit = !pathname.startsWith('/ngi-advisory') && 
+                       !pathname.startsWith('/learning');
 
   const toggleSidebar = () => {
     setSidebarCollapsed(!sidebarCollapsed);
@@ -35,6 +42,9 @@ export function AppLayout({ children }: AppLayoutProps) {
           {children}
         </main>
       </div>
+      
+          {/* ChatKit Agent */}
+          {showChatKit && <NGIChatKitAgent />}
     </div>
   );
 }

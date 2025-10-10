@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useUser } from '@clerk/nextjs'
 import Link from 'next/link'
 import { listTaskComments, postTaskComment, submitTask, type TaskComment } from '@/lib/api'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@ngi/ui'
 
 export default function TaskDetailPage({ params }: { params: { id: string, tid: string } }) {
   const pid = Number(params.id)
@@ -142,10 +143,17 @@ export default function TaskDetailPage({ params }: { params: { id: string, tid: 
           </div>
           <div className="mt-3 flex gap-2 items-center">
             <input className="flex-1 border rounded px-2 py-1 text-sm" placeholder="Add a comment" value={newComment} onChange={e=>setNewComment(e.target.value)} />
-            <select className="border rounded px-2 py-1 text-sm" value={anchorVersion ?? ''} onChange={e => setAnchorVersion(e.target.value ? Number(e.target.value) : undefined)}>
-              <option value="">No anchor</option>
-              {(detail.submissions||[]).map((s: any) => <option key={s.version} value={s.version}>v{s.version}</option>)}
-            </select>
+            <Select value={(anchorVersion ?? 'none').toString()} onValueChange={(v: string) => setAnchorVersion(v === 'none' ? undefined : Number(v))}>
+              <SelectTrigger className="w-[140px] h-9 rounded-md text-sm">
+                <SelectValue placeholder="No anchor" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No anchor</SelectItem>
+                {(detail.submissions||[]).map((s: any) => (
+                  <SelectItem key={s.version} value={String(s.version)}>v{s.version}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <button onClick={onPostComment} className="px-3 py-1.5 rounded bg-blue-600 text-white text-sm">Post</button>
           </div>
         </div>

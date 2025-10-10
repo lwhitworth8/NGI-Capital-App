@@ -1,427 +1,430 @@
 """
-Period Close API Routes for NGI Capital Accounting Module
-Implements Epic 9: Period Close Process
-Month-end and year-end closing with validation and locking
+Period Close API Routes
+Month/Quarter/Year-end close workflow management
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func
+from sqlalchemy import select, and_, desc
+from datetime import date
 from typing import List, Optional
-from datetime import datetime
-from decimal import Decimal
+from pydantic import BaseModel
+import logging
 
 from ..database_async import get_async_db
-from ..models_accounting import JournalEntry
-from ..models_accounting_part3 import (
-    AccountingPeriod,
-    PeriodCloseChecklistItem,
-    PeriodCloseValidation,
-    StandardAdjustment
-)
+from src.api.models_period_close import PeriodClose, PeriodLock, AdjustingEntry
+from src.api.models_accounting import AccountingEntity
+from src.api.services.period_close_service import PeriodCloseService
 
-router = APIRouter(prefix="/accounting/period-close", tags=["accounting-period-close"])
+router = APIRouter(prefix="/api/accounting/period-close", tags=["Period Close"])
+logger = logging.getLogger(__name__)
 
 
-@router.post("/create-period")
-async def create_accounting_period(
-    entity_id: int,
-    period_type: str,  # "Monthly", "Quarterly", "Annual"
-    period_start: str,
-    period_end: str,
-    fiscal_year: int,
+# ============================================================================
+# REQUEST/RESPONSE MODELS
+# ============================================================================
+
+class InitiateCloseRequest(BaseModel):
+    period_type: str  # month, quarter, year
+    period_end_date: str  # YYYY-MM-DD
+    initiated_by_email: str
+
+
+class ExecuteCloseRequest(BaseModel):
+    closed_by_email: str
+    force: bool = False
+
+
+class ReopenRequest(BaseModel):
+    reopened_by_email: str
+    reason: str
+
+
+class AdjustingEntryCreate(BaseModel):
+    adjustment_type: str
+    description: str
+    reason: Optional[str] = None
+    total_amount: float
+
+
+# ============================================================================
+# PERIOD CLOSE ROUTES
+# ============================================================================
+
+@router.get("/list")
+async def list_period_closes(
+    entity_id: int = Query(...),
+    limit: int = Query(20, le=100),
     db: AsyncSession = Depends(get_async_db)
 ):
-    """
-    Create a new accounting period for tracking
-    """
-    period_start_date = datetime.fromisoformat(period_start)
-    period_end_date = datetime.fromisoformat(period_end)
-    
-    # Check if period already exists
-    existing_stmt = select(AccountingPeriod).where(
-        and_(
-            AccountingPeriod.entity_id == entity_id,
-            AccountingPeriod.period_start == period_start_date,
-            AccountingPeriod.period_end == period_end_date
+    """List all period closes for entity"""
+    try:
+        result = await db.execute(
+            select(PeriodClose).where(
+                PeriodClose.entity_id == entity_id
+            ).order_by(desc(PeriodClose.period_end)).limit(limit)
         )
-    )
-    existing_result = await db.execute(existing_stmt)
-    existing_period = existing_result.scalar_one_or_none()
-    
-    if existing_period:
-        raise HTTPException(status_code=400, detail="Period already exists")
-    
-    # Create period
-    period = AccountingPeriod(
-        entity_id=entity_id,
-        period_type=period_type,
-        period_start=period_start_date,
-        period_end=period_end_date,
-        fiscal_year=fiscal_year,
-        period_status="Open",
-        is_closed=False
-    )
-    db.add(period)
-    await db.flush()
-    
-    # Create default checklist items
-    default_checklist = [
-        {"item_name": "Bank Reconciliation", "category": "Cash", "order": 1, "is_required": True},
-        {"item_name": "Accounts Receivable Aging", "category": "AR", "order": 2, "is_required": True},
-        {"item_name": "Accounts Payable Verification", "category": "AP", "order": 3, "is_required": True},
-        {"item_name": "Inventory Count (if applicable)", "category": "Inventory", "order": 4, "is_required": False},
-        {"item_name": "Fixed Asset Review", "category": "Fixed Assets", "order": 5, "is_required": True},
-        {"item_name": "Prepaid Expenses Amortization", "category": "Prepaid", "order": 6, "is_required": True},
-        {"item_name": "Accrued Expenses", "category": "Accruals", "order": 7, "is_required": True},
-        {"item_name": "Revenue Recognition Review", "category": "Revenue", "order": 8, "is_required": True},
-        {"item_name": "Journal Entry Review", "category": "JE", "order": 9, "is_required": True},
-        {"item_name": "Trial Balance Review", "category": "TB", "order": 10, "is_required": True},
-        {"item_name": "Financial Statement Preparation", "category": "FS", "order": 11, "is_required": True},
-    ]
-    
-    for item_data in default_checklist:
-        checklist_item = PeriodCloseChecklistItem(
-            period_id=period.id,
-            item_name=item_data["item_name"],
-            item_category=item_data["category"],
-            item_order=item_data["order"],
-            is_required=item_data["is_required"],
-            completion_status="Pending"
-        )
-        db.add(checklist_item)
-    
-    await db.commit()
-    await db.refresh(period)
-    
-    return {
-        "success": True,
-        "period_id": period.id,
-        "period_type": period.period_type,
-        "period_start": period.period_start.isoformat(),
-        "period_end": period.period_end.isoformat(),
-        "fiscal_year": period.fiscal_year,
-        "checklist_items_created": len(default_checklist)
-    }
-
-
-@router.get("/periods")
-async def get_accounting_periods(
-    entity_id: Optional[int] = None,
-    period_status: Optional[str] = None,
-    fiscal_year: Optional[int] = None,
-    db: AsyncSession = Depends(get_async_db)
-):
-    """
-    Get all accounting periods with filters
-    """
-    query = select(AccountingPeriod)
-    
-    if entity_id:
-        query = query.where(AccountingPeriod.entity_id == entity_id)
-    
-    if period_status:
-        query = query.where(AccountingPeriod.period_status == period_status)
-    
-    if fiscal_year:
-        query = query.where(AccountingPeriod.fiscal_year == fiscal_year)
-    
-    query = query.order_by(AccountingPeriod.period_start.desc())
-    
-    result = await db.execute(query)
-    periods = result.scalars().all()
-    
-    return {
-        "periods": [
-            {
-                "id": p.id,
-                "entity_id": p.entity_id,
-                "period_type": p.period_type,
-                "period_start": p.period_start.isoformat(),
-                "period_end": p.period_end.isoformat(),
-                "fiscal_year": p.fiscal_year,
-                "period_status": p.period_status,
-                "is_closed": p.is_closed,
-                "closed_by": p.closed_by,
-                "closed_at": p.closed_at.isoformat() if p.closed_at else None
-            }
-            for p in periods
-        ],
-        "total": len(periods)
-    }
-
-
-@router.get("/period/{period_id}/checklist")
-async def get_period_checklist(
-    period_id: int,
-    db: AsyncSession = Depends(get_async_db)
-):
-    """
-    Get checklist for a specific period
-    """
-    checklist_stmt = select(PeriodCloseChecklistItem).where(
-        PeriodCloseChecklistItem.period_id == period_id
-    ).order_by(PeriodCloseChecklistItem.item_order)
-    
-    result = await db.execute(checklist_stmt)
-    checklist_items = result.scalars().all()
-    
-    completed = sum(1 for item in checklist_items if item.completion_status == "Completed")
-    total = len(checklist_items)
-    
-    return {
-        "period_id": period_id,
-        "checklist_items": [
-            {
-                "id": item.id,
-                "item_name": item.item_name,
-                "item_category": item.item_category,
-                "item_order": item.item_order,
-                "is_required": item.is_required,
-                "completion_status": item.completion_status,
-                "completed_by": item.completed_by,
-                "completed_at": item.completed_at.isoformat() if item.completed_at else None,
-                "completion_notes": item.completion_notes
-            }
-            for item in checklist_items
-        ],
-        "summary": {
-            "total_items": total,
-            "completed_items": completed,
-            "pending_items": total - completed,
-            "completion_percentage": round((completed / total * 100) if total > 0 else 0, 1)
+        closes = result.scalars().all()
+        
+        return {
+            "success": True,
+            "closes": [
+                {
+                    "id": c.id,
+                    "period_type": c.period_type,
+                    "period_start": str(c.period_start),
+                    "period_end": str(c.period_end),
+                    "fiscal_period": c.fiscal_period,
+                    "status": c.status,
+                    "is_balanced": c.is_balanced,
+                    "net_income": float(c.net_income) if c.net_income else 0,
+                    "closed_at": c.closed_at.isoformat() if c.closed_at else None,
+                    "closed_by_email": c.closed_by_email
+                }
+                for c in closes
+            ]
         }
-    }
+    except Exception as e:
+        logger.error(f"Failed to list period closes: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/period/{period_id}/checklist/{item_id}/complete")
-async def complete_checklist_item(
-    period_id: int,
-    item_id: int,
-    completion_notes: Optional[str] = None,
+@router.post("/initiate")
+async def initiate_period_close(
+    entity_id: int = Query(...),
+    request: InitiateCloseRequest = None,
     db: AsyncSession = Depends(get_async_db)
 ):
-    """
-    Mark a checklist item as completed
-    """
-    item_stmt = select(PeriodCloseChecklistItem).where(
-        and_(
-            PeriodCloseChecklistItem.id == item_id,
-            PeriodCloseChecklistItem.period_id == period_id
+    """Initiate period close process"""
+    try:
+        service = PeriodCloseService(db)
+        
+        period_end = date.fromisoformat(request.period_end_date)
+        
+        result = await service.initiate_period_close(
+            entity_id=entity_id,
+            period_type=request.period_type,
+            period_end_date=period_end,
+            initiated_by_email=request.initiated_by_email
         )
-    )
-    result = await db.execute(item_stmt)
-    item = result.scalar_one_or_none()
-    
-    if not item:
-        raise HTTPException(status_code=404, detail="Checklist item not found")
-    
-    item.completion_status = "Completed"
-    item.completed_by = current_user["email"]
-    item.completed_at = datetime.now()
-    item.completion_notes = completion_notes
-    
-    await db.commit()
-    
-    return {
-        "success": True,
-        "item_id": item.id,
-        "item_name": item.item_name,
-        "completed_by": item.completed_by,
-        "completed_at": item.completed_at.isoformat()
-    }
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Failed to initiate period close: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/period/{period_id}/validate")
-async def validate_period_for_close(
-    period_id: int,
+@router.get("/{close_id}/checklist")
+async def get_period_close_checklist(
+    close_id: int,
     db: AsyncSession = Depends(get_async_db)
 ):
-    """
-    Run pre-close validation checks
-    """
-    period_stmt = select(AccountingPeriod).where(AccountingPeriod.id == period_id)
-    period_result = await db.execute(period_stmt)
-    period = period_result.scalar_one_or_none()
-    
-    if not period:
-        raise HTTPException(status_code=404, detail="Period not found")
-    
-    validations = []
-    
-    # Check 1: All required checklist items completed
-    checklist_stmt = select(PeriodCloseChecklistItem).where(
-        and_(
-            PeriodCloseChecklistItem.period_id == period_id,
-            PeriodCloseChecklistItem.is_required == True
-        )
-    )
-    checklist_result = await db.execute(checklist_stmt)
-    checklist_items = checklist_result.scalars().all()
-    
-    incomplete_items = [item for item in checklist_items if item.completion_status != "Completed"]
-    
-    checklist_validation = PeriodCloseValidation(
-        period_id=period_id,
-        validation_type="Checklist Completion",
-        validation_status="Passed" if len(incomplete_items) == 0 else "Failed",
-        validation_message=f"All required checklist items completed" if len(incomplete_items) == 0 else f"{len(incomplete_items)} required items pending",
-        validated_by=current_user["email"],
-        validated_at=datetime.now()
-    )
-    db.add(checklist_validation)
-    validations.append(checklist_validation)
-    
-    # Check 2: Trial Balance balances (debits = credits)
-    entries_stmt = select(JournalEntry).where(
-        and_(
-            JournalEntry.entity_id == period.entity_id,
-            JournalEntry.entry_date >= period.period_start,
-            JournalEntry.entry_date <= period.period_end,
-            JournalEntry.status == "Posted"
-        )
-    )
-    entries_result = await db.execute(entries_stmt)
-    entries = entries_result.scalars().all()
-    
-    trial_balance_validation = PeriodCloseValidation(
-        period_id=period_id,
-        validation_type="Trial Balance",
-        validation_status="Passed",  # Simplified - in real system, check actual balance
-        validation_message=f"Trial balance verified for {len(entries)} posted entries",
-        validated_by=current_user["email"],
-        validated_at=datetime.now()
-    )
-    db.add(trial_balance_validation)
-    validations.append(trial_balance_validation)
-    
-    # Check 3: All journal entries approved
-    unapproved_stmt = select(func.count()).select_from(JournalEntry).where(
-        and_(
-            JournalEntry.entity_id == period.entity_id,
-            JournalEntry.entry_date >= period.period_start,
-            JournalEntry.entry_date <= period.period_end,
-            JournalEntry.status != "Posted"
-        )
-    )
-    unapproved_result = await db.execute(unapproved_stmt)
-    unapproved_count = unapproved_result.scalar()
-    
-    approval_validation = PeriodCloseValidation(
-        period_id=period_id,
-        validation_type="Journal Entry Approval",
-        validation_status="Passed" if unapproved_count == 0 else "Failed",
-        validation_message=f"All journal entries approved" if unapproved_count == 0 else f"{unapproved_count} unapproved entries",
-        validated_by=current_user["email"],
-        validated_at=datetime.now()
-    )
-    db.add(approval_validation)
-    validations.append(approval_validation)
-    
-    await db.commit()
-    
-    all_passed = all(v.validation_status == "Passed" for v in validations)
-    
-    return {
-        "period_id": period_id,
-        "validation_summary": {
-            "all_passed": all_passed,
-            "total_checks": len(validations),
-            "passed_checks": sum(1 for v in validations if v.validation_status == "Passed"),
-            "failed_checks": sum(1 for v in validations if v.validation_status == "Failed")
-        },
-        "validations": [
-            {
-                "validation_type": v.validation_type,
-                "validation_status": v.validation_status,
-                "validation_message": v.validation_message
+    """Get period close checklist with current status"""
+    try:
+        service = PeriodCloseService(db)
+        checklist = await service.run_checklist(close_id)
+        
+        return {
+            "success": True,
+            "checklist": checklist
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get checklist: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{close_id}")
+async def get_period_close_details(
+    close_id: int,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Get detailed period close information"""
+    try:
+        close = await db.get(PeriodClose, close_id)
+        if not close:
+            raise HTTPException(status_code=404, detail="Period close not found")
+        
+        return {
+            "success": True,
+            "close": {
+                "id": close.id,
+                "entity_id": close.entity_id,
+                "period_type": close.period_type,
+                "period_start": str(close.period_start),
+                "period_end": str(close.period_end),
+                "fiscal_year": close.fiscal_year,
+                "fiscal_period": close.fiscal_period,
+                "status": close.status,
+                "checklist_status": close.checklist_status,
+                "financial_summary": {
+                    "total_assets": float(close.total_assets) if close.total_assets else 0,
+                    "total_liabilities": float(close.total_liabilities) if close.total_liabilities else 0,
+                    "total_equity": float(close.total_equity) if close.total_equity else 0,
+                    "period_revenue": float(close.period_revenue) if close.period_revenue else 0,
+                    "period_expenses": float(close.period_expenses) if close.period_expenses else 0,
+                    "net_income": float(close.net_income) if close.net_income else 0
+                },
+                "trial_balance": {
+                    "debits": float(close.trial_balance_debits) if close.trial_balance_debits else 0,
+                    "credits": float(close.trial_balance_credits) if close.trial_balance_credits else 0,
+                    "is_balanced": close.is_balanced
+                },
+                "completion_status": {
+                    "documents_complete": close.documents_complete,
+                    "reconciliation_complete": close.reconciliation_complete,
+                    "journal_entries_complete": close.journal_entries_complete,
+                    "depreciation_complete": close.depreciation_complete,
+                    "adjusting_entries_complete": close.adjusting_entries_complete,
+                    "trial_balance_complete": close.trial_balance_complete,
+                    "statements_complete": close.statements_complete
+                },
+                "workflow": {
+                    "initiated_by_email": close.initiated_by_email,
+                    "initiated_at": close.initiated_at.isoformat() if close.initiated_at else None,
+                    "closed_by_email": close.closed_by_email,
+                    "closed_at": close.closed_at.isoformat() if close.closed_at else None,
+                    "reopened_by_email": close.reopened_by_email,
+                    "reopened_at": close.reopened_at.isoformat() if close.reopened_at else None,
+                    "reopen_reason": close.reopen_reason
+                },
+                "close_notes": close.close_notes,
+                "financial_statements": close.financial_statements
             }
-            for v in validations
-        ],
-        "can_close": all_passed
-    }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get period close details: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/period/{period_id}/close")
-async def close_accounting_period(
-    period_id: int,
+@router.post("/{close_id}/execute")
+async def execute_period_close(
+    close_id: int,
+    request: ExecuteCloseRequest = None,
     db: AsyncSession = Depends(get_async_db)
 ):
-    """
-    Close the accounting period - locks it from further changes
-    """
-    period_stmt = select(AccountingPeriod).where(AccountingPeriod.id == period_id)
-    period_result = await db.execute(period_stmt)
-    period = period_result.scalar_one_or_none()
-    
-    if not period:
-        raise HTTPException(status_code=404, detail="Period not found")
-    
-    if period.is_closed:
-        raise HTTPException(status_code=400, detail="Period is already closed")
-    
-    # Run final validation
-    validate_result = await validate_period_for_close(period_id, db, current_user)
-    
-    if not validate_result["can_close"]:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Period cannot be closed: {validate_result['validation_summary']['failed_checks']} validation(s) failed"
+    """Execute period close after checklist complete"""
+    try:
+        service = PeriodCloseService(db)
+        
+        result = await service.execute_period_close(
+            close_id=close_id,
+            closed_by_email=request.closed_by_email,
+            force=request.force
         )
-    
-    # Close period
-    period.period_status = "Closed"
-    period.is_closed = True
-    period.closed_by = current_user["email"]
-    period.closed_at = datetime.now()
-    
-    await db.commit()
-    
-    return {
-        "success": True,
-        "period_id": period.id,
-        "period_type": period.period_type,
-        "period_start": period.period_start.isoformat(),
-        "period_end": period.period_end.isoformat(),
-        "closed_by": period.closed_by,
-        "closed_at": period.closed_at.isoformat(),
-        "message": f"{period.period_type} period closed successfully. No further transactions can be posted to this period."
-    }
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Failed to execute period close: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/standard-adjustments")
-async def get_standard_adjustments(
-    entity_id: Optional[int] = None,
+@router.post("/{close_id}/reopen")
+async def reopen_period_close(
+    close_id: int,
+    request: ReopenRequest = None,
     db: AsyncSession = Depends(get_async_db)
 ):
-    """
-    Get standard/recurring period-end adjustments
-    """
-    query = select(StandardAdjustment)
-    
-    if entity_id:
-        query = query.where(StandardAdjustment.entity_id == entity_id)
-    
-    query = query.where(StandardAdjustment.is_active == True)
-    
-    result = await db.execute(query)
-    adjustments = result.scalars().all()
-    
-    return {
-        "standard_adjustments": [
-            {
-                "id": adj.id,
-                "adjustment_name": adj.adjustment_name,
-                "adjustment_type": adj.adjustment_type,
-                "adjustment_category": adj.adjustment_category,
-                "description": adj.adjustment_description,
-                "frequency": adj.frequency,
-                "debit_account_id": adj.debit_account_id,
-                "credit_account_id": adj.credit_account_id,
-                "is_active": adj.is_active
-            }
-            for adj in adjustments
-        ],
-        "total": len(adjustments)
-    }
+    """Reopen a closed period (requires approval)"""
+    try:
+        service = PeriodCloseService(db)
+        
+        result = await service.reopen_period(
+            close_id=close_id,
+            reopened_by_email=request.reopened_by_email,
+            reason=request.reason
+        )
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Failed to reopen period: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
+
+@router.get("/{close_id}/statements")
+async def get_period_close_statements(
+    close_id: int,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Get financial statements for closed period"""
+    try:
+        close = await db.get(PeriodClose, close_id)
+        if not close:
+            raise HTTPException(status_code=404, detail="Period close not found")
+        
+        if close.status != "closed":
+            return {
+                "success": False,
+                "message": "Financial statements only available after period close"
+            }
+        
+        return {
+            "success": True,
+            "statements": close.financial_statements
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get statements: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# PERIOD LOCKS
+# ============================================================================
+
+@router.get("/locks")
+async def get_period_locks(
+    entity_id: int = Query(...),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Get all period locks for entity"""
+    try:
+        result = await db.execute(
+            select(PeriodLock).where(
+                PeriodLock.entity_id == entity_id
+            ).order_by(desc(PeriodLock.lock_end_date))
+        )
+        locks = result.scalars().all()
+        
+        return {
+            "success": True,
+            "locks": [
+                {
+                    "id": lock.id,
+                    "lock_start_date": str(lock.lock_start_date),
+                    "lock_end_date": str(lock.lock_end_date),
+                    "is_locked": lock.is_locked,
+                    "lock_reason": lock.lock_reason,
+                    "locked_by_email": lock.locked_by_email,
+                    "locked_at": lock.locked_at.isoformat() if lock.locked_at else None,
+                    "period_close_id": lock.period_close_id
+                }
+                for lock in locks
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get period locks: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/locks/check")
+async def check_period_locked(
+    entity_id: int = Query(...),
+    check_date: str = Query(...),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Check if a specific date is in a locked period"""
+    try:
+        check_dt = date.fromisoformat(check_date)
+        
+        result = await db.execute(
+            select(PeriodLock).where(
+                and_(
+                    PeriodLock.entity_id == entity_id,
+                    PeriodLock.is_locked == True,
+                    PeriodLock.lock_start_date <= check_dt,
+                    PeriodLock.lock_end_date >= check_dt
+                )
+            )
+        )
+        lock = result.scalar_one_or_none()
+        
+        return {
+            "success": True,
+            "is_locked": lock is not None,
+            "lock": {
+                "id": lock.id,
+                "lock_start_date": str(lock.lock_start_date),
+                "lock_end_date": str(lock.lock_end_date),
+                "lock_reason": lock.lock_reason
+            } if lock else None
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to check period lock: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# ADJUSTING ENTRIES
+# ============================================================================
+
+@router.get("/{close_id}/adjusting-entries")
+async def get_adjusting_entries(
+    close_id: int,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Get adjusting entries for period close"""
+    try:
+        result = await db.execute(
+            select(AdjustingEntry).where(
+                AdjustingEntry.period_close_id == close_id
+            )
+        )
+        entries = result.scalars().all()
+        
+        return {
+            "success": True,
+            "entries": [
+                {
+                    "id": entry.id,
+                    "adjustment_type": entry.adjustment_type,
+                    "description": entry.description,
+                    "reason": entry.reason,
+                    "total_amount": float(entry.total_amount),
+                    "status": entry.status,
+                    "journal_entry_id": entry.journal_entry_id,
+                    "approved_by_email": entry.approved_by_email,
+                    "approved_at": entry.approved_at.isoformat() if entry.approved_at else None
+                }
+                for entry in entries
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get adjusting entries: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{close_id}/adjusting-entries")
+async def create_adjusting_entry(
+    close_id: int,
+    entity_id: int = Query(...),
+    entry: AdjustingEntryCreate = None,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Create adjusting entry for period close"""
+    try:
+        adj_entry = AdjustingEntry(
+            entity_id=entity_id,
+            period_close_id=close_id,
+            adjustment_type=entry.adjustment_type,
+            description=entry.description,
+            reason=entry.reason,
+            total_amount=entry.total_amount,
+            status="draft"
+        )
+        
+        db.add(adj_entry)
+        await db.commit()
+        await db.refresh(adj_entry)
+        
+        return {
+            "success": True,
+            "message": "Adjusting entry created",
+            "entry_id": adj_entry.id
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to create adjusting entry: {e}")
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))

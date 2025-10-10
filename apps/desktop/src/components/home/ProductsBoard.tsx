@@ -1,5 +1,5 @@
 "use client";
-import { Card } from "@/components/ui/Card";
+import { Card } from "@/components/ui/card";
 const COLUMNS = ["Backlog","Exploring","Building","Testing","Launched"] as const;
 
 export function ProductsBoard(){
@@ -14,4 +14,5 @@ export function ProductsBoard(){
     </div>
   );
 }
+
 

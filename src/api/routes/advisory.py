@@ -125,6 +125,10 @@ def _ensure_tables(db: Session):
     except Exception:
         pass
     try:
+        db.execute(sa_text("ALTER TABLE advisory_projects ADD COLUMN team_composition TEXT"))
+    except Exception:
+        pass
+    try:
         db.execute(sa_text("ALTER TABLE advisory_projects ADD COLUMN showcase_pdf_url TEXT"))
     except Exception:
         pass
@@ -424,7 +428,7 @@ async def list_projects(
         existing = {str(r[1]).strip().lower() for r in cols_res}
     except Exception:
         existing = set()
-    candidate_cols = ['id','entity_id','client_name','project_name','summary','status','mode','project_code','created_at','updated_at','location_text','hero_image_url','tags']
+    candidate_cols = ['id','entity_id','client_name','project_name','summary','status','mode','project_code','created_at','updated_at','location_text','hero_image_url','gallery_urls','showcase_pdf_url','tags','team_size','team_composition','default_hourly_rate','pay_currency']
     select_cols = [f"p.{c}" for c in candidate_cols if c in existing]
     select_cols.append("COALESCE((SELECT COUNT(1) FROM advisory_project_assignments a WHERE a.project_id = p.id AND COALESCE(a.active,1) = 1), 0) AS assigned_count")
     where = []
@@ -456,7 +460,16 @@ async def list_projects(
     for r in rows:
         item: Dict[str, Any] = {}
         for idx, name in enumerate(base_fields):
-            item[name] = r[idx]
+            value = r[idx]
+            # Parse JSON fields
+            if name in ['gallery_urls', 'tags', 'team_composition'] and value:
+                try:
+                    import json as _json
+                    item[name] = _json.loads(value) if isinstance(value, str) else value
+                except Exception:
+                    item[name] = []
+            else:
+                item[name] = value
         item['assigned_count'] = int(r[len(base_fields)] or 0)
         items.append(item)
     return items
@@ -616,6 +629,7 @@ async def create_project(payload: Dict[str, Any], admin=Depends(require_ngiadvis
         'coffeechat_calendly': ('cal', payload.get('coffeechat_calendly')),
         'team_size': ('ts', payload.get('team_size')),
         'team_requirements': ('treq', (payload.get('team_requirements') if isinstance(payload.get('team_requirements'), str) else __import__('json').dumps(payload.get('team_requirements') or []))),
+        'team_composition': ('tcomp', (payload.get('team_composition') if isinstance(payload.get('team_composition'), str) else __import__('json').dumps(payload.get('team_composition') or []))),
         'showcase_pdf_url': ('showcase', payload.get('showcase_pdf_url')),
         'partner_logos': ('plogos', (__import__('json').dumps(payload.get('partner_logos')) if not isinstance(payload.get('partner_logos'), str) else payload.get('partner_logos'))),
         'backer_logos': ('blogos', (__import__('json').dumps(payload.get('backer_logos')) if not isinstance(payload.get('backer_logos'), str) else payload.get('backer_logos'))),
@@ -631,6 +645,21 @@ async def create_project(payload: Dict[str, Any], admin=Depends(require_ngiadvis
     db.execute(sa_text(f"INSERT INTO advisory_projects ({col_list}) VALUES ({values_list})"), param_map)
     db.commit()
     rid = db.execute(sa_text("SELECT last_insert_rowid()")).scalar()
+    
+    # Create Slack channel for the project
+    try:
+        from ..integrations import slack
+        if slack.is_enabled():
+            project_code = payload.get("project_code")
+            if project_code:
+                channel_info = slack.ensure_project_channel(project_code)
+                if channel_info:
+                    db.execute(sa_text("UPDATE advisory_projects SET slack_channel_id = :id, slack_channel_name = :name WHERE id = :pid"), 
+                              {"id": channel_info.get("id"), "name": channel_info.get("name"), "pid": int(rid or 0)})
+                    db.commit()
+    except Exception as e:
+        print(f"WARNING: Failed to create Slack channel for project {rid}: {str(e)}")
+    
     return {"id": int(rid or 0)}
 
 
@@ -638,7 +667,7 @@ async def create_project(payload: Dict[str, Any], admin=Depends(require_ngiadvis
 async def get_project(pid: int, admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
     _ensure_tables(db)
     r = db.execute(sa_text("""
-        SELECT id, entity_id, client_name, project_name, summary, description, status, mode, location_text, start_date, end_date, duration_weeks, commitment_hours_per_week, project_code, project_lead, contact_email, partner_badges, backer_badges, tags, hero_image_url, gallery_urls, apply_cta_text, apply_url, eligibility_notes, notes_internal, partner_logos, backer_logos, slack_channel_id, slack_channel_name, team_requirements, team_size, showcase_pdf_url, default_hourly_rate, pay_currency, compensation_notes, is_public, allow_applications, coffeechat_calendly, applications_close_date, created_at, updated_at
+        SELECT id, entity_id, client_name, project_name, summary, description, status, mode, location_text, start_date, end_date, duration_weeks, commitment_hours_per_week, project_code, project_lead, contact_email, partner_badges, backer_badges, tags, hero_image_url, gallery_urls, apply_cta_text, apply_url, eligibility_notes, notes_internal, partner_logos, backer_logos, slack_channel_id, slack_channel_name, team_requirements, team_size, team_composition, showcase_pdf_url, default_hourly_rate, pay_currency, compensation_notes, is_public, allow_applications, coffeechat_calendly, applications_close_date, created_at, updated_at
         FROM advisory_projects WHERE id = :id
     """), {"id": pid}).fetchone()
     if not r:
@@ -660,11 +689,27 @@ async def get_project(pid: int, admin=Depends(require_ngiadvisory_admin()), db: 
         "apply_cta_text": r[21], "apply_url": r[22], "eligibility_notes": r[23], "notes_internal": r[24],
         "partner_logos": _json_load(r[25]), "backer_logos": _json_load(r[26]),
         "slack_channel_id": r[27], "slack_channel_name": r[28],
-        "team_requirements": _json_load(r[29]), "team_size": r[30], "showcase_pdf_url": r[31],
-        "default_hourly_rate": r[32], "pay_currency": r[33], "compensation_notes": r[34],
-        "is_public": bool(r[35]), "allow_applications": bool(r[36]), "coffeechat_calendly": r[37],
-        "applications_close_date": r[38], "created_at": r[39], "updated_at": r[40],
+        "team_requirements": _json_load(r[29]), "team_size": r[30], "team_composition": _json_load(r[31]), "showcase_pdf_url": r[32],
+        "default_hourly_rate": r[33], "pay_currency": r[34], "compensation_notes": r[35],
+        "is_public": bool(r[36]), "allow_applications": bool(r[37]), "coffeechat_calendly": r[38],
+        "applications_close_date": r[39], "created_at": r[40], "updated_at": r[41],
     }
+    # Load project leads
+    rows_leads = db.execute(sa_text("""
+        SELECT email FROM advisory_project_leads WHERE project_id = :pid
+    """), {"pid": pid}).fetchall()
+    proj["project_leads"] = [lead[0] for lead in rows_leads]
+    
+    # Load application questions
+    rows_questions = db.execute(sa_text("""
+        SELECT idx, prompt, qtype, choices_json FROM advisory_project_questions 
+        WHERE project_id = :pid ORDER BY idx
+    """), {"pid": pid}).fetchall()
+    proj["application_questions"] = [
+        {"idx": q[0], "type": q[2], "prompt": q[1], "choices": _json_load(q[3]) if q[3] else []}
+        for q in rows_questions
+    ]
+    
     # Load assignments
     rows_a = db.execute(sa_text("""
         SELECT a.id, a.student_id, s.first_name, s.last_name, a.role, a.hours_planned, a.hourly_rate, a.pay_currency, a.active
@@ -712,10 +757,35 @@ async def update_project(pid: int, payload: Dict[str, Any], request: Request, ad
         except Exception:
             params["team_requirements"] = None
         sets.append("team_requirements = :team_requirements")
+    # team_composition JSON
+    if "team_composition" in payload:
+        try:
+            params["team_composition"] = __import__('json').dumps(payload["team_composition"]) if not isinstance(payload["team_composition"], str) else payload["team_composition"]
+        except Exception:
+            params["team_composition"] = None
+        sets.append("team_composition = :team_composition")
     # Validate publish requirements if status moves to active/closed
     new_status = None
     if "status" in payload:
         new_status = str(payload.get("status") or "").strip().lower()
+    
+    # Auto-close check: if status is being set to active, check if applications_close_date has passed
+    if new_status == "active" and "applications_close_date" in payload:
+        from datetime import timezone, timedelta
+        pst = timezone(timedelta(hours=-8))  # PST is UTC-8
+        now = datetime.now(pst).date()
+        close_date_str = payload.get("applications_close_date")
+        
+        if close_date_str:
+            try:
+                close_date = datetime.fromisoformat(close_date_str).date()
+                if close_date < now:
+                    # Applications close date has passed, set status to closed instead
+                    payload["status"] = "closed"
+                    new_status = "closed"
+            except (ValueError, TypeError):
+                pass  # Invalid date format, ignore
+    
     if new_status in ("active","closed"):
         # We need a composed payload that includes current values if they are not in the patch
         try:
@@ -957,8 +1027,25 @@ async def upload_logo(pid: int, kind: str, name: Optional[str] = None, file: Upl
 @router.delete("/projects/{pid}")
 async def close_project(pid: int, admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
     _ensure_tables(db)
+    
+    # Get Slack channel info before closing
+    project = db.execute(sa_text("SELECT slack_channel_id, slack_channel_name FROM advisory_projects WHERE id = :id"), {"id": pid}).fetchone()
+    
     db.execute(sa_text("UPDATE advisory_projects SET status = 'closed', updated_at = :ua WHERE id = :id"), {"id": pid, "ua": datetime.utcnow().isoformat()})
-    db.commit(); return {"id": pid, "status": "closed"}
+    db.commit()
+    
+    # Delete Slack channel if it exists
+    try:
+        from ..integrations import slack
+        if slack.is_enabled() and project and project[0]:  # slack_channel_id exists
+            client = slack._get_client()
+            if client:
+                client.conversations_archive(channel=project[0])
+                print(f"INFO: Archived Slack channel {project[1]} for project {pid}")
+    except Exception as e:
+        print(f"WARNING: Failed to archive Slack channel for project {pid}: {str(e)}")
+    
+    return {"id": pid, "status": "closed"}
 
 
 # Known clients registry (simple in-code list; logo_url points to frontend assets or uploads)
@@ -1373,6 +1460,65 @@ async def update_application(aid: int, payload: Dict[str, Any], admin=Depends(re
             old_row = db.execute(sa_text("SELECT status FROM advisory_applications WHERE id = :id"), {"id": aid}).fetchone()
         db.execute(sa_text("UPDATE advisory_applications SET " + ", ".join(sets) + " WHERE id = :id"), params)
         db.commit()
+        
+        # Send emails based on status changes
+        if "status" in params:
+            try:
+                from ..integrations.email_service import send_interview_invitation, send_offer_email, send_admin_notification
+                
+                # Get application details for email
+                app_details = db.execute(sa_text("""
+                    SELECT a.first_name, a.last_name, a.email, a.target_project_id, p.project_name
+                    FROM advisory_applications a
+                    LEFT JOIN advisory_projects p ON a.target_project_id = p.id
+                    WHERE a.id = :id
+                """), {"id": aid}).fetchone()
+                
+                if app_details:
+                    first_name, last_name, email, project_id, project_name = app_details
+                    student_name = f"{first_name or ''} {last_name or ''}".strip()
+                    role = "Student Analyst"  # Default role, could be made configurable
+                    
+                    if params.get('status') == 'interview':
+                        # Send interview invitation
+                        send_interview_invitation(
+                            student_email=email,
+                            student_name=student_name,
+                            project_name=project_name or "NGI Capital Advisory Project",
+                            role=role
+                        )
+                        
+                        # Notify admins
+                        send_admin_notification(
+                            action="Interview Scheduled",
+                            student_name=student_name,
+                            student_email=email,
+                            project_name=project_name or "NGI Capital Advisory Project",
+                            role=role
+                        )
+                        
+                    elif params.get('status') == 'offer':
+                        # Send offer email with DocuSign links
+                        send_offer_email(
+                            student_email=email,
+                            student_name=student_name,
+                            project_name=project_name or "NGI Capital Advisory Project",
+                            role=role,
+                            contract_duration="3 months"
+                        )
+                        
+                        # Notify admins
+                        send_admin_notification(
+                            action="Offer Sent",
+                            student_name=student_name,
+                            student_email=email,
+                            project_name=project_name or "NGI Capital Advisory Project",
+                            role=role
+                        )
+                        
+            except Exception as e:
+                print(f"WARNING: Failed to send status change email: {str(e)}")
+        
         try:
             if "status" in params:
                 _audit_log(db, action="UPDATE", table_name="advisory_applications", record_id=aid, user_email=(admin or {}).get('email'), old={"status": old_row[0] if old_row else None}, new={"status": params.get('status'), "override_reason": payload.get('override_reason')})
@@ -1410,6 +1556,56 @@ async def get_application(aid: int, admin=Depends(require_ngiadvisory_admin()), 
         "resume_url": row[9], "notes": row[10], "status": row[11], "created_at": row[12],
         "reviewer_email": row[13], "rejection_reason": row[14], "answers_json": row[15],
         "attachments": [{"id": a[0], "file_name": a[1], "file_url": a[2], "uploaded_by": a[3], "uploaded_at": a[4]} for a in atts],
+    }
+
+
+@router.post("/projects/auto-close")
+async def auto_close_expired_projects(admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
+    """Auto-close projects where applications_close_date has passed and status is 'active'"""
+    _ensure_tables(db)
+    
+    # Get current date in PST
+    from datetime import timezone, timedelta
+    pst = timezone(timedelta(hours=-8))  # PST is UTC-8
+    now = datetime.now(pst).date()
+    
+    # Find projects that should be auto-closed
+    rows = db.execute(sa_text("""
+        SELECT id, project_name, applications_close_date 
+        FROM advisory_projects 
+        WHERE status = 'active' 
+        AND applications_close_date IS NOT NULL 
+        AND applications_close_date != ''
+        AND date(applications_close_date) < date(:now)
+    """), {"now": now.isoformat()}).fetchall()
+    
+    closed_projects = []
+    for row in rows:
+        project_id, project_name, close_date = row
+        try:
+            # Update status to closed
+            db.execute(sa_text("""
+                UPDATE advisory_projects 
+                SET status = 'closed', updated_at = :updated_at 
+                WHERE id = :id
+            """), {
+                "id": project_id,
+                "updated_at": datetime.now(pst).isoformat()
+            })
+            
+            closed_projects.append({
+                "id": project_id,
+                "project_name": project_name,
+                "applications_close_date": close_date
+            })
+        except Exception as e:
+            print(f"Failed to auto-close project {project_id}: {e}")
+    
+    db.commit()
+    
+    return {
+        "message": f"Auto-closed {len(closed_projects)} projects",
+        "closed_projects": closed_projects
     }
 
 @router.post("/applications/{aid}/reject")
@@ -1828,6 +2024,122 @@ async def upload_onboarding_flow_file(fid: int, file: UploadFile = _File(...), a
     db.commit(); return {"file_url": url, "file_name": name}
 
 
+@router.post("/onboarding/flows/{fid}/provision-email")
+async def provision_onboarding_email(fid: int, admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
+    """Provision Google Workspace email account for student."""
+    _ensure_tables(db)
+    
+    # Get flow details
+    row = db.execute(sa_text("SELECT student_id, project_id, ngi_email FROM advisory_onboarding_flows WHERE id = :id"), {"id": fid}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Flow not found")
+    
+    sid, pid, existing_email = row[0], row[1], row[2]
+    
+    # Get student details
+    student = db.execute(sa_text("SELECT email, first_name, last_name FROM advisory_students WHERE id = :id"), {"id": sid}).fetchone()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
+    student_email, first_name, last_name = student[0], student[1], student[2]
+    
+    # Generate NGI email if not already set
+    if not existing_email:
+        # Extract name parts for email generation
+        first_part = (first_name or "").lower().replace(" ", "")
+        last_part = (last_name or "").lower().replace(" ", "")
+        if not first_part or not last_part:
+            raise HTTPException(status_code=400, detail="Student must have first and last name for email generation")
+        
+        ngi_email = f"{first_part}.{last_part}@ngicapitaladvisory.com"
+    else:
+        ngi_email = existing_email
+    
+    # Import Google Workspace integration
+    try:
+        from ..integrations.google_workspace_admin import provision_user
+        
+        # Provision the user
+        result = provision_user(
+            email=ngi_email,
+            first_name=first_name or "",
+            last_name=last_name or "",
+            org_unit="/Students"
+        )
+        
+        if result["success"]:
+            # Update flow with email and mark as created
+            db.execute(sa_text("UPDATE advisory_onboarding_flows SET ngi_email = :email, email_created = 1, updated_at = datetime('now') WHERE id = :id"), 
+                      {"email": ngi_email, "id": fid})
+            db.commit()
+            
+            return {
+                "id": fid,
+                "email": ngi_email,
+                "provisioned": True,
+                "message": result["message"]
+            }
+        else:
+            raise HTTPException(status_code=400, detail=result["message"])
+            
+    except ImportError:
+        # Fallback if Google Workspace integration not available
+        db.execute(sa_text("UPDATE advisory_onboarding_flows SET ngi_email = :email, email_created = 1, updated_at = datetime('now') WHERE id = :id"), 
+                  {"email": ngi_email, "id": fid})
+        db.commit()
+        
+        return {
+            "id": fid,
+            "email": ngi_email,
+            "provisioned": True,
+            "message": "Email provisioned (mock - Google Workspace not configured)"
+        }
+
+
+@router.post("/onboarding/flows/{fid}/send-welcome-email")
+async def send_welcome_email_manual(fid: int, admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
+    """Manually send welcome email to student after onboarding."""
+    _ensure_tables(db)
+    
+    # Get flow details
+    row = db.execute(sa_text("SELECT student_id, project_id, ngi_email FROM advisory_onboarding_flows WHERE id = :id"), {"id": fid}).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Flow not found")
+    
+    sid, pid, ngi_email = row[0], row[1], row[2]
+    
+    # Get student and project details
+    student = db.execute(sa_text("SELECT email, first_name, last_name FROM advisory_students WHERE id = :id"), {"id": sid}).fetchone()
+    project = db.execute(sa_text("SELECT project_name FROM advisory_projects WHERE id = :id"), {"id": pid}).fetchone()
+    
+    if not student or not project:
+        raise HTTPException(status_code=404, detail="Student or project not found")
+    
+    student_email, first_name, last_name = student[0], student[1], student[2]
+    project_name = project[0]
+    student_name = f"{first_name or ''} {last_name or ''}".strip()
+    
+    try:
+        from ..integrations.email_service import send_welcome_email
+        
+        result = send_welcome_email(
+            student_email=student_email,
+            student_name=student_name,
+            ngi_email=ngi_email or student_email,
+            project_name=project_name,
+            role="Student Analyst"
+        )
+        
+        return {
+            "id": fid,
+            "email_sent": result["success"],
+            "message": result["message"]
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send welcome email: {str(e)}")
+
+
 @router.post("/onboarding/flows/{fid}/finalize")
 async def finalize_onboarding_flow(fid: int, admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
     _ensure_tables(db)
@@ -1837,6 +2149,7 @@ async def finalize_onboarding_flow(fid: int, admin=Depends(require_ngiadvisory_a
     sid, pid, iar, ndar, ndarcv = row[0], row[1], int(row[2] or 0), int(row[3] or 0), int(row[4] or 0)
     if not iar or (ndar and not ndarcv):
         raise HTTPException(status_code=400, detail="Cannot finalize: ensure intern agreement received and NDA received if required")
+    
     # Create assignment if not present
     try:
         exists = db.execute(sa_text("SELECT id FROM advisory_project_assignments WHERE project_id = :p AND student_id = :s AND COALESCE(active,1) = 1"), {"p": pid, "s": sid}).fetchone()
@@ -1844,6 +2157,90 @@ async def finalize_onboarding_flow(fid: int, admin=Depends(require_ngiadvisory_a
             db.execute(sa_text("INSERT INTO advisory_project_assignments (project_id, student_id, role, hours_planned, created_at) VALUES (:p,:s,'analyst',NULL,datetime('now'))"), {"p": pid, "s": sid})
     except Exception:
         pass
+    
+    # NEW: Create employee record in employees table
+    try:
+        # Get student and project details
+        student = db.execute(sa_text("SELECT email, first_name, last_name FROM advisory_students WHERE id = :id"), {"id": sid}).fetchone()
+        project = db.execute(sa_text("SELECT project_name, entity_id FROM advisory_projects WHERE id = :id"), {"id": pid}).fetchone()
+        
+        if student and project:
+            student_email, first_name, last_name = student[0], student[1], student[2]
+            project_name, entity_id = project[0], project[1]
+            
+            # Create employee record
+            employee_name = f"{first_name or ''} {last_name or ''}".strip()
+            if not employee_name:
+                employee_name = student_email.split('@')[0]  # fallback to email prefix
+            
+            db.execute(sa_text("""
+                INSERT INTO employees (entity_id, name, email, title, role, classification, status, employment_type, start_date, created_at)
+                VALUES (:eid, :name, :email, :title, :role, :class, :status, :type, :start, :created)
+            """), {
+                "eid": entity_id,
+                "name": employee_name,
+                "email": student_email,
+                "title": "Student Analyst",
+                "role": "Student Analyst",
+                "class": "intern",
+                "status": "active",
+                "type": "intern",
+                "start": datetime.utcnow().isoformat().split('T')[0],  # today's date
+                "created": datetime.utcnow().isoformat()
+            })
+            
+            print(f"INFO: Created employee record for {employee_name} ({student_email}) in entity {entity_id}")
+            
+            # Send welcome email
+            try:
+                from ..integrations.email_service import send_welcome_email
+                from ..integrations import slack
+                
+                # Get NGI email from flow
+                ngi_email = db.execute(sa_text("SELECT ngi_email FROM advisory_onboarding_flows WHERE id = :id"), {"id": fid}).fetchone()
+                ngi_email = ngi_email[0] if ngi_email else student_email
+                
+                # Get Slack channel link
+                slack_channel_link = None
+                if slack.is_enabled():
+                    project_slack = db.execute(sa_text("SELECT slack_channel_id FROM advisory_projects WHERE id = :id"), {"id": pid}).fetchone()
+                    if project_slack and project_slack[0]:
+                        slack_channel_link = slack.channel_web_link(project_slack[0])
+                
+                send_welcome_email(
+                    student_email=student_email,
+                    student_name=employee_name,
+                    ngi_email=ngi_email,
+                    project_name=project_name,
+                    role="Student Analyst",
+                    slack_channel_link=slack_channel_link
+                )
+                
+                print(f"INFO: Sent welcome email to {student_email}")
+                
+            except Exception as e:
+                print(f"WARNING: Failed to send welcome email: {str(e)}")
+            
+            # Notify admins
+            try:
+                from ..integrations.email_service import send_admin_notification
+                
+                send_admin_notification(
+                    action="Student Onboarded Successfully",
+                    student_name=employee_name,
+                    student_email=student_email,
+                    project_name=project_name,
+                    role="Student Analyst",
+                    additional_info=f"NGI Email: {ngi_email}"
+                )
+                
+            except Exception as e:
+                print(f"WARNING: Failed to send admin notification: {str(e)}")
+                
+    except Exception as e:
+        print(f"WARNING: Failed to create employee record: {str(e)}")
+        # Continue with finalization even if employee creation fails
+    
     db.execute(sa_text("UPDATE advisory_onboarding_flows SET status = 'onboarded', updated_at = datetime('now') WHERE id = :id"), {"id": fid})
     # Archive matching application (student+project) similar to instances path
     try:
@@ -1859,3 +2256,33 @@ async def finalize_onboarding_flow(fid: int, admin=Depends(require_ngiadvisory_a
     except Exception:
         pass
     db.commit(); return {"id": fid, "status": 'onboarded'}
+
+
+@router.post("/onboarding/flows/send-rejection-email")
+async def send_rejection_email_endpoint(payload: Dict[str, Any], admin=Depends(require_ngiadvisory_admin()), db: Session = Depends(get_db)):
+    """Send a rejection email to a student after an unsuccessful interview."""
+    _ensure_tables(db)
+    
+    student_email = payload.get("student_email")
+    student_name = payload.get("student_name")
+    project_name = payload.get("project_name")
+    
+    if not student_email or not student_name or not project_name:
+        raise HTTPException(status_code=422, detail="student_email, student_name, and project_name are required")
+    
+    try:
+        from ..integrations.email_service import send_rejection_email
+        
+        result = send_rejection_email(
+            student_email=student_email,
+            student_name=student_name,
+            project_name=project_name
+        )
+        
+        return {
+            "success": result["success"],
+            "message": result["message"]
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send rejection email: {str(e)}")

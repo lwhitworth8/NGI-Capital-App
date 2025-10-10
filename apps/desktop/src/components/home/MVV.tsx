@@ -1,5 +1,5 @@
 "use client";
-import { Card } from "@/components/ui/Card";
+import { Card } from "@/components/ui/card";
 import React from "react";
 
 export function MVV(){
@@ -10,4 +10,5 @@ export function MVV(){
     </Card>
   );
 }
+
 

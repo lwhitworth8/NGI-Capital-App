@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
 import { spFetch } from '@/lib/api'
+import AnimatedNGILogo from '@/components/AnimatedNGILogo'
+import StreamlinedSignIn from '@/components/StreamlinedSignIn'
 
 const WORDS = ['Experiences', 'Opportunities', 'Impacts']
 
@@ -10,6 +12,7 @@ export default function MarketingHomepage() {
   const [wordIdx, setWordIdx] = useState(0)
   const [reduceMotion, setReduceMotion] = useState(false)
   const [active, setActive] = useState<'projects'|'learning'|'incubator'>('projects')
+  const [logoAnimationComplete, setLogoAnimationComplete] = useState(false)
 
   // Telemetry: marketing_view on mount
   useEffect(() => {
@@ -30,12 +33,12 @@ export default function MarketingHomepage() {
     } catch {}
   }, [])
 
-  // Word rotation every 3s
+  // Word rotation every 3s (only after logo animation completes)
   useEffect(() => {
-    if (reduceMotion) return
+    if (reduceMotion || !logoAnimationComplete) return
     const id = setInterval(() => setWordIdx((i) => (i + 1) % WORDS.length), 3000)
     return () => clearInterval(id)
-  }, [reduceMotion])
+  }, [reduceMotion, logoAnimationComplete])
 
   // IntersectionObserver for sticky subnav active state
   useEffect(() => {
@@ -61,7 +64,7 @@ export default function MarketingHomepage() {
     }).catch(() => {})
   }
 
-  const onCta = (sectionId?: 'hero'|'projects'|'learning'|'incubator') => {
+  const onCta = (sectionId?: 'hero'|'projects'|'learning'|'incubator'|'nav') => {
     spFetch('/api/public/telemetry/event', {
       method: 'POST',
       body: JSON.stringify({ event: 'cta_click', payload: { route: '/', label: 'sign_in', sectionId } }),
@@ -70,76 +73,45 @@ export default function MarketingHomepage() {
 
   return (
     <>
-      {/* Top navbar & Hero combined for seamless gradient */}
-      <div className="relative bg-gradient-to-b from-black via-black via-70% to-blue-900">
-        {/* Top navbar - straight black, no border for smooth transition */}
-        <header className="w-full text-white relative z-10">
-          <div className="mx-auto max-w-7xl px-8 h-16 flex items-center justify-between">
-            <div className="text-2xl font-bold tracking-tight">NGI Capital</div>
-            <div className="flex items-center gap-8">
-              <nav className="hidden md:flex items-center gap-8 text-sm font-medium">
-                <a href="#projects" onClick={onNavClick('projects')} className="hover:text-blue-400 transition-colors relative group">
-                  Advisory Projects
-                  <span className="absolute bottom-[-4px] left-0 w-full h-0.5 bg-blue-500 transform scale-x-0 group-hover:scale-x-100 transition-transform" />
-                </a>
-                <a href="#learning" onClick={onNavClick('learning')} className="hover:text-blue-400 transition-colors relative group">
-                  NGI Learning Center (Coming Soon)
-                  <span className="absolute bottom-[-4px] left-0 w-full h-0.5 bg-blue-500 transform scale-x-0 group-hover:scale-x-100 transition-transform" />
-                </a>
-                <a href="#incubator" onClick={onNavClick('incubator')} className="hover:text-blue-400 transition-colors relative group">
-                  NGI Fund (Coming Soon)
-                  <span className="absolute bottom-[-4px] left-0 w-full h-0.5 bg-blue-500 transform scale-x-0 group-hover:scale-x-100 transition-transform" />
-                </a>
-          </nav>
-              <Link href="/sign-in" onClick={() => onCta('hero')} className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-colors text-sm font-medium">
-              Sign In
-            </Link>
+      {/* Clean Black Hero Section - Much Smaller */}
+      <div className="relative bg-black h-64 flex items-center justify-center">
+        {/* Hero Section with Animated Logo */}
+        <section id="hero" className="w-full px-8">
+          <div className="max-w-6xl mx-auto">
+            {/* Animated Logo with Centered Text */}
+            <AnimatedNGILogo 
+              onAnimationComplete={() => setLogoAnimationComplete(true)}
+              className="justify-center"
+            />
           </div>
-        </div>
-      </header>
-
-        {/* Hero: black to blue gradient */}
-        <section id="hero" className="relative overflow-hidden text-white">
-        
-        <div className="relative mx-auto max-w-7xl px-8 py-6 md:py-10">
-          <div className="max-w-5xl">
-            <h1 className="text-4xl md:text-5xl font-extrabold leading-[1.15] tracking-tight">
-              Launch your <AnimatedWord word={WORDS[wordIdx]} reduceMotion={reduceMotion} />
-              <span className="block mt-2">
-                with NGI Capital
-              </span>
-            </h1>
-            <p className="mt-4 text-base md:text-lg text-zinc-300 max-w-3xl leading-relaxed">
-              Hands-on programs designed for students to build real skills and join a network of partners, students, and projects.
-            </p>
-          </div>
-        </div>
-      </section>
+        </section>
       </div>
 
       {/* Secondary navbar - clean white with border */}
       <div id="subnav" className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm">
         <div className="mx-auto max-w-7xl px-8">
-          <nav aria-label="Section Navigation" className="flex justify-center gap-8 text-sm">
-            {[
-              { id: 'projects', label: 'NGI Capital Advisory' },
-              { id: 'learning', label: 'NGI Learning Center (Coming Soon)' },
-              { id: 'incubator', label: 'NGI Fund (Coming Soon)' },
-            ].map((item) => (
-              <a
-                key={item.id}
-                href={`#${item.id}`}
-                onClick={onNavClick(item.id as any)}
-                className={`py-3 border-b-2 transition-all duration-200 font-medium ${
-                  active === (item.id as any)
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-blue-300'
-                }`}
-              >
-                {item.label}
-              </a>
-            ))}
-          </nav>
+          <div className="flex items-center justify-center">
+            <nav aria-label="Section Navigation" className="flex gap-8 text-sm">
+              {[
+                { id: 'projects', label: 'NGI Capital Advisory' },
+                { id: 'learning', label: 'NGI Learning Center (Coming Soon)' },
+                { id: 'incubator', label: 'NGI Fund (Coming Soon)' },
+              ].map((item) => (
+                <a
+                  key={item.id}
+                  href={`#${item.id}`}
+                  onClick={onNavClick(item.id as any)}
+                  className={`py-3 border-b-2 transition-all duration-200 font-medium ${
+                    active === (item.id as any)
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-gray-600 hover:text-gray-900 hover:border-blue-300'
+                  }`}
+                >
+                  {item.label}
+                </a>
+              ))}
+            </nav>
+          </div>
         </div>
       </div>
 
@@ -273,9 +245,10 @@ export default function MarketingHomepage() {
 
           {/* CTA */}
           <div className="mt-16 text-center">
-            <Link href="/sign-in" onClick={() => onCta('projects')} className="inline-block px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 font-semibold shadow-lg text-base">
-              Sign In to Start Your Advisory Journey
-            </Link>
+            <StreamlinedSignIn 
+              variant="cta"
+              onClick={() => onCta('projects')}
+            />
           </div>
         </div>
       </section>
@@ -310,9 +283,10 @@ export default function MarketingHomepage() {
           </div>
 
           <div className="mt-6 text-center">
-            <Link href="/sign-in" onClick={() => onCta('learning')} className="inline-block px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all duration-200 font-semibold shadow-lg">
-              Stay Updated
-            </Link>
+            <StreamlinedSignIn 
+              variant="cta"
+              onClick={() => onCta('learning')}
+            />
           </div>
         </div>
 
@@ -423,13 +397,11 @@ export default function MarketingHomepage() {
             <p className="text-base mb-5 text-blue-100">
               Join the next generation of investors in creating and operating the companies that matter.
             </p>
-            <Link 
-              href="/sign-in" 
-              onClick={() => onCta('incubator')} 
+            <StreamlinedSignIn 
+              variant="cta"
+              onClick={() => onCta('incubator')}
               className="inline-block px-8 py-3 bg-white text-blue-600 rounded-lg hover:bg-gray-50 transition-all duration-200 font-bold shadow-lg hover:shadow-xl"
-            >
-              Apply to NGI Capital Fund (Coming Soon)
-            </Link>
+            />
           </div>
         </div>
       </section>

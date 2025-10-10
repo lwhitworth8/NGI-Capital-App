@@ -73,6 +73,7 @@
   }
   
   html {
+    font-size: 16px;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
@@ -289,6 +290,11 @@
 }
 
 /* Modern Scrollbar */
+/* Hide scrollbars when class no-scrollbar is applied, but keep scroll behavior */
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Default (visible) custom scrollbars */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

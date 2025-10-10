@@ -14,10 +14,10 @@ import {
 import type { AdvisoryApplication, AdvisoryProject } from '@/types'
 import { advisoryGetApplication, advisoryRejectApplication, advisoryWithdrawApplication, advisoryUploadApplicationAttachment } from '@/lib/api'
 import { useRouter } from 'next/navigation'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card'
-import { Button } from '@/components/ui/Button'
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/Select'
-import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/Table'
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@/components/ui/table'
 
 type Lane = 'new'|'reviewing'|'interview'|'offer'|'joined'|'rejected'|'withdrawn'
 const LANES: Lane[] = ['new','reviewing','interview','offer','joined','rejected','withdrawn']
@@ -34,8 +34,8 @@ export default function ApplicationsAdminPage() {
   const [archived, setArchived] = useState<any[]>([])
   const [offerCounts, setOfferCounts] = useState<Record<number, number>>({})
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string>('')
-  const [reviewerFilter, setReviewerFilter] = useState<string>('')
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [reviewerFilter, setReviewerFilter] = useState<string>('all')
   const [busy, setBusy] = useState(false)
   const [detail, setDetail] = useState<(AdvisoryApplication & { attachments?: { id:number; file_name:string; file_url:string; uploaded_by?:string; uploaded_at:string }[]; rejection_reason?: string | null; answers_json?: any }) | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -51,8 +51,8 @@ export default function ApplicationsAdminPage() {
     const params: any = {}
     if (entityId) params.entity_id = entityId
     if (!globalView && projectId) params.project_id = projectId
-    if (statusFilter) params.status = statusFilter
-    if (reviewerFilter) params.reviewer_email = reviewerFilter
+    if (statusFilter && statusFilter !== 'all') params.status = statusFilter
+    if (reviewerFilter && reviewerFilter !== 'all') params.reviewer_email = reviewerFilter
     if (search) params.q = search
     const res = await advisoryListApplications(params)
     setApps(res || [])
@@ -165,14 +165,14 @@ export default function ApplicationsAdminPage() {
             <Select value={statusFilter} onValueChange={(v)=>setStatusFilter(v)}>
               <SelectTrigger className="w-40"><SelectValue placeholder="All Statuses" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Statuses</SelectItem>
+                <SelectItem value="all">All Statuses</SelectItem>
                 {LANES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={reviewerFilter} onValueChange={(v)=>setReviewerFilter(v)}>
               <SelectTrigger className="w-40"><SelectValue placeholder="All Reviewers" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Reviewers</SelectItem>
+                <SelectItem value="all">All Reviewers</SelectItem>
                 <SelectItem value="anurmamade@ngicapitaladvisory.com">Andre</SelectItem>
                 <SelectItem value="lwhitworth@ngicapitaladvisory.com">Landon</SelectItem>
                 <SelectItem value="unassigned">Unassigned</SelectItem>
@@ -379,4 +379,5 @@ function Timeline({ email }: { email: string }){
     </div>
   )
 }
+
 

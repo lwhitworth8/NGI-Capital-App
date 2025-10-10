@@ -90,7 +90,7 @@ export default function ApplyWidget({ projectId, allowApply, coffeechat, questio
       })
       if (!res.ok) throw new Error(await res.text())
       postEvent('project_application_submitted', { project_id: projectId })
-      router.push('/applications')
+      router.push('/projects')
     } catch (err) {
       alert('Failed to submit application')
     } finally {

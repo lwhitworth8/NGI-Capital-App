@@ -6,6 +6,9 @@ import { useRouter, usePathname } from 'next/navigation'
 import { postEvent } from '@/lib/telemetry'
 import ModernProjectCard from '@/components/projects/ModernProjectCard'
 import { StudentProjectModal } from '@/components/projects/StudentProjectModal'
+import { listMyApplications } from '@/lib/api'
+import MyApplicationsModal from '@/components/projects/MyApplicationsModal'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@ngi/ui'
 
 export default function ProjectsClient({ initialItems, initialQ = '', initialTags = [], initialMode = '', initialLocation = '', initialSort = 'newest', pageSize = 20 }: { initialItems: PublicProject[]; initialQ?: string; initialTags?: string[]; initialMode?: string; initialLocation?: string; initialSort?: 'newest'|'name'|'applied'|'oldest'; pageSize?: number }) {
   const router = useRouter()
@@ -110,6 +113,21 @@ export default function ProjectsClient({ initialItems, initialQ = '', initialTag
   const toggleTag = (t: string) => setActiveTags(prev => prev.includes(t) ? prev.filter(x=>x!==t) : [...prev, t])
 
   const [selectedProject, setSelectedProject] = useState<PublicProject | null>(null)
+  const [appsOpen, setAppsOpen] = useState(false)
+  const [appsCount, setAppsCount] = useState<number>(0)
+
+  useEffect(() => {
+    let ignore = false
+    const load = async () => {
+      try {
+        const items = await listMyApplications().catch(() => [])
+        if (!ignore) setAppsCount(items.length || 0)
+      } catch {}
+    }
+    // best-effort prefetch, do not block UI
+    void load()
+    return () => { ignore = true }
+  }, [])
 
   // Filter items by status
   const filteredItems = items.filter(item => {
@@ -119,66 +137,75 @@ export default function ProjectsClient({ initialItems, initialQ = '', initialTag
 
   return (
     <>
-      <div aria-label="Projects list" role="region" className="p-6 space-y-8">
-        {/* Modern Header - Matching Admin Style */}
-        <div className="flex flex-col gap-6">
-          <div className="flex items-center justify-between">
+      <div aria-label="Projects list" role="region" className="px-6 pt-4 pb-6 space-y-5">
+        {/* Header - NGI Capital Advisory - matching admin exactly */}
+        <div className="flex flex-col gap-4">
+          <div>
             <h1 className="text-4xl font-bold tracking-tight text-foreground">
               NGI Capital Advisory
             </h1>
           </div>
-
-          {/* Filters and Sorting - Matching Admin Style */}
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Status Filter */}
-            <div className="relative">
-              <select
-                aria-label="Filter status"
-                className="appearance-none pl-4 pr-10 py-2.5 rounded-xl bg-background border border-border text-sm font-medium text-foreground cursor-pointer hover:bg-accent transition-colors focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:outline-none"
-                value={statusFilter}
-                onChange={e => setStatusFilter(e.target.value as any)}
-              >
-                <option value="all" className="bg-background text-foreground">All Projects</option>
-                <option value="active" className="bg-background text-foreground">Open</option>
-                <option value="closed" className="bg-background text-foreground">Closed</option>
-              </select>
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
+          
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-3xl font-bold tracking-tight text-foreground">
+                Projects
+              </h2>
+              <p className="text-muted-foreground mt-2">
+                Explore available projects and opportunities
+              </p>
             </div>
+          </div>
+        </div>
 
-            {/* Sort Control */}
-            <div className="relative">
-              <select
-                aria-label="Sort projects"
-                className="appearance-none pl-4 pr-10 py-2.5 rounded-xl bg-background border border-border text-sm font-medium text-foreground cursor-pointer hover:bg-accent transition-colors focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:outline-none"
-                value={sort}
-                onChange={e => setSort(e.target.value as any)}
-              >
-                <option value="newest" className="bg-background text-foreground">Newest First</option>
-                <option value="oldest" className="bg-background text-foreground">Oldest First</option>
-                <option value="name" className="bg-background text-foreground">Project Name</option>
-              </select>
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
-            </div>
+        {/* Filters and Sorting - No border background */}
+        <div className="flex flex-wrap items-center gap-3 mt-2 mb-2">
+          {/* Status Filter (shadcn/Radix Select) */}
+          <Select value={statusFilter} onValueChange={(v: any) => setStatusFilter(v)}>
+            <SelectTrigger className="w-[150px] h-10 rounded-xl">
+              <SelectValue placeholder="All Projects" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Projects</SelectItem>
+              <SelectItem value="active">Open</SelectItem>
+              <SelectItem value="closed">Closed</SelectItem>
+            </SelectContent>
+          </Select>
 
-            {/* Search */}
-            <div className="flex-1 min-w-[200px] max-w-md">
-              <input
-                aria-label="Search projects"
-                className="w-full px-4 py-2.5 rounded-xl border border-border bg-card focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                placeholder="Search projects..."
-                value={pendingQ}
-                onChange={e => setPendingQ(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { setQ(pendingQ); } }}
-              />
-            </div>
+          {/* Sort Control (shadcn/Radix Select) */}
+          <Select value={sort} onValueChange={(v: any) => setSort(v)}>
+            <SelectTrigger className="w-[170px] h-10 rounded-xl">
+              <SelectValue placeholder="Sort" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="newest">Newest First</SelectItem>
+              <SelectItem value="oldest">Oldest First</SelectItem>
+              <SelectItem value="name">Project Name</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* My Applications modal trigger */}
+          <button
+            type="button"
+            onClick={() => setAppsOpen(true)}
+            className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-border bg-background hover:bg-accent text-sm font-medium"
+          >
+            <span>My Applications</span>
+            {appsCount > 0 && (
+              <span className="ml-1 inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full text-[10px] font-semibold bg-blue-600 text-white">{appsCount}</span>
+            )}
+          </button>
+
+          {/* Search */}
+          <div className="flex-1 min-w-[200px] max-w-md">
+            <input
+              aria-label="Search projects"
+              className="w-full px-4 py-2.5 rounded-xl border border-border bg-card focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              placeholder="Search projects..."
+              value={pendingQ}
+              onChange={e => setPendingQ(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { setQ(pendingQ); } }}
+            />
           </div>
         </div>
 
@@ -198,7 +225,7 @@ export default function ProjectsClient({ initialItems, initialQ = '', initialTag
             </p>
           </div>
         ) : (
-          <div className="w-full grid grid-cols-1 gap-5">
+          <div className="w-full grid grid-cols-1 gap-5 mt-1">
             {filteredItems.map((p, idx) => (
               <ModernProjectCard
                 key={p.id}
@@ -223,6 +250,9 @@ export default function ProjectsClient({ initialItems, initialQ = '', initialTag
         project={selectedProject}
         onClose={() => setSelectedProject(null)}
       />
+
+      {/* Applications list modal */}
+      <MyApplicationsModal isOpen={appsOpen} onClose={() => setAppsOpen(false)} />
     </>
   )
 }

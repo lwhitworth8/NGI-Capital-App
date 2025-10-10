@@ -40,16 +40,46 @@ services:
       - DISABLE_ACCOUNTING_GUARD=${DISABLE_ACCOUNTING_GUARD:-1}
       # Allow env admin allowlist fallback in dev
       - ENABLE_ENV_ADMIN_FALLBACK=${ENABLE_ENV_ADMIN_FALLBACK:-1}
+      # Disable authentication for E2E tests
+      - NEXT_PUBLIC_ADVISORY_DEV_OPEN=${NEXT_PUBLIC_ADVISORY_DEV_OPEN:-1}
       # Agent/Workflow integration
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_PROJECT=${OPENAI_PROJECT:-}
+      - NGI_AGENT_WORKFLOW_ID=${NGI_AGENT_WORKFLOW_ID:-}
+      - NGI_AGENT_WORKFLOW_VERSION=${NGI_AGENT_WORKFLOW_VERSION:-published}
       - OPENAI_WORKFLOWS_BASE_URL=${OPENAI_WORKFLOWS_BASE_URL:-https://api.openai.com/v1}
-      - OPENAI_WORKFLOWS_API_KEY=${OPENAI_WORKFLOWS_API_KEY}
-      - WORKFLOW_SCHEDULER_ID=${WORKFLOW_SCHEDULER_ID}
-      - WORKFLOW_TRIAGE_ID=${WORKFLOW_TRIAGE_ID}
+      - OPENAI_WORKFLOWS_API_KEY=${OPENAI_WORKFLOWS_API_KEY:-}
+      - WORKFLOW_SCHEDULER_ID=${WORKFLOW_SCHEDULER_ID:-}
+      # Google Calendar integration
+      - ENABLE_GCAL=${ENABLE_GCAL:-1}
+      - GOOGLE_CREDENTIALS_JSON=${GOOGLE_CREDENTIALS_JSON:-credentials.json}
+      - GOOGLE_TOKEN_JSON=${GOOGLE_TOKEN_JSON:-token.json}
+      - GOOGLE_CALENDAR_IDS=${GOOGLE_CALENDAR_IDS:-lwhitworth@ngicapitaladvisory.com=primary,anurmamade@ngicapitaladvisory.com=primary}
+      - WORKFLOW_TRIAGE_ID=${WORKFLOW_TRIAGE_ID:-}
       - WORKFLOW_INPUT_KEY=${WORKFLOW_INPUT_KEY:-input}
-      - AGENT_WEBHOOK_SECRET=${AGENT_WEBHOOK_SECRET}
+      - AGENT_WEBHOOK_SECRET=${AGENT_WEBHOOK_SECRET:-}
       - DEFAULT_TIMEZONE=${DEFAULT_TIMEZONE:-UTC}
       - WORK_HOURS=${WORK_HOURS:-09:00-18:00}
       - DEBUG_AGENT_TOOLS=${DEBUG_AGENT_TOOLS:-0}
+      # Google Calendar integration (OAuth 2.0 authentication)
+      - ENABLE_GCAL=${ENABLE_GCAL:-1}
+      - GOOGLE_CREDENTIALS_JSON=${GOOGLE_CREDENTIALS_JSON:-credentials.json}
+      - GOOGLE_TOKEN_JSON=${GOOGLE_TOKEN_JSON:-token.json}
+      - GOOGLE_CALENDAR_IDS=${GOOGLE_CALENDAR_IDS:-lwhitworth@ngicapitaladvisory.com=primary,anurmamade@ngicapitaladvisory.com=primary}
+      - COFFEECHAT_FIXED_OWNERS=${COFFEECHAT_FIXED_OWNERS:-}
+      # Google Workspace Admin integration
+      - GOOGLE_WORKSPACE_ADMIN_ENABLED=${GOOGLE_WORKSPACE_ADMIN_ENABLED:-1}
+      - GOOGLE_WORKSPACE_CREDENTIALS_JSON=${GOOGLE_WORKSPACE_CREDENTIALS_JSON:-workspace_credentials.json}
+      - GOOGLE_WORKSPACE_TOKEN_JSON=${GOOGLE_WORKSPACE_TOKEN_JSON:-workspace_token.json}
+      - GOOGLE_WORKSPACE_DOMAIN=${GOOGLE_WORKSPACE_DOMAIN:-ngicapitaladvisory.com}
+      # Email service configuration
+      - SMTP_SERVER=${SMTP_SERVER:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME:-lwhitworth@ngicapitaladvisory.com}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - FROM_EMAIL=${FROM_EMAIL:-lwhitworth@ngicapitaladvisory.com}
+      - FROM_NAME=${FROM_NAME:-NGI Capital Advisory}
     networks:
       - ngi-network
     healthcheck:
@@ -83,14 +113,17 @@ services:
       - NEXT_PUBLIC_STUDENT_BASE_URL=${NEXT_PUBLIC_STUDENT_BASE_URL:-http://localhost:3001}
       - NEXT_PUBLIC_ADMIN_BASE_URL=${NEXT_PUBLIC_ADMIN_BASE_URL:-http://localhost:3001/admin}
       # Expose issuer for client-side hosted fallback (Clerk hosted pages)
-      - NEXT_PUBLIC_CLERK_ISSUER=${CLERK_ISSUER}
+      - NEXT_PUBLIC_CLERK_ISSUER=${NEXT_PUBLIC_CLERK_ISSUER}
       # Also expose server-side Clerk vars for diagnostics
       - CLERK_ISSUER=${CLERK_ISSUER}
       - CLERK_JWKS_URL=${CLERK_JWKS_URL}
       # Clerk config for Admin app
       - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
-      - CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      - CLERK_PUBLISHABLE_KEY=${CLERK_PUBLISHABLE_KEY}
       - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
+      # OpenAI GPT-5 Mini for AI insights
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com}
       # ADMIN list for routing
       - ADMIN_EMAILS=${ADMIN_EMAILS}
       # No in-app sign-in/up pages; we use hosted Clerk sign-in
@@ -98,6 +131,7 @@ services:
       - ALLOWED_EMAIL_DOMAINS=${ALLOWED_EMAIL_DOMAINS}
       - NEXT_PUBLIC_FORCE_LOGOUT_ON_LOAD=${NEXT_PUBLIC_FORCE_LOGOUT_ON_LOAD}
       - NEXT_PUBLIC_DISABLE_ADVISORY_AUTH=${NEXT_PUBLIC_DISABLE_ADVISORY_AUTH:-1}
+      - NEXT_PUBLIC_ADVISORY_DEV_OPEN=${NEXT_PUBLIC_ADVISORY_DEV_OPEN:-1}
       - WATCHPACK_POLLING=true
       # Use student app's sign-in at root (handled by Nginx route / -> student app)
       - CLERK_SIGN_IN_URL=/sign-in
@@ -143,6 +177,7 @@ services:
       - NEXT_PUBLIC_MOCK_STUDENT_EMAIL=${NEXT_PUBLIC_MOCK_STUDENT_EMAIL:-student@berkeley.edu}
       - ALLOWED_EMAIL_DOMAINS=${ALLOWED_EMAIL_DOMAINS:-berkeley.edu,ngicapitaladvisory.com}
       - NEXT_PUBLIC_FORCE_LOGOUT_ON_LOAD=${NEXT_PUBLIC_FORCE_LOGOUT_ON_LOAD}
+      - NEXT_PUBLIC_OPENAI_DRAFTS=${NEXT_PUBLIC_OPENAI_DRAFTS:-0}
       - WATCHPACK_POLLING=true
     depends_on:
       - backend
@@ -167,4 +202,3 @@ networks:
   ngi-network:
     driver: bridge
 name: ngi-dev
-

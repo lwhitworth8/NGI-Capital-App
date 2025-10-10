@@ -109,7 +109,7 @@ export const UC_MAJORS = [
   'Global Studies',
   
   // Communication & Media
-  'Communication',
+  'Communications',
   'Journalism',
   'Media Studies',
   'Public Relations',
@@ -150,7 +150,7 @@ export const MAJOR_ALIASES: Record<string, string> = {
   'Econ': 'Economics',
   'Psych': 'Psychology',
   'Poli Sci': 'Political Science',
-  'Comm': 'Communication',
+  'Comm': 'Communications',
   'Math': 'Mathematics',
   'Stats': 'Statistics',
   'ChemE': 'Chemical Engineering',

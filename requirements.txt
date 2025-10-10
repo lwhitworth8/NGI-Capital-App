@@ -9,6 +9,7 @@ sqlalchemy>=2.0.40,<3
 alembic==1.14.0
 aiosqlite==0.19.0
 asyncpg==0.29.0
+psycopg2-binary==2.9.9
 
 # Authentication & Security
 python-jose[cryptography]==3.4.0
@@ -23,18 +24,16 @@ python-dotenv==1.0.1
 # Data/time utils
 python-dateutil==2.9.0
 
+# AI/ML
+openai>=1.0.0
+openai-chatkit
+
 # Document Processing
 pypdf==6.1.1
 # Document processing (core)
 python-docx>=1.1.2,<2
-pdfplumber>=0.11.4
-# Pin pymupdf to safe version (1.26.4 has SNYK-PYTHON-PYMUPDF-13058632)
-pymupdf==1.24.14
-# paddleocr commented out - has unfixable vulnerability in future@1.0.0 (SNYK-PYTHON-FUTURE-11951438)
-# paddleocr>=2.7.0
-# Pin to last available release on PyPI
-invoice2data==0.4.5
-pytesseract>=0.3.13
+# OpenAI Vision API for intelligent document parsing
+pdf2image>=1.17.0
 pillow>=10.4.0
 
 # Reports/Exports
@@ -50,7 +49,7 @@ email-validator==2.2.0
 pydantic-settings==2.7.1
 
 # Pin Starlette to latest stable (security fixes)
-starlette==0.41.3
+starlette==0.47.2
 
 # Development & Testing
 pytest==8.3.4
@@ -67,6 +66,8 @@ slack_sdk>=3.34.0,<4
 google-api-python-client>=2.158.0,<3
 google-auth>=2.38.0,<3
 google-auth-httplib2>=0.2.0,<1
+google-auth-oauthlib>=1.2.0,<2
+pytz>=2024.1
 
 # Monitoring
 prometheus-client==0.21.1
@@ -84,3 +85,7 @@ pycairo>=1.27.0
 
 # SEC Data Ingestion for Learning Module
 sec-edgar-downloader>=5.0.3
+
+# PDF Signing (Free alternative to DocuSign)
+reportlab==4.0.7
+PyPDF2==3.0.1

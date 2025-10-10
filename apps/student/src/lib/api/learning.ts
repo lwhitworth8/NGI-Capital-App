@@ -3,7 +3,9 @@
  * Handles all backend communication for learning endpoints
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// Prefer relative base in browser when env points to a Docker-internal host (e.g., http://backend:8001)
+const ENV_BASE = process.env.NEXT_PUBLIC_API_URL || '';
+const API_BASE = (typeof window !== 'undefined' && /backend:\d+/.test(ENV_BASE)) ? '' : ENV_BASE;
 
 interface Company {
   id: number;
@@ -65,6 +67,30 @@ interface Leaderboard {
     mean: number;
     count: number;
   };
+}
+
+// Learning content items (from /api/learning/content)
+export interface LearningContentItem {
+  id: number;
+  module_id: string;
+  unit_id?: string | null;
+  lesson_id?: string | null;
+  title: string;
+  content_type: string;
+  content_markdown?: string | null;
+  content_url?: string | null;
+  estimated_duration_minutes?: number | null;
+  difficulty_level?: string | null;
+  sort_order: number;
+  prerequisites: string[];
+  animation_id?: string | null;
+  interactive_tool_id?: string | null;
+  author?: string | null;
+  tags: string[];
+  is_published: boolean;
+  created_at: string;
+  updated_at: string;
+  published_at?: string | null;
 }
 
 class LearningAPI {
@@ -271,6 +297,83 @@ class LearningAPI {
       throw new Error('Failed to submit to leaderboard');
     }
   }
+
+  // Learning content APIs
+  async getModuleContent(moduleId: string, token: string): Promise<LearningContentItem[]> {
+    const url = `${API_BASE}/api/learning/content/modules/${moduleId}?include_units=true&include_lessons=true`;
+    const response = await fetch(url, { headers: this.getHeaders(token) });
+    if (!response.ok) {
+      throw new Error('Failed to fetch module content');
+    }
+    return response.json();
+  }
+
+  async markLessonComplete(
+    lessonId: string,
+    payload: { module_id?: string; unit_id?: string; time_spent_minutes?: number; score?: number },
+    token: string
+  ): Promise<any> {
+    const url = `${API_BASE}/api/learning/enhanced/content/${lessonId}/complete`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(token),
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to mark lesson complete');
+    }
+    return response.json();
+  }
+
+  // Animation render queue APIs
+  async queueAnimationRender(sceneName: string, token: string): Promise<{ job_id: string; estimated_duration_seconds?: number }> {
+    const url = `${API_BASE}/api/learning/animations/render`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: this.getHeaders(token),
+      body: JSON.stringify({ scene_name: sceneName, params: {} }),
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || 'Failed to queue animation render');
+    }
+    return response.json();
+  }
+
+  async getRenderStatus(jobId: string, token: string): Promise<{
+    job_id: string;
+    scene_name: string;
+    status: string;
+    progress: number;
+    created_at: string;
+    completed_at?: string;
+    output_file?: string;
+    error_message?: string;
+  }> {
+    const url = `${API_BASE}/api/learning/animations/status/${jobId}`;
+    const response = await fetch(url, { headers: this.getHeaders(token) });
+    if (!response.ok) {
+      throw new Error('Failed to get render status');
+    }
+    return response.json();
+  }
+
+  getAnimationVideoUrl(animationId: string): string {
+    return `${API_BASE}/api/learning/animations/${animationId}/video`;
+  }
+
+  getAnimationThumbnailUrl(animationId: string): string {
+    return `${API_BASE}/api/learning/animations/${animationId}/thumbnail`;
+  }
+
+  async deleteAnimation(animationId: string, token: string): Promise<void> {
+    const url = `${API_BASE}/api/learning/animations/${animationId}`;
+    const response = await fetch(url, { method: 'DELETE', headers: this.getHeaders(token) });
+    if (!response.ok) {
+      throw new Error('Failed to delete animation');
+    }
+  }
 }
 
 export const learningAPI = new LearningAPI();
@@ -281,5 +384,6 @@ export type {
   Submission,
   Feedback,
   Leaderboard,
+  LearningContentItem,
 };
 

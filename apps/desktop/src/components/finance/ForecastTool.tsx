@@ -72,6 +72,16 @@ export default function ForecastTool({ entityId }: { entityId?: number }) {
     <div className="rounded-xl border border-border bg-card p-4">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold">Financial Forecasting</h2>
+        <button
+          className="text-xs px-2 py-1 border rounded"
+          onClick={async ()=>{
+            try {
+              await apiClient.request('GET', '/finance/forecast/export', undefined, { params: { entity_id: entityId, scenario_id: (active as any)?.id } })
+            } catch {}
+          }}
+        >
+          Export (Excel)
+        </button>
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-3">
         {/* Scenarios */}

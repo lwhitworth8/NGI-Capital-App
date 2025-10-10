@@ -1,6 +1,6 @@
 "use client";
 import React from "react";
-import { Modal } from "@/components/ui/Modal";
+import { Modal } from "@/components/ui/modal";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 type Props = {
@@ -31,4 +31,5 @@ export function MetricModal({ open, onClose, title, series }: Props) {
 }
 
 export default MetricModal;
+
 

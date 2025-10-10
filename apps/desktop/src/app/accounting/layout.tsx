@@ -1,6 +1,5 @@
 "use client";
 
-import { EntityProvider } from "@/hooks/useEntityContext";
 import { AppLayout } from "@/components/layout/AppLayout";
 
 export default function AccountingLayout({
@@ -9,8 +8,6 @@ export default function AccountingLayout({
   children: React.ReactNode;
 }) {
   return (
-    <EntityProvider>
-      <AppLayout>{children}</AppLayout>
-    </EntityProvider>
+    <AppLayout>{children}</AppLayout>
   );
 }

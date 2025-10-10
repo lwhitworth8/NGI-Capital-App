@@ -1,292 +1,492 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import dynamic from 'next/dynamic';
+import React, { useEffect, useRef, useState } from 'react';
+import { Download, TrendingUp, TrendingDown } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
-import { prettyLabel, formatMetric } from '@/lib/metrics/labels';
-import { apiClient } from '@/lib/api';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-type IndexItem = { name: string; value: string; changePct: string; symbol?: string }
-type YieldItem = { name: string; value: string; changePct: string; symbol?: string }
-type FxItem = { pair: string; value: string; changePct: string }
+// Label mapping
+const LABELS: Record<string, string> = {
+  '^GSPC': 'S&P 500',
+  '^IXIC': 'NASDAQ',
+  '^DJI': 'Dow Jones',
+  '^VIX': 'VIX',
+  '^TNX': '10Y Treasury',
+  '^FVX': '5Y Treasury',
+  '^TYX': '30Y Treasury',
+  'DX-Y.NYB': 'DXY',
+  'EURUSD=X': 'EUR/USD',
+  'GBPUSD=X': 'GBP/USD',
+  'USDJPY=X': 'USD/JPY',
+  'USDCAD=X': 'USD/CAD',
+  'USDCHF=X': 'USD/CHF',
+  'AUDUSD=X': 'AUD/USD',
+  'CL=F': 'Oil',
+  'GC=F': 'Gold',
+};
 
-// Mapping helpers
-function labelForSymbol(sym?: string, pair?: string): string {
-  if (sym === '^GSPC') return 'S&P 500'
-  if (sym === '^IXIC') return 'NASDAQ Composite'
-  if (sym === '^DJI') return 'Dow Jones Industrial Average'
-  if (sym === '^VIX') return 'CBOE Volatility Index'
-  if (sym === '^TNX') return 'U.S. 10-Year Treasury Yield'
-  if (sym === '^FVX') return 'U.S. 5-Year Treasury Yield'
-  if (sym === '^TYX') return 'U.S. 30-Year Treasury Yield'
-  if (pair === 'EURUSD=X') return 'EUR/USD'
-  if (pair === 'USDJPY=X') return 'USD/JPY'
-  return sym || pair || ''
+function prettyLabel(id: string): string {
+  return LABELS[id] ?? id;
 }
 
-function fmtCurrency(n: number) {
-  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-function fmtIndex(n: number) {
-  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-function fmtPercent(n: number) {
-  return `${n.toFixed(2)}%`
-}
-
-function normalizeYield(symbol: string | undefined, raw: number): number {
-  // Yahoo yield indices are 10x (e.g., ^TNX=10*10Y). Divide by 10.
-  if (symbol === '^TNX' || symbol === '^FVX' || symbol === '^TYX') return raw / 10
-  return raw
-}
-
-function TickerItem({ label, value, change, onClick, role }: { label: string; value: string; change: string; onClick?: () => void; role?: string }) {
-  const ch = Number(change)
-  const color = ch > 0 ? 'text-green-600' : ch < 0 ? 'text-red-600' : 'text-muted-foreground'
-  return (
-    <button onClick={onClick} className="inline-flex items-center gap-2 px-4 py-2 tabular-nums" aria-label={label} role={role}>
-      <span className="font-medium whitespace-nowrap">{label}</span>
-      <span className="text-sm text-foreground whitespace-nowrap">{value}</span>
-      <span className={`text-xs ${color} whitespace-nowrap`}>{Number.isFinite(ch) ? ch.toFixed(2) : '0.00'}%</span>
-    </button>
-  )
-}
-
-function Overlay({ title, onClose, metricId, rawSymbol, fredSeries }: { title: string; onClose: () => void; metricId?: string; rawSymbol?: string; fredSeries?: string }) {
-  const [series, setSeries] = useState<{ t: string; v: number }[]>([])
-  const [usrec, setUsrec] = useState<{ t: string; v: number }[]>([])
-  const [loaded, setLoaded] = useState(false)
-  useEffect(() => {
-    const id = metricId || rawSymbol || fredSeries || ''
-    if (!id) return
-    // Primary: try backend metrics store (DB-backed). If empty, fall back to Next API live fetch.
-    apiClient.request('GET', `/metrics/${encodeURIComponent(id)}/history`).then(async (j:any) => {
-      const hist = Array.isArray(j?.history) ? j.history : []
-      if (hist.length > 0) { setSeries(hist); setLoaded(true); return }
-      // Fallback: Yahoo/FRED via Next route
-      try {
-        if (rawSymbol) {
-          const r = await fetch(`/api/finance/getMarketHistory?symbol=${encodeURIComponent(rawSymbol)}`)
-          const jj: any = await r.json()
-          if (Array.isArray(jj?.series) && jj.series.length > 0) {
-            const needsDiv10 = rawSymbol === '^TNX' || rawSymbol === '^FVX' || rawSymbol === '^TYX'
-            const ser = needsDiv10 ? jj.series.map((p:any)=>({ t: p.t, v: typeof p.v === 'number' ? p.v/10 : p.v })) : jj.series
-            setSeries(ser); setLoaded(true); return
-          }
-        }
-        if (fredSeries) {
-          const r = await fetch(`/api/finance/getMarketHistory?fred=${encodeURIComponent(fredSeries)}`)
-          const jj: any = await r.json()
-          if (Array.isArray(jj?.series) && jj.series.length > 0) { setSeries(jj.series); setLoaded(true); return }
-        }
-        setSeries([]); setLoaded(true)
-      } catch {
-        setSeries([]); setLoaded(true)
-      }
-    }).catch(() => { setSeries([]); setLoaded(true) })
-    // recession shading (optional)
-    apiClient.request('GET', `/metrics/${encodeURIComponent('USREC')}/history`).then((j:any)=> setUsrec(j.history || [])).catch(()=>setUsrec([]))
-  }, [metricId, rawSymbol, fredSeries])
-  // simple CSV download
-  const downloadCSV = () => {
-    const csv = 'date,value\n' + series.map(p => `${p.t},${p.v}`).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url; a.download = `${title.replace(/\s+/g,'_')}.csv`; a.click(); URL.revokeObjectURL(url)
+function formatMetric(value: number, id: string): string {
+  if (!Number.isFinite(value)) return '';
+  
+  // Treasury yields - divide by 10
+  if (id === '^TNX' || id === '^FVX' || id === '^TYX') {
+    return `${(value / 10).toFixed(2)}%`;
   }
-  const AreaChart = dynamic(() => import('recharts').then(m => m.AreaChart as any)) as any
-  const Area = dynamic(() => import('recharts').then(m => m.Area as any)) as any
-  const XAxis = dynamic(() => import('recharts').then(m => m.XAxis as any)) as any
-  const YAxis = dynamic(() => import('recharts').then(m => m.YAxis as any)) as any
-  const Tooltip = dynamic(() => import('recharts').then(m => m.Tooltip as any)) as any
-  const CartesianGrid = dynamic(() => import('recharts').then(m => m.CartesianGrid as any)) as any
-  const ResponsiveContainer = dynamic(() => import('recharts').then(m => m.ResponsiveContainer as any)) as any
+  
+  // Commodities
+  if (id === 'CL=F' || id === 'GC=F') {
+    return `$${value.toFixed(2)}`;
+  }
+  
+  // Everything else
+  return value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
-  // brand colors
-  const stroke = 'var(--primary, #2563eb)'
-  const fillFrom = 'rgba(37, 99, 235, 0.30)'
-  const fillTo = 'rgba(37, 99, 235, 0.00)'
+type IndexItem = { name: string; value: string; changePct: string; symbol?: string };
+type YieldItem = { name: string; value: string; changePct: string; symbol?: string };
+type FxItem = { pair: string; value: string; changePct: string };
 
-  const loading = !loaded
+// Ticker Item Component
+function TickerItem({ 
+  label, 
+  value, 
+  change, 
+  onClick 
+}: { 
+  label: string; 
+  value: string; 
+  change: string; 
+  onClick?: () => void;
+}) {
+  const changeNum = Number(change);
+  const isPositive = changeNum > 0;
+  const isNegative = changeNum < 0;
+  
   return (
-    <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-6" role="dialog" aria-modal="true">
-      <div className="bg-card w-full max-w-6xl rounded-xl shadow-xl border border-border p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-xl font-semibold text-foreground tabular-nums">{title}</h2>
-          <div className="space-x-2">
-            <button className="text-sm px-3 py-1 rounded-md border" onClick={downloadCSV}>Download CSV</button>
-            <button className="text-sm px-3 py-1 rounded-md border" onClick={onClose}>Close</button>
+    <button 
+      onClick={onClick}
+      className="inline-flex items-center gap-3 px-4 py-2 hover:bg-accent/50 rounded-lg transition-colors group"
+    >
+      <span className="font-medium text-foreground whitespace-nowrap group-hover:text-primary transition-colors">
+        {label}
+      </span>
+      <span className="text-sm font-semibold text-foreground whitespace-nowrap tabular-nums">
+        {value}
+      </span>
+      <div className={`flex items-center gap-1 text-xs font-medium whitespace-nowrap ${
+        isPositive ? 'text-green-600' : isNegative ? 'text-red-600' : 'text-muted-foreground'
+      }`}>
+        {isPositive && <TrendingUp className="w-3 h-3" />}
+        {isNegative && <TrendingDown className="w-3 h-3" />}
+        <span>{changeNum.toFixed(2)}%</span>
+      </div>
+    </button>
+  );
+}
+
+// Chart Modal Component
+function ChartModal({ 
+  open, 
+  onClose, 
+  title, 
+  symbol, 
+  asOf 
+}: { 
+  open: boolean; 
+  onClose: () => void; 
+  title: string; 
+  symbol?: string;
+  asOf?: string;
+}) {
+  const [series, setSeries] = useState<{ t: string; v: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!open || !symbol) return;
+
+    const loadData = async () => {
+      setLoading(true);
+      setSeries([]);
+
+      try {
+        const basePath = typeof window !== 'undefined' && window.location.pathname.startsWith('/admin') ? '/admin' : '';
+        const url = `${basePath}/api/finance/getMarketHistory?symbol=${encodeURIComponent(symbol)}`;
+        console.log(`[ChartModal] Loading data for ${symbol} from ${url}`);
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+          console.error(`[ChartModal] API error: ${response.status}`);
+          setLoading(false);
+          return;
+        }
+
+        const data = await response.json();
+        console.log(`[ChartModal] Received ${data.series?.length || 0} data points`);
+
+        if (data.series && Array.isArray(data.series)) {
+          // Normalize treasury yields (Yahoo returns them 10x the actual value)
+          const needsNormalization = symbol === '^TNX' || symbol === '^FVX' || symbol === '^TYX';
+          const normalizedSeries = needsNormalization
+            ? data.series.map((p: any) => ({ t: p.t, v: p.v / 10 }))
+            : data.series;
+
+          setSeries(normalizedSeries);
+        }
+      } catch (error) {
+        console.error('[ChartModal] Error loading data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, [open, symbol]);
+
+  const downloadCSV = () => {
+    if (series.length === 0) return;
+
+    const csv = 'date,value\n' + series.map(p => `${p.t},${p.v}`).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${title.replace(/\s+/g, '_')}_historical_data.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+      <DialogContent className="max-w-5xl w-[85vw] h-[75vh] max-h-[700px] p-0 gap-0 flex flex-col">
+        <DialogHeader className="px-6 py-4 border-b shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <DialogTitle className="text-2xl font-bold">{title}</DialogTitle>
+              <DialogDescription className="text-sm mt-1">
+                Historical price data from Yahoo Finance
+                {asOf && (
+                  <span className="ml-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-green-500/10 text-green-600 text-xs font-semibold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                    LIVE
+                  </span>
+                )}
+              </DialogDescription>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={downloadCSV}
+              disabled={series.length === 0}
+              className="ml-4"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              CSV
+            </Button>
           </div>
-        </div>
-        <div className="h-[420px]">
+        </DialogHeader>
+
+        <div className="flex-1 p-6 overflow-hidden">
           {loading ? (
-            <div className="w-full h-full flex items-center justify-center text-muted-foreground">Loading series...</div>
+            <div className="w-full h-full flex flex-col items-center justify-center">
+              <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
+              <p className="text-muted-foreground">Loading historical data...</p>
+            </div>
           ) : series.length === 0 ? (
-            <div className="w-full h-full rounded bg-gradient-to-t from-blue-500/30 to-blue-300/5" aria-label="No data" />
+            <div className="w-full h-full flex items-center justify-center">
+              <div className="text-center">
+                <p className="text-xl text-muted-foreground font-medium">No data available</p>
+                <p className="text-sm text-muted-foreground/60 mt-2">
+                  Unable to load historical data for this symbol
+                </p>
+              </div>
+            </div>
           ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={series} margin={{ left: 8, right: 8, top: 8, bottom: 8 }}>
-                <defs>
-                  <linearGradient id="tickerGrad" x1="0" x2="0" y1="1" y2="0">
-                    <stop offset="0%" stopColor={fillFrom} />
-                    <stop offset="90%" stopColor={fillTo} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="rgba(120,120,120,0.15)" vertical={false} />
-                <XAxis dataKey="t" tick={{ fill: '#94a3b8', fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={48} />
-                <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} tickLine={false} axisLine={false} width={48} />
-                <Tooltip labelFormatter={(v:any)=>formatDate(v)} formatter={(v:any)=>[v,'']} wrapperStyle={{ fontVariantNumeric: 'tabular-nums' as any }}/>
-                <Area type="monotone" dataKey="v" stroke={stroke} fill="url(#tickerGrad)" strokeWidth={2} isAnimationActive dot={false} />
-              </AreaChart>
-            </ResponsiveContainer>
+            <div className="w-full h-full bg-card rounded-xl border p-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={series} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
+                  <XAxis
+                    dataKey="t"
+                    tickFormatter={(value) => {
+                      const date = new Date(value);
+                      return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short' });
+                    }}
+                    stroke="hsl(var(--muted-foreground))"
+                    fontSize={12}
+                    tickLine={false}
+                    minTickGap={50}
+                  />
+                  <YAxis
+                    stroke="hsl(var(--muted-foreground))"
+                    fontSize={12}
+                    tickLine={false}
+                    width={80}
+                    tickFormatter={(value) => value.toLocaleString()}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'hsl(var(--popover))',
+                      border: '1px solid hsl(var(--border))',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                    }}
+                    labelFormatter={(value) => formatDate(value)}
+                    formatter={(value: any) => [
+                      Number(value).toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      }),
+                      title,
+                    ]}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="v"
+                    stroke="hsl(var(--primary))"
+                    strokeWidth={2}
+                    fill="url(#colorValue)"
+                    animationDuration={300}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
           )}
         </div>
-      </div>
-    </div>
-  )
+      </DialogContent>
+    </Dialog>
+  );
 }
 
+// Market session hook
 function useUSMarketSession() {
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(true);
+  
   useEffect(() => {
     const check = () => {
-      const fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour12: false, weekday: 'short', hour: '2-digit', minute: '2-digit' })
-      const parts = Object.fromEntries(fmt.formatToParts(new Date()).map(p => [p.type, p.value])) as any
-      const wd = parts.weekday as string
-      const hm = `${parts.hour}:${parts.minute}`
-      const isWeekend = wd === 'Sat' || wd === 'Sun'
-      const marketOpen = !isWeekend && hm >= '09:30' && hm <= '16:00'
-      setOpen(marketOpen)
-    }
-    check()
-    const id = setInterval(check, 60_000)
-    return () => clearInterval(id)
-  }, [])
-  return open
+      const fmt = new Intl.DateTimeFormat('en-US', { 
+        timeZone: 'America/New_York', 
+        hour12: false, 
+        weekday: 'short', 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      });
+      const parts = Object.fromEntries(fmt.formatToParts(new Date()).map(p => [p.type, p.value])) as any;
+      const wd = parts.weekday as string;
+      const hm = `${parts.hour}:${parts.minute}`;
+      const isWeekend = wd === 'Sat' || wd === 'Sun';
+      const marketOpen = !isWeekend && hm >= '09:30' && hm <= '16:00';
+      setOpen(marketOpen);
+    };
+    
+    check();
+    const id = setInterval(check, 60_000);
+    return () => clearInterval(id);
+  }, []);
+  
+  return open;
 }
 
+// Main Market Ticker Component
 export default function MarketTicker() {
-  const marketOpen = useUSMarketSession()
-  const [indices, setIndices] = useState<IndexItem[]>([])
-  const [yields, setYields] = useState<YieldItem[]>([])
-  const [fx, setFx] = useState<FxItem[]>([])
-  const [overlay, setOverlay] = useState<{title: string; symbol?: string; fred?: string} | null>(null)
-  const [paused, setPaused] = useState(false)
-  const trackRef = useRef<HTMLDivElement | null>(null)
-  const listRef = useRef<HTMLDivElement | null>(null)
-  const [offset, setOffset] = useState(0) // negative px translateX
-  const speed = 40 // px/sec
+  const marketOpen = useUSMarketSession();
+  const [indices, setIndices] = useState<IndexItem[]>([]);
+  const [yields, setYields] = useState<YieldItem[]>([]);
+  const [fx, setFx] = useState<FxItem[]>([]);
+  const [asOf, setAsOf] = useState<string>('');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<{ title: string; symbol: string } | null>(null);
+  const [paused, setPaused] = useState(false);
+  
+  const trackRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [offset, setOffset] = useState(0);
+  const speed = 40; // pixels per second
 
+  // Load market data
   const load = async () => {
     try {
-      const [mm, em] = await Promise.all([
-        fetch('/api/finance/getMarketMetrics').then(r=>r.json()),
-        fetch('/api/finance/getEconomicMetrics').then(r=>r.json()),
-      ])
-      const idx = (mm.indices || []).map((q: any) => ({
+      // Detect if we're in admin section
+      const basePath = typeof window !== 'undefined' && window.location.pathname.startsWith('/admin') ? '/admin' : '';
+      console.log('[MarketTicker] Fetching market data from:', `${basePath}/api/finance/getMarketMetrics`);
+      
+      const response = await fetch(`${basePath}/api/finance/getMarketMetrics`);
+      const marketData = await response.json();
+      
+      console.log('[MarketTicker] Received data:', {
+        indices: marketData.indices?.length,
+        yields: marketData.yields?.length,
+        fx: marketData.fx?.length,
+        raw: marketData
+      });
+
+      const processedIndices = (marketData.indices || []).map((q: any) => ({
         name: prettyLabel(q.symbol || q.name),
         value: formatMetric(Number(q.value ?? 0), q.symbol || q.name),
         changePct: String(q.changePct ?? '0'),
         symbol: q.symbol,
-      }))
-      // Add VIX if not present
-      if (!idx.some((i:any)=>i.symbol==='^VIX') && Array.isArray(mm.indices)) {
-        // Try to compute VIX if provided via API in future; else skip
-      }
-      const yi = (mm.yields || []).map((q: any) => ({
+      }));
+
+      const processedYields = (marketData.yields || []).map((q: any) => ({
         name: prettyLabel(q.symbol),
         value: formatMetric(Number(q.value ?? 0), q.symbol),
         changePct: String(q.changePct ?? '0'),
         symbol: q.symbol,
-      }))
-      const fxItems = (mm.fx || []).map((q: any) => ({
+      }));
+
+      const processedFx = (marketData.fx || []).map((q: any) => ({
         pair: q.symbol,
         value: formatMetric(Number(q.value ?? 0), q.symbol),
         changePct: String(q.changePct ?? '0'),
-      }))
-      setIndices(idx)
-      setYields(yi as any)
-      setFx(fxItems)
-      // We still track freshness internally if needed for tooltips/overlay in future
-      // but do not display an as-of label on the marquee per request.
-    } catch {}
-  }
+      }));
 
-  useEffect(() => {
-    load()
-    // poll only during market session; otherwise backoff
-    const interval = marketOpen ? 15_000 : 5 * 60_000
-    const id = setInterval(() => { if (marketOpen) load() }, interval)
-    return () => clearInterval(id)
-  }, [marketOpen])
+      console.log('[MarketTicker] Processed:', {
+        indices: processedIndices,
+        yields: processedYields,
+        fx: processedFx
+      });
 
-  // Marquee animation using rAF with modulo wrap, preserving position across pauses/overlays
-  useEffect(() => {
-    let raf = 0
-    let last = performance.now()
-    const step = (t: number) => {
-      const list = listRef.current
-      if (!list) { raf = requestAnimationFrame(step); return }
-      const dt = Math.max(0, Math.min(100, t - last)) / 1000 // seconds, clamp to avoid jumps
-      last = t
-      if (!paused) {
-        const w = list.offsetWidth || 1
-        let next = offset - speed * dt
-        // modulo wrap: when left of first list more than its width, wrap forward by width
-        if (-next >= w) {
-          next = next + w
-        }
-        setOffset(next)
-      }
-      raf = requestAnimationFrame(step)
+      setIndices(processedIndices);
+      setYields(processedYields as any);
+      setFx(processedFx);
+      setAsOf(marketData.asOf || new Date().toISOString());
+      
+      console.log('[MarketTicker] State updated, hasData will be:', [...processedIndices, ...processedYields, ...processedFx].length > 0);
+    } catch (error) {
+      console.error('[MarketTicker] Error loading data:', error);
     }
-    raf = requestAnimationFrame(step)
-    return () => cancelAnimationFrame(raf)
-  }, [paused, offset])
+  };
+
+  useEffect(() => {
+    load();
+    const interval = marketOpen ? 15_000 : 5 * 60_000;
+    const id = setInterval(() => load(), interval);
+    return () => clearInterval(id);
+  }, [marketOpen]);
+
+  // Smooth marquee animation
+  useEffect(() => {
+    let raf = 0;
+    let last = performance.now();
+    let currentOffset = offset;
+
+    const step = (t: number) => {
+      const list = listRef.current;
+      if (!list) {
+        raf = requestAnimationFrame(step);
+        return;
+      }
+
+      const dt = (t - last) / 1000;
+      last = t;
+
+      if (!paused && dt < 0.1) {
+        const w = list.offsetWidth || 1;
+        currentOffset = currentOffset - speed * dt;
+
+        if (currentOffset <= -w) {
+          currentOffset = currentOffset + w;
+        }
+
+        if (trackRef.current) {
+          trackRef.current.style.transform = `translateX(${currentOffset}px)`;
+        }
+      }
+
+      raf = requestAnimationFrame(step);
+    };
+
+    raf = requestAnimationFrame(step);
+    return () => {
+      cancelAnimationFrame(raf);
+      setOffset(currentOffset);
+    };
+  }, [paused, speed]);
+
+  const allItems = [...indices, ...yields, ...fx];
+  const hasData = allItems.length > 0;
+
+  const handleItemClick = (title: string, symbol: string) => {
+    setSelectedItem({ title, symbol });
+    setModalOpen(true);
+  };
 
   return (
-    <div className="relative w-full overflow-hidden" onMouseEnter={()=>setPaused(true)} onMouseLeave={()=>setPaused(false)}>
-      {/* Track: duplicate stream for seamless circular marquee */}
-      <div ref={trackRef} className="flex whitespace-nowrap will-change-transform" style={{ transform: `translateX(${offset}px)` }}>
-        <div ref={listRef} className="flex" aria-hidden={false}>
-          {[...indices, ...yields as any, ...fx as any].map((it: any, i: number) => (
-            <TickerItem key={`a-${i}`} role="listitem" label={it.name || prettyLabel(it.symbol || it.pair)} value={it.value || ''} change={it.changePct || '0'} onClick={() => setOverlay({ title: (it.name || prettyLabel(it.symbol || it.pair)), symbol: it.symbol || it.pair })} />
-          ))}
-        </div>
-        <div className="flex" aria-hidden>
-          {[...indices, ...yields as any, ...fx as any].map((it: any, i: number) => (
-            <TickerItem key={`b-${i}`} role="listitem" label={it.name || prettyLabel(it.symbol || it.pair)} value={it.value || ''} change={it.changePct || '0'} onClick={() => setOverlay({ title: (it.name || prettyLabel(it.symbol || it.pair)), symbol: it.symbol || it.pair })} />
-          ))}
-        </div>
+    <>
+      <div 
+        className="relative w-full overflow-hidden bg-card/30 backdrop-blur-sm"
+        onMouseEnter={() => setPaused(true)}
+        onMouseLeave={() => setPaused(false)}
+      >
+        {!hasData ? (
+          <div className="flex items-center justify-center py-3">
+            <div className="animate-pulse text-sm text-muted-foreground">
+              Loading market data...
+            </div>
+          </div>
+        ) : (
+          <div ref={trackRef} className="flex whitespace-nowrap will-change-transform">
+            <div ref={listRef} className="flex">
+              {allItems.map((item: any, i: number) => (
+                <TickerItem
+                  key={`a-${i}`}
+                  label={item.name || prettyLabel(item.symbol || item.pair)}
+                  value={item.value || ''}
+                  change={item.changePct || '0'}
+                  onClick={() => handleItemClick(
+                    item.name || prettyLabel(item.symbol || item.pair),
+                    item.symbol || item.pair
+                  )}
+                />
+              ))}
+            </div>
+            <div className="flex" aria-hidden="true">
+              {allItems.map((item: any, i: number) => (
+                <TickerItem
+                  key={`b-${i}`}
+                  label={item.name || prettyLabel(item.symbol || item.pair)}
+                  value={item.value || ''}
+                  change={item.changePct || '0'}
+                  onClick={() => handleItemClick(
+                    item.name || prettyLabel(item.symbol || item.pair),
+                    item.symbol || item.pair
+                  )}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
-      {overlay && (
-        <Overlay
-          title={overlay.title}
-          onClose={()=>{ setOverlay(null); setPaused(false) }}
-          metricId={mapMetricId(overlay.symbol)}
-          rawSymbol={overlay.symbol}
-          fredSeries={mapFredSeries(overlay.symbol)}
+      {selectedItem && (
+        <ChartModal
+          open={modalOpen}
+          onClose={() => {
+            setModalOpen(false);
+            setPaused(false);
+          }}
+          title={selectedItem.title}
+          symbol={selectedItem.symbol}
+          asOf={asOf}
         />
       )}
-    </div>
-  )
-}
-
-// CSS keyframes via global layer (assumes Tailwind present)
-// We avoid touching global config; this relies on existing Tailwind setup.
-
-function mapMetricId(sym?: string) {
-  if (!sym) return sym
-  // Map Yahoo 5Y (^FVX) to our canonical DB metric id if present
-  if (sym === '^FVX') return 'ust_5y'
-  return sym
-}
-
-function mapFredSeries(sym?: string) {
-  if (!sym) return undefined
-  // FRED series mapping when we use DB metric aliases
-  if (sym === '^FVX') return 'DGS5'
-  return undefined
+    </>
+  );
 }

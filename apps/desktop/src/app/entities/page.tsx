@@ -6,6 +6,7 @@ import {
   Building2, 
   Users,
   ArrowRightLeft,
+  ArrowRight,
   Loader2,
   Shield,
   Lock,
@@ -17,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { DynamicOrgChart } from "@/components/entities/DynamicOrgChart"
+import { ModuleHeader } from "@ngi/ui/components/layout"
 
 interface Entity {
   id: number
@@ -100,8 +102,6 @@ export default function EntitiesPage() {
       }
     } catch (error) {
       console.error("Failed to fetch entities:", error)
-    } finally {
-      setLoading(false)
     }
   }, [])
 
@@ -129,8 +129,18 @@ export default function EntitiesPage() {
   }, [])
 
   useEffect(() => {
-    fetchEntities()
-    fetchEmployees()
+    const loadData = async () => {
+      setLoading(true)
+      try {
+        await Promise.all([fetchEntities(), fetchEmployees()])
+      } catch (error) {
+        console.error("Failed to load data:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    loadData()
   }, [fetchEntities, fetchEmployees])
 
   // Get entity display name (remove duplicate LLC/Corp)
@@ -233,23 +243,53 @@ export default function EntitiesPage() {
   }
 
   return (
-    <>
-      <div className="p-6 lg:p-8 space-y-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Entity Management</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage your business entities and organizational structure
-          </p>
-        </div>
+    <div className="flex flex-col h-full bg-background">
+      {/* Fixed header - consistent with Finance module */}
+      <ModuleHeader 
+        title="Organization Structure"
+      />
+      
+      {/* Scrollable content area */}
+      <div className="flex-1 overflow-auto">
+        <div className="p-6 lg:p-8 space-y-6">
 
         {/* Organization Chart */}
         <Card>
           <CardHeader>
-            <CardTitle>Organization Structure</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle>
+                {showOrgChart && selectedEntity ? 
+                  getEntityDisplayName(selectedEntity) : 
+                  'Organization Structure'
+                }
+              </CardTitle>
+              {showOrgChart && (
+                <button
+                  onClick={() => {
+                    setShowOrgChart(false)
+                    setSelectedEntity(null)
+                    setOrgChartData(null)
+                  }}
+                  className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
+                >
+                  <ArrowRight className="h-4 w-4 rotate-180" />
+                  Organization Structure
+                </button>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
-            {entities.length === 0 ? (
+            {showOrgChart ? (
+              // Show org chart in same position
+              <DynamicOrgChart 
+                data={orgChartData}
+                loading={loadingOrgChart}
+                expandedTeam={expandedTeam}
+                setExpandedTeam={setExpandedTeam}
+                expandedProject={expandedProject}
+                setExpandedProject={setExpandedProject}
+              />
+            ) : entities.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12">
                 <Building2 className="h-16 w-16 text-muted-foreground mb-4 opacity-50" />
                 <h3 className="text-lg font-semibold mb-2">No entities found</h3>
@@ -354,62 +394,9 @@ export default function EntitiesPage() {
           </CardContent>
         </Card>
 
-        {/* Conversion CTA */}
-        {subsidiaries.some(e => !e.is_available) && (
-          <Card className="border-orange-500/20 bg-orange-50/50 dark:bg-orange-950/20">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-orange-500/10 rounded-lg">
-                    <ArrowRightLeft className="h-6 w-6 text-orange-600" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-lg mb-1">Entity Conversion Pending</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Complete the LLC to C-Corp conversion to activate your subsidiary entities
-                    </p>
-                  </div>
-                </div>
-                <Button onClick={() => setShowConversionModal(true)} size="lg" className="bg-orange-600 hover:bg-orange-700">
-                  Start Conversion
-                  <ArrowRightLeft className="ml-2 h-4 w-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        </div>
       </div>
 
-      {/* Modern Organization Chart Modal - Click backdrop to close */}
-      <Dialog open={showOrgChart} onOpenChange={setShowOrgChart}>
-        <DialogContent 
-          hideClose
-          className="max-w-5xl w-[90vw] max-h-[85vh] overflow-y-auto bg-background/95 backdrop-blur-xl border shadow-2xl rounded-2xl p-0"
-          onPointerDownOutside={() => setShowOrgChart(false)}
-        >
-          <div className="sticky top-0 z-10 bg-gradient-to-r from-primary/5 via-background/95 to-primary/5 backdrop-blur-xl border-b px-8 py-5">
-            <div>
-              <h2 className="text-2xl font-bold tracking-tight">
-                {selectedEntity ? getEntityDisplayName(selectedEntity) : ""}
-              </h2>
-              <p className="text-sm text-muted-foreground mt-1">
-                {selectedEntity?.entity_type} • Organization Structure
-              </p>
-            </div>
-          </div>
-
-          <div className="px-8 pb-8">
-            <DynamicOrgChart 
-              data={orgChartData}
-              loading={loadingOrgChart}
-              expandedTeam={expandedTeam}
-              setExpandedTeam={setExpandedTeam}
-              expandedProject={expandedProject}
-              setExpandedProject={setExpandedProject}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Conversion Workflow Modal */}
       <Dialog open={showConversionModal} onOpenChange={setShowConversionModal}>
@@ -507,6 +494,6 @@ export default function EntitiesPage() {
           </div>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   )
 }

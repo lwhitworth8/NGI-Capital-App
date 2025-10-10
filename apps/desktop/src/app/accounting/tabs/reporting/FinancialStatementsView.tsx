@@ -299,7 +299,7 @@ export default function FinancialStatementsView() {
               {/* Notes to Financial Statements */}
               <TabsContent value="notes" className="mt-0">
                 <NotesManager 
-                  entityId={selectedEntityId} 
+                  entityId={selectedEntityId || 0} 
                   statementType="balance_sheet"
                   onNotesChange={setNotes}
                 />
