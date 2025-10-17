@@ -13,7 +13,6 @@ const IS_STANDALONE = (process.env.ADMIN_STANDALONE_DOMAIN || '0') === '1'
 const path = require('path')
 
 const nextConfig = {
-  outputFileTracingRoot: __dirname,
   // Only apply basePath when NOT on a standalone admin domain
   ...(IS_STANDALONE ? {} : { basePath: '/admin' }),
   transpilePackages: ['@ngi/ui', '@openai/chatkit-react'],
@@ -75,6 +74,7 @@ const nextConfig = {
   },
   experimental: {
     externalDir: true,
+    outputFileTracingRoot: __dirname,
   },
   webpack: (config) => {
     const path = require('path')

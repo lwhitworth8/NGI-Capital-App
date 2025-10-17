@@ -6,7 +6,6 @@ const BACKEND_ORIGIN = process.env.BACKEND_ORIGIN || (process.env.NODE_ENV === '
 const path = require('path')
 
 const nextConfig = {
-  outputFileTracingRoot: __dirname,
   typescript: { ignoreBuildErrors: true },
   eslint: { ignoreDuringBuilds: true },
   output: 'standalone',
@@ -28,6 +27,7 @@ const nextConfig = {
   },
   experimental: {
     externalDir: true,
+    outputFileTracingRoot: __dirname,
   },
   webpack: (config) => {
     const path = require('path')
