@@ -29,9 +29,7 @@
       "@/lib/*": ["./src/lib/*"],
       "@/app/*": ["./src/app/*"],
       "@/types/*": ["./src/types/*"],
-      "@/hooks/*": ["./src/hooks/*"],
-      "@ngi/ui": ["./src/ngi-ui-shim/index.ts"],
-      "@ngi/ui/*": ["./src/ngi-ui-shim/*"]
+      "@/hooks/*": ["./src/hooks/*"]
     }
   },
   "include": [
