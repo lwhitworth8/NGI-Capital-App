@@ -3,7 +3,7 @@ const BACKEND_ORIGIN = process.env.BACKEND_ORIGIN || (process.env.NODE_ENV === '
   ? (process.env.NEXT_PUBLIC_API_URL || 'https://api.ngicapitaladvisory.com')
   : 'http://localhost:8002')
 
-const nextConfig = {
+const path = require('path')\n\nconst nextConfig = {\n  outputFileTracingRoot: __dirname,
   typescript: { ignoreBuildErrors: true },
   eslint: { ignoreDuringBuilds: true },
   output: 'standalone',

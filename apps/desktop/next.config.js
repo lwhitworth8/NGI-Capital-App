@@ -10,7 +10,7 @@ const BACKEND_ORIGIN = process.env.BACKEND_ORIGIN || (process.env.NODE_ENV === '
 // Toggle this with ADMIN_STANDALONE_DOMAIN=1 in the environment.
 const IS_STANDALONE = (process.env.ADMIN_STANDALONE_DOMAIN || '0') === '1'
 
-const nextConfig = {
+const path = require('path')\n\nconst nextConfig = {\n  outputFileTracingRoot: __dirname,
   // Only apply basePath when NOT on a standalone admin domain
   ...(IS_STANDALONE ? {} : { basePath: '/admin' }),
   transpilePackages: ['@ngi/ui', '@openai/chatkit-react'],
