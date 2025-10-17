@@ -7,7 +7,6 @@ const nextConfig = {
   typescript: { ignoreBuildErrors: true },
   eslint: { ignoreDuringBuilds: true },
   output: 'standalone',
-  transpilePackages: ['@ngi/ui'],
   // Note: Next.js 14 does not support trustHostHeader; rely on nginx proxy headers
   async rewrites() {
     return [
@@ -26,6 +25,16 @@ const nextConfig = {
   experimental: {
     externalDir: true,
   },
+  webpack: (config) => {
+    const path = require('path')
+    config.resolve = config.resolve || {}
+    config.resolve.alias = config.resolve.alias || {}
+    // Keep shim only for top-level '@ngi/ui' where needed
+    config.resolve.alias['@ngi/ui'] = path.resolve(__dirname, 'src/ngi-ui-shim')
+    // Use the original shared UI layout components for the real sidebar/navbar
+    config.resolve.alias['@ngi/ui/components/layout'] = path.resolve(__dirname, '../../packages/ui/src/components/layout')
+    return config
+  }
 }
 module.exports = nextConfig
 

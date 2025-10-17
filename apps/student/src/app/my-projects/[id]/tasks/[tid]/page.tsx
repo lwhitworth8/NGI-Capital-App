@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useUser } from '@clerk/nextjs'
 import Link from 'next/link'
 import { listTaskComments, postTaskComment, submitTask, type TaskComment } from '@/lib/api'
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@ngi/ui'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 
 export default function TaskDetailPage({ params }: { params: { id: string, tid: string } }) {
   const pid = Number(params.id)

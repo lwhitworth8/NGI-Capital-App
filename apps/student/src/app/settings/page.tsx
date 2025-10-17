@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@ngi/ui'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { useTheme } from 'next-themes';
 import { useUser } from '@clerk/nextjs';
 import { ModuleHeader } from '@ngi/ui/components/layout';
-import { Label } from '@ngi/ui/components/label';
-import { Input } from '@ngi/ui/components/input';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { 
   Moon, 
   Sun, 
@@ -711,4 +711,3 @@ export default function Settings() {
     </div>
   );
 }
-

@@ -9,11 +9,11 @@ import ImageCropModal from './ImageCropModal'
 import { advisoryUploadProjectHero, advisoryUploadProjectShowcase, advisoryUploadProjectLogo, advisoryAddAssignment } from '@/lib/api'
 import { UC_MAJORS, MAJOR_ALIASES } from '@/lib/uc-majors'
 import { addWeeks, weeksBetween, formatDateTimePST } from '@/lib/timezone'
-import { Button } from '@ngi/ui/components/button'
-import { Textarea } from '@ngi/ui/components/textarea'
-import { Label } from '@ngi/ui/components/label'
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@ngi/ui/components/card'
-import { Popover, PopoverTrigger, PopoverContent } from '@ngi/ui/components/popover'
+import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card'
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 
 interface ProjectEditorModalProps {
   isOpen: boolean
@@ -1448,8 +1448,6 @@ export function ProjectEditorModal({
     </AnimatePresence>
   )
 }
-
-
 
 
 

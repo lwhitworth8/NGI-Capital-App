@@ -720,4 +720,3 @@ function LearningWorkflowView({
     </div>
   )
 }
-
