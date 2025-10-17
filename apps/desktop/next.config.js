@@ -74,7 +74,6 @@ const nextConfig = {
   },
   experimental: {
     externalDir: true,
-    outputFileTracingRoot: __dirname,
   },
   webpack: (config) => {
     const path = require('path')
