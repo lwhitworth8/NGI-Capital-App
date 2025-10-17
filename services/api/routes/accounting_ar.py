@@ -7,7 +7,7 @@ Date: October 10, 2025
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func, desc
 from typing import List, Optional
@@ -21,9 +21,9 @@ logger = logging.getLogger(__name__)
 
 from ..database_async import get_async_db
 from ..models_ar import Customer, Invoice, InvoiceLine, InvoicePayment
-from ..services.invoice_generator import generate_invoice_pdf
+from ..services.invoice_generator import generate_invoice_pdf, generate_invoice_preview_pdf
 from ..models_accounting import (
-    JournalEntry, JournalEntryLine, ChartOfAccounts, JournalEntryAttachment
+    JournalEntry, JournalEntryLine, ChartOfAccounts, JournalEntryAttachment, AccountingEntity
 )
 from ..models_accounting_part2 import AccountingDocument
 from sqlalchemy import select as sa_select
@@ -87,6 +87,7 @@ class InvoiceCreate(BaseModel):
     tax_rate: Optional[Decimal] = None
     memo: Optional[str] = None
     internal_notes: Optional[str] = None
+    status: str = "draft"
 
 
 class InvoicePaymentCreate(BaseModel):
@@ -463,7 +464,7 @@ async def create_invoice(
             tax_amount=tax_amount,
             total_amount=total_amount,
             amount_due=total_amount,
-            status="draft",
+            status=invoice_data.status,
             memo=invoice_data.memo,
             internal_notes=invoice_data.internal_notes,
             created_by_email="system@ngicapitaladvisory.com",  # TODO: Get from auth
@@ -1095,6 +1096,71 @@ async def ar_summary_dashboard(
         }
     except Exception as e:
         logger.error(f"Error generating AR summary: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/invoices/preview")
+async def preview_invoice_pdf(
+    entity_id: int,
+    invoice_data: InvoiceCreate,
+    db: AsyncSession = Depends(get_async_db)
+):
+    """Generate a preview PDF for invoice data without saving to database"""
+    try:
+        # Create a temporary invoice object for PDF generation
+        temp_invoice = Invoice(
+            id=0,  # Temporary ID
+            entity_id=entity_id,
+            customer_id=invoice_data.customer_id,
+            invoice_number="PREVIEW-001",
+            invoice_date=invoice_data.invoice_date,
+            due_date=invoice_data.due_date,
+            payment_terms=invoice_data.payment_terms,
+            tax_rate=invoice_data.tax_rate,
+            memo=invoice_data.memo,
+            status="draft"
+        )
+        
+        # Fetch customer
+        customer_result = await db.execute(
+            select(Customer).where(Customer.id == invoice_data.customer_id)
+        )
+        customer = customer_result.scalar_one()
+        
+        # Fetch entity
+        entity_result = await db.execute(
+            select(AccountingEntity).where(AccountingEntity.id == entity_id)
+        )
+        entity = entity_result.scalar_one()
+        
+        # Create temporary invoice lines
+        temp_lines = []
+        for i, line_data in enumerate(invoice_data.lines):
+            line_amount = line_data.amount
+            if line_amount is None:
+                line_amount = (line_data.quantity or 0) * (line_data.unit_price or 0)
+            
+            temp_line = InvoiceLine(
+                id=0,
+                invoice_id=0,
+                line_number=i + 1,
+                description=line_data.description,
+                quantity=line_data.quantity,
+                unit_price=line_data.unit_price,
+                total_amount=line_amount
+            )
+            temp_lines.append(temp_line)
+        
+        # Generate preview PDF using the existing generator
+        pdf_content = await generate_invoice_preview_pdf(temp_invoice, customer, entity, temp_lines)
+        
+        return Response(
+            content=pdf_content,
+            media_type="application/pdf",
+            headers={"Content-Disposition": "inline; filename=invoice-preview.pdf"}
+        )
+    except Exception as e:
+        logger.error(f"Error generating invoice preview: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

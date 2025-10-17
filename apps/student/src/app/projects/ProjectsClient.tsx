@@ -8,7 +8,7 @@ import ModernProjectCard from '@/components/projects/ModernProjectCard'
 import { StudentProjectModal } from '@/components/projects/StudentProjectModal'
 import { listMyApplications } from '@/lib/api'
 import MyApplicationsModal from '@/components/projects/MyApplicationsModal'
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@ngi/ui'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { gsap } from 'gsap'
 import { useEffect, useRef } from 'react'
 

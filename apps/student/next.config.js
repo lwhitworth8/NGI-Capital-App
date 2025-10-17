@@ -29,10 +29,8 @@ const nextConfig = {
     const path = require('path')
     config.resolve = config.resolve || {}
     config.resolve.alias = config.resolve.alias || {}
-    // Keep shim only for top-level '@ngi/ui' where needed
-    config.resolve.alias['@ngi/ui'] = path.resolve(__dirname, 'src/ngi-ui-shim')
-    // Use the original shared UI layout components for the real sidebar/navbar
-    config.resolve.alias['@ngi/ui/components/layout'] = path.resolve(__dirname, '../../packages/ui/src/components/layout')
+    delete config.resolve.alias['@ngi/ui']
+    delete config.resolve.alias['@ngi/ui/components/layout']
     return config
   }
 }

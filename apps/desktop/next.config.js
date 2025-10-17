@@ -77,10 +77,9 @@ const nextConfig = {
     const path = require('path')
     config.resolve = config.resolve || {}
     config.resolve.alias = config.resolve.alias || {}
-    // Keep shim only for top-level '@ngi/ui' (AnimatedText etc.)
-    config.resolve.alias['@ngi/ui'] = path.resolve(__dirname, 'src/ngi-ui-shim')
-    // Route layout components back to the original shared UI (restores original sidebar/navbar)
-    config.resolve.alias['@ngi/ui/components/layout'] = path.resolve(__dirname, '../../packages/ui/src/components/layout')
+    // Remove any sidebar shims; use shared UI package as-is
+    delete config.resolve.alias['@ngi/ui']
+    delete config.resolve.alias['@ngi/ui/components/layout']
     return config
   },
 }

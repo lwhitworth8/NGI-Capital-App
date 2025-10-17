@@ -47,9 +47,11 @@ import {
   Loader2,
   Edit,
   CreditCard,
+  Trash2,
 } from 'lucide-react';
 import { useEntityContext } from '@/hooks/useEntityContext';
 import { toast } from 'sonner';
+import { InvoicePDFPreview } from '@/components/accounting/InvoicePDFPreview';
 
 interface Customer {
   id: number;
@@ -108,6 +110,7 @@ interface InvoiceFormData {
   lines: InvoiceLine[];
   tax_rate: number | null;
   memo: string;
+  status: 'draft' | 'sent';
 }
 
 interface RevenueAccount {
@@ -126,6 +129,8 @@ export default function AccountsReceivableTab() {
   const [editCustomerModalOpen, setEditCustomerModalOpen] = useState(false);
   const [editingCustomerId, setEditingCustomerId] = useState<number | null>(null);
   const [createInvoiceModalOpen, setCreateInvoiceModalOpen] = useState(false);
+  const [editInvoiceModalOpen, setEditInvoiceModalOpen] = useState(false);
+  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [recordPaymentModalOpen, setRecordPaymentModalOpen] = useState(false);
   const [recordPaymentInvoice, setRecordPaymentInvoice] = useState<Invoice | null>(null);
   const [customerSearchTerm, setCustomerSearchTerm] = useState('');
@@ -158,6 +163,7 @@ export default function AccountsReceivableTab() {
     lines: [{ description: '', quantity: 1, unit_price: 0, amount: null, revenue_account_id: undefined }],
     tax_rate: null,
     memo: '',
+    status: 'draft',
   });
 
   const [revenueAccounts, setRevenueAccounts] = useState<RevenueAccount[]>([]);
@@ -487,6 +493,119 @@ export default function AccountsReceivableTab() {
     } catch (error) {
       console.error('Failed to download invoice PDF:', error);
       toast.error('Failed to download invoice PDF');
+    }
+  };
+
+  const handleDeleteInvoice = async (invoiceId: number, invoiceNumber: string) => {
+    if (!confirm(`Are you sure you want to delete invoice ${invoiceNumber}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/accounting/ar/invoices/${invoiceId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        toast.success('Invoice deleted successfully');
+        // Refresh the invoices list
+        await fetchInvoices();
+      } else {
+        const errorData = await response.json();
+        toast.error(errorData.detail || 'Failed to delete invoice');
+      }
+    } catch (error) {
+      console.error('Error deleting invoice:', error);
+      toast.error('Failed to delete invoice');
+    }
+  };
+
+  const handleEditInvoice = async (invoice: Invoice) => {
+    try {
+      // Fetch the full invoice details including lines
+      const response = await fetch(`/api/accounting/ar/invoices/${invoice.id}`);
+      if (response.ok) {
+        const data = await response.json();
+        const fullInvoice = data.invoice;
+        
+        // Convert invoice lines to the form format
+        const lines = fullInvoice.lines?.map((line: any) => ({
+          description: line.description || '',
+          quantity: line.quantity || 1,
+          unit_price: line.unit_price || 0,
+          amount: line.total_amount || null,
+          revenue_account_id: line.revenue_account_id
+        })) || [{ description: '', quantity: 1, unit_price: 0, amount: null, revenue_account_id: undefined }];
+
+        // Set the form data
+        setInvoiceForm({
+          customer_id: fullInvoice.customer_id,
+          invoice_date: fullInvoice.invoice_date,
+          due_date: fullInvoice.due_date,
+          payment_terms: fullInvoice.payment_terms || 'Net 30',
+          lines: lines,
+          tax_rate: fullInvoice.tax_rate,
+          memo: fullInvoice.memo || '',
+          status: fullInvoice.status
+        });
+
+        // Set editing state
+        setEditingInvoice(fullInvoice);
+        setEditInvoiceModalOpen(true);
+      } else {
+        toast.error('Failed to load invoice details');
+      }
+    } catch (error) {
+      console.error('Error loading invoice:', error);
+      toast.error('Failed to load invoice details');
+    }
+  };
+
+  const handleUpdateInvoice = async () => {
+    if (!editingInvoice || !selectedEntityId || !invoiceForm.customer_id) {
+      toast.error('Customer is required');
+      return;
+    }
+
+    if (invoiceForm.lines.length === 0 || !invoiceForm.lines[0].description) {
+      toast.error('At least one line item is required');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const response = await fetch(`/api/accounting/ar/invoices/${editingInvoice.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(invoiceForm),
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        toast.success(`Invoice ${editingInvoice.invoice_number} updated successfully`);
+        setEditInvoiceModalOpen(false);
+        setEditingInvoice(null);
+        fetchInvoices();
+        
+        // Reset form
+        setInvoiceForm({
+          customer_id: null,
+          invoice_date: new Date().toISOString().split('T')[0],
+          due_date: null,
+          payment_terms: 'Net 30',
+          lines: [{ description: '', quantity: 1, unit_price: 0, amount: null, revenue_account_id: undefined }],
+          tax_rate: null,
+          memo: '',
+          status: 'draft',
+        });
+      } else {
+        toast.error(data.detail || 'Failed to update invoice');
+      }
+    } catch (error) {
+      console.error('Error updating invoice:', error);
+      toast.error('Failed to update invoice');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -1037,6 +1156,23 @@ export default function AccountsReceivableTab() {
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
+                          <Label>Invoice Status</Label>
+                          <Select
+                            value={invoiceForm.status}
+                            onValueChange={(value: 'draft' | 'sent') => setInvoiceForm({...invoiceForm, status: value})}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="draft">Draft (Save for later editing)</SelectItem>
+                              <SelectItem value="sent">Approved & Ready to Send</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
                           <Label>Invoice Date *</Label>
                           <Input 
                             type="date"
@@ -1197,95 +1333,18 @@ export default function AccountsReceivableTab() {
                          />
                       </div>
 
-                      {/* Live Invoice Preview */}
+                      {/* Live PDF Preview */}
                       <div className="mt-6 border rounded-lg p-4 bg-muted/30">
                         <div className="flex items-center justify-between mb-3">
-                          <div className="text-sm font-semibold">Invoice Preview</div>
-                          <div className="text-xs text-muted-foreground">PDF generated after save</div>
+                          <div className="text-sm font-semibold">Live PDF Preview</div>
+                          <div className="text-xs text-muted-foreground">Real-time PDF generation</div>
                         </div>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <div className="font-medium">Bill To</div>
-                            <div className="text-muted-foreground">
-                              {customers.find(c => c.id === invoiceForm.customer_id)?.customer_name || 'Select customer'}
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-medium">NGI CAPITAL</div>
-                            <div className="text-xs text-muted-foreground">{entityName || ' '}</div>
-                            <div className="mt-2">Invoice #: {previewInvoiceNumber || 'Pending'}</div>
-                            <div>Invoice Date: {invoiceForm.invoice_date || '-'}</div>
-                            <div>Due Date: {invoiceForm.due_date || '-'}</div>
-                          </div>
-                        </div>
-                        <div className="mt-4">
-                          {(() => {
-                            const allAmountOnly = invoiceForm.lines.every(ln => (ln.amount !== null && ln.amount !== undefined) || (ln.quantity === 0 || ln.unit_price === 0));
-                            if (allAmountOnly) {
-                              return (
-                                <>
-                                  <div className="grid grid-cols-12 text-xs font-medium text-muted-foreground px-2">
-                                    <div className="col-span-10">Description</div>
-                                    <div className="col-span-2 text-right">Amount</div>
-                                  </div>
-                                  {invoiceForm.lines.map((ln, i) => (
-                                    <div key={i} className="grid grid-cols-12 px-2 py-1 border-t">
-                                      <div className="col-span-10">{ln.description || <span className="text-muted-foreground">(No description)</span>}</div>
-                                      <div className="col-span-2 text-right">{fmtCurrency(calculateLineAmount(ln))}</div>
-                                    </div>
-                                  ))}
-                                </>
-                              );
-                            }
-                            return (
-                              <>
-                                <div className="grid grid-cols-12 text-xs font-medium text-muted-foreground px-2">
-                                  <div className="col-span-7">Description</div>
-                                  <div className="col-span-2 text-right">Qty</div>
-                                  <div className="col-span-1 text-right">Rate</div>
-                                  <div className="col-span-2 text-right">Amount</div>
-                                </div>
-                                {invoiceForm.lines.map((ln, i) => (
-                                  <div key={i} className="grid grid-cols-12 px-2 py-1 border-t">
-                                    <div className="col-span-7">{ln.description || <span className="text-muted-foreground">(No description)</span>}</div>
-                                    <div className="col-span-2 text-right">{(ln.quantity || 0).toFixed(2)}</div>
-                                    <div className="col-span-1 text-right">{(ln.unit_price || 0).toFixed(2)}</div>
-                                    <div className="col-span-2 text-right">{fmtCurrency(calculateLineAmount(ln))}</div>
-                                  </div>
-                                ))}
-                              </>
-                            );
-                          })()}
-                          <div className="border-t mt-2 pt-2">
-                            <div className="flex justify-end text-sm">
-                              <div className="w-64 space-y-1">
-                                {(() => {
-                                  const subtotal = calculateInvoiceSubtotal();
-                                  const tax = (invoiceForm.tax_rate || 0) * subtotal / 100;
-                                  const showTax = !!invoiceForm.tax_rate && tax > 0;
-                                  const singleLine = invoiceForm.lines.length === 1;
-                                  const showSubtotal = !(singleLine && !showTax);
-                                  return (
-                                    <>
-                                      {showSubtotal && (<div className="flex justify-between"><span>Subtotal</span><span>{fmtCurrency(subtotal)}</span></div>)}
-                                      {showTax && (<div className="flex justify-between text-muted-foreground"><span>Tax</span><span>{fmtCurrency(tax)}</span></div>)}
-                                      <div className="flex justify-between font-semibold"><span>Total</span><span>{fmtCurrency(subtotal + tax)}</span></div>
-                                    </>
-                                  );
-                                })()}
-                              </div>
-                            </div>
-                          </div>
-                          {remittance && (
-                            <div className="mt-4 text-xs text-muted-foreground">
-                              <div className="font-medium text-foreground mb-1">Remit To (ACH/Wire)</div>
-                              <div>Bank: {remittance.bank_name || '-'}</div>
-                              <div>Account Name: {remittance.account_name || '-'}</div>
-                              {remittance.routing_number && (<div>Routing: {remittance.routing_number}</div>)}
-                              {remittance.account_number_masked && (<div>Account: {remittance.account_number_masked}</div>)}
-                              <div className="mt-1">Please include Invoice # in payment memo</div>
-                            </div>
-                          )}
+                        <div className="min-h-[400px]">
+                          <InvoicePDFPreview 
+                            invoiceData={invoiceForm}
+                            entityId={selectedEntityId}
+                            className="w-full h-full"
+                          />
                         </div>
                       </div>
 
@@ -1312,7 +1371,235 @@ export default function AccountsReceivableTab() {
                       </Button>
                       <Button onClick={handleCreateInvoice} disabled={submitting}>
                         {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Create Invoice & Generate PDF
+                        {invoiceForm.status === 'draft' ? 'Save as Draft' : 'Create Invoice & Generate PDF'}
+                      </Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+
+                {/* Edit Invoice Modal */}
+                <Dialog open={editInvoiceModalOpen} onOpenChange={setEditInvoiceModalOpen}>
+                  <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                      <DialogTitle>Edit Invoice {editingInvoice?.invoice_number}</DialogTitle>
+                      <DialogDescription>Edit draft invoice details and change status</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Customer *</Label>
+                          <Select
+                            value={invoiceForm.customer_id?.toString() || ''}
+                            onValueChange={(value) => setInvoiceForm({...invoiceForm, customer_id: parseInt(value)})}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select customer" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {customers.filter(c => c.is_active).map(c => (
+                                <SelectItem key={c.id} value={c.id.toString()}>{c.customer_name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Payment Terms (optional)</Label>
+                          <Select
+                            value={invoiceForm.payment_terms}
+                            onValueChange={(value) => setInvoiceForm({...invoiceForm, payment_terms: value})}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Net 15">Net 15</SelectItem>
+                              <SelectItem value="Net 30">Net 30</SelectItem>
+                              <SelectItem value="Net 60">Net 60</SelectItem>
+                              <SelectItem value="Due on Receipt">Due on Receipt</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Invoice Status</Label>
+                          <Select
+                            value={invoiceForm.status}
+                            onValueChange={(value: 'draft' | 'sent') => setInvoiceForm({...invoiceForm, status: value})}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="draft">Draft (Save for later editing)</SelectItem>
+                              <SelectItem value="sent">Approved & Ready to Send</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Invoice Date *</Label>
+                          <Input 
+                            type="date"
+                            value={invoiceForm.invoice_date}
+                            onChange={(e) => setInvoiceForm({...invoiceForm, invoice_date: e.target.value})}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Due Date *</Label>
+                          <Input 
+                            type="date"
+                            value={invoiceForm.due_date || ''}
+                            onChange={(e) => setInvoiceForm({...invoiceForm, due_date: e.target.value})}
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Tax Rate (%) [optional]</Label>
+                          <Input 
+                            type="number"
+                            step="0.01"
+                            value={invoiceForm.tax_rate || ''}
+                            onChange={(e) => setInvoiceForm({...invoiceForm, tax_rate: parseFloat(e.target.value) || null})}
+                            placeholder="9.5"
+                          />
+                        </div>
+                      </div>
+                      
+                      {/* Line Items */}
+                      <div className="space-y-2">
+                        <Label>Line Items *</Label>
+                        {invoiceForm.lines.map((line, index) => (
+                          <div key={index} className="grid grid-cols-12 gap-2 items-end">
+                            <div className="col-span-5">
+                              <Input
+                                placeholder="Description"
+                                value={line.description}
+                                onChange={(e) => {
+                                  const newLines = [...invoiceForm.lines];
+                                  newLines[index].description = e.target.value;
+                                  setInvoiceForm({...invoiceForm, lines: newLines});
+                                }}
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <Input
+                                type="number"
+                                step="0.01"
+                                placeholder="Qty"
+                                value={line.quantity || ''}
+                                onChange={(e) => {
+                                  const newLines = [...invoiceForm.lines];
+                                  newLines[index].quantity = parseFloat(e.target.value) || 0;
+                                  setInvoiceForm({...invoiceForm, lines: newLines});
+                                }}
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <Input
+                                type="number"
+                                step="0.01"
+                                placeholder="Rate"
+                                value={line.unit_price || ''}
+                                onChange={(e) => {
+                                  const newLines = [...invoiceForm.lines];
+                                  newLines[index].unit_price = parseFloat(e.target.value) || 0;
+                                  setInvoiceForm({...invoiceForm, lines: newLines});
+                                }}
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <Input
+                                type="number"
+                                step="0.01"
+                                placeholder="Amount"
+                                value={line.amount || ''}
+                                onChange={(e) => {
+                                  const newLines = [...invoiceForm.lines];
+                                  newLines[index].amount = parseFloat(e.target.value) || null;
+                                  setInvoiceForm({...invoiceForm, lines: newLines});
+                                }}
+                              />
+                            </div>
+                            <div className="col-span-1">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  const newLines = invoiceForm.lines.filter((_, i) => i !== index);
+                                  setInvoiceForm({...invoiceForm, lines: newLines});
+                                }}
+                                disabled={invoiceForm.lines.length === 1}
+                              >
+                                ×
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setInvoiceForm({
+                            ...invoiceForm,
+                            lines: [...invoiceForm.lines, { description: '', quantity: 1, unit_price: 0, amount: null, revenue_account_id: undefined }]
+                          })}
+                        >
+                          + Add Line
+                        </Button>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Memo (optional)</Label>
+                        <Textarea
+                          placeholder="Additional notes or terms..."
+                          value={invoiceForm.memo}
+                          onChange={(e) => setInvoiceForm({...invoiceForm, memo: e.target.value})}
+                         />
+                      </div>
+
+                      {/* Live PDF Preview */}
+                      <div className="mt-6 border rounded-lg p-4 bg-muted/30">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="text-sm font-semibold">Live PDF Preview</div>
+                          <div className="text-xs text-muted-foreground">Real-time PDF generation</div>
+                        </div>
+                        <div className="min-h-[400px]">
+                          <InvoicePDFPreview 
+                            invoiceData={invoiceForm}
+                            entityId={selectedEntityId}
+                            className="w-full h-full"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="bg-muted p-4 rounded-lg space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span>Subtotal:</span>
+                          <span className="font-semibold">${calculateInvoiceSubtotal().toFixed(2)}</span>
+                        </div>
+                        {invoiceForm.tax_rate && (
+                          <div className="flex justify-between text-sm">
+                            <span>Tax ({invoiceForm.tax_rate}%):</span>
+                            <span className="font-semibold">${(calculateInvoiceSubtotal() * (invoiceForm.tax_rate / 100)).toFixed(2)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between text-sm font-bold">
+                          <span>Total:</span>
+                          <span>${(calculateInvoiceSubtotal() + (invoiceForm.tax_rate ? calculateInvoiceSubtotal() * (invoiceForm.tax_rate / 100) : 0)).toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setEditInvoiceModalOpen(false)} disabled={submitting}>
+                        Cancel
+                      </Button>
+                      <Button onClick={handleUpdateInvoice} disabled={submitting}>
+                        {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        {invoiceForm.status === 'draft' ? 'Save as Draft' : 'Update & Mark as Ready'}
                       </Button>
                     </DialogFooter>
                   </DialogContent>
@@ -1382,6 +1669,27 @@ export default function AccountsReceivableTab() {
                               >
                                 <CreditCard className="h-4 w-4" />
                               </Button>
+                              {invoice.status === 'draft' && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleEditInvoice(invoice)}
+                                    title="Edit Draft Invoice"
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteInvoice(invoice.id, invoice.invoice_number)}
+                                    title="Delete Draft Invoice"
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>

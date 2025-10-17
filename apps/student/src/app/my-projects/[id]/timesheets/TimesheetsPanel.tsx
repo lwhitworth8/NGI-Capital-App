@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useUser } from '@clerk/nextjs'
 import { getMyTimesheet, saveTimesheetEntry, listMyTasks, type ProjectTask } from '@/lib/api'
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@ngi/ui'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 
 function startOfWeek(d: Date) {
   const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))

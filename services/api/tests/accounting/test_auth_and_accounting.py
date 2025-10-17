@@ -373,4 +373,5 @@ async def test_invoice_workflow_complete(client, test_db, test_entity, test_char
     
     # Verify final status
     final_resp = await client.get(f"/api/accounting/ar/invoices/{invoice_id}")
-    assert final_resp.json()["invoice"]["status"] ==
+    assert final_resp.json()["invoice"]["status"] == "paid"
+
