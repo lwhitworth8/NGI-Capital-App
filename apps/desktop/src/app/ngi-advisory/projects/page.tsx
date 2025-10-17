@@ -14,7 +14,7 @@ import ProjectDetailModal from '@/components/advisory/ProjectDetailModal'
 import { ProjectEditorModal } from '@/components/advisory/ProjectEditorModal'
 import { AdvisoryLayout } from '@/components/advisory/AdvisoryLayout'
 // Use the same shadcn/radix Select used in student app
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@ngi/ui'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select'
 import { AnimatedText } from '@ngi/ui/components/animated'
 
 // Known client registry (name -> logo URL) - using Clearbit Logo API

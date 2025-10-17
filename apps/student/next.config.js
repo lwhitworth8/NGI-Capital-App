@@ -7,6 +7,7 @@ const nextConfig = {
   typescript: { ignoreBuildErrors: true },
   eslint: { ignoreDuringBuilds: true },
   output: 'standalone',
+  transpilePackages: ['@ngi/ui'],
   // Note: Next.js 14 does not support trustHostHeader; rely on nginx proxy headers
   async rewrites() {
     return [
@@ -35,4 +36,3 @@ const nextConfig = {
   }
 }
 module.exports = nextConfig
-
