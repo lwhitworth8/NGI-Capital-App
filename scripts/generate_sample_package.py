@@ -9,7 +9,7 @@ import os
 # Add parent directory to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.api.learning.excel_generator import ExcelPackageGenerator
+from services.api.learning.excel_generator import ExcelPackageGenerator
 
 
 def generate_tsla_package():

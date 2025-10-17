@@ -10,9 +10,9 @@ import os
 # Add parent directory to path to import from src
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.api.database import get_db, _ensure_engine
-from src.api.models import Base
-from src.api.models_learning import LearningCompany
+from services.api.database import get_db, _ensure_engine
+from services.api.models import Base
+from services.api.models_learning import LearningCompany
 from datetime import datetime
 
 
@@ -181,8 +181,8 @@ def seed_learning_companies():
     
     # Create tables if they don't exist
     print("Creating tables...")
-    from src.api.models import Base
-    from src.api.database import _engine
+    from services.api.models import Base
+    from services.api.database import _engine
     Base.metadata.create_all(bind=_engine)
     
     # Get database session

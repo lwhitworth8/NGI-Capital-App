@@ -1,6 +1,6 @@
 import os
 from sqlalchemy import create_engine, text as sa_text
-from src.api.config import get_database_path
+from services.api.config import get_database_path
 
 def main():
     db_path = get_database_path()

@@ -43,6 +43,7 @@ import {
 } from 'lucide-react';
 import { useEntityContext } from '@/hooks/useEntityContext';
 import { toast } from 'sonner';
+import { AnimatedText } from '@ngi/ui';
 
 export default function TaxesPage() {
   const { selectedEntityId } = useEntityContext();
@@ -349,9 +350,28 @@ export default function TaxesPage() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <AnimatedText 
+            text="Taxes" 
+            as="h2" 
+            className="text-2xl font-bold tracking-tight"
+            delay={0.1}
+          />
+          <AnimatedText 
+            text="Tax payments, provisions, and return tracking with ASC 740 compliance" 
+            as="p" 
+            className="text-muted-foreground"
+            delay={0.3}
+            stagger={0.02}
+          />
+        </div>
+      </div>
+
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
+        <Card className="hover:scale-105 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Tax Paid ({selectedYear})</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
@@ -364,7 +384,7 @@ export default function TaxesPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hover:scale-105 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Federal Income Tax</CardTitle>
             <Building2 className="h-4 w-4 text-muted-foreground" />
@@ -377,7 +397,7 @@ export default function TaxesPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hover:scale-105 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">State Income Tax</CardTitle>
             <Building2 className="h-4 w-4 text-muted-foreground" />
@@ -390,7 +410,7 @@ export default function TaxesPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hover:scale-105 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Payroll Taxes</CardTitle>
             <TrendingDown className="h-4 w-4 text-muted-foreground" />
@@ -406,11 +426,19 @@ export default function TaxesPage() {
 
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="payments">Tax Payments</TabsTrigger>
-          <TabsTrigger value="provision">Tax Provision (ASC 740)</TabsTrigger>
-          <TabsTrigger value="returns">Tax Returns</TabsTrigger>
-        </TabsList>
+        <div className="mb-6 flex justify-center">
+          <TabsList className="h-11 bg-muted/50">
+            <TabsTrigger value="payments" className="data-[state=active]:bg-background px-6">
+              Tax Payments
+            </TabsTrigger>
+            <TabsTrigger value="provision" className="data-[state=active]:bg-background px-6">
+              Tax Provision (ASC 740)
+            </TabsTrigger>
+            <TabsTrigger value="returns" className="data-[state=active]:bg-background px-6">
+              Tax Returns
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         {/* ============================================================================ */}
         {/* TAX PAYMENTS TAB */}

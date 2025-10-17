@@ -3,9 +3,19 @@
  * Handles all backend communication for learning endpoints
  */
 
-// Prefer relative base in browser when env points to a Docker-internal host (e.g., http://backend:8001)
-const ENV_BASE = process.env.NEXT_PUBLIC_API_URL || '';
-const API_BASE = (typeof window !== 'undefined' && /backend:\d+/.test(ENV_BASE)) ? '' : ENV_BASE;
+// Use the same URL resolution strategy as the main API
+function getApiBase(): string {
+  if (typeof window !== 'undefined') {
+    // Client-side: use relative URLs
+    return '';
+  } else {
+    // Server-side: use absolute URLs
+    const origin = process.env.BACKEND_ORIGIN || process.env.NEXT_PUBLIC_API_URL || 'http://backend:8001';
+    return origin.replace(/\/$/, '');
+  }
+}
+
+const API_BASE = getApiBase();
 
 interface Company {
   id: number;
@@ -94,10 +104,27 @@ export interface LearningContentItem {
 }
 
 class LearningAPI {
-  private getHeaders(token?: string): HeadersInit {
+  private async getHeaders(token?: string): Promise<HeadersInit> {
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };
+    
+    // Try to get Clerk token if not provided
+    if (!token && typeof window !== 'undefined') {
+      try {
+        const anyWin: any = window as any;
+        const clerk = anyWin?.Clerk;
+        if (clerk?.session?.getToken) {
+          try { 
+            token = await clerk.session.getToken({ template: 'backend' });
+          } catch {
+            try { 
+              token = await clerk.session.getToken(); 
+            } catch {}
+          }
+        }
+      } catch {}
+    }
     
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
@@ -106,9 +133,9 @@ class LearningAPI {
     return headers;
   }
 
-  async getCompanies(token: string): Promise<Company[]> {
+  async getCompanies(token?: string): Promise<Company[]> {
     const response = await fetch(`${API_BASE}/api/learning/companies`, {
-      headers: this.getHeaders(token),
+      headers: await this.getHeaders(token),
     });
     
     if (!response.ok) {
@@ -119,9 +146,9 @@ class LearningAPI {
     return data.companies;
   }
 
-  async getCompany(companyId: number, token: string): Promise<Company> {
+  async getCompany(companyId: number, token?: string): Promise<Company> {
     const response = await fetch(`${API_BASE}/api/learning/companies/${companyId}`, {
-      headers: this.getHeaders(token),
+      headers: await this.getHeaders(token),
     });
     
     if (!response.ok) {
@@ -131,22 +158,33 @@ class LearningAPI {
     return response.json();
   }
 
-  async getProgress(token: string): Promise<Progress> {
-    const response = await fetch(`${API_BASE}/api/learning/progress`, {
-      headers: this.getHeaders(token),
+  async getProgress(token?: string): Promise<Progress> {
+    const url = `${API_BASE}/api/learning/progress`;
+    const headers = await this.getHeaders(token);
+    
+    console.log('Learning API - getProgress:', { url, headers });
+    
+    const response = await fetch(url, { headers });
+    
+    console.log('Learning API - getProgress response:', { 
+      status: response.status, 
+      statusText: response.statusText,
+      ok: response.ok 
     });
     
     if (!response.ok) {
-      throw new Error('Failed to fetch progress');
+      const errorText = await response.text();
+      console.error('Learning API - getProgress error:', errorText);
+      throw new Error(`Failed to fetch progress: ${response.status} ${response.statusText} - ${errorText}`);
     }
     
     return response.json();
   }
 
-  async selectCompany(companyId: number, token: string): Promise<void> {
+  async selectCompany(companyId: number, token?: string): Promise<void> {
     const response = await fetch(`${API_BASE}/api/learning/progress/select-company`, {
       method: 'POST',
-      headers: this.getHeaders(token),
+      headers: await this.getHeaders(token),
       body: JSON.stringify({ company_id: companyId }),
     });
     
@@ -155,10 +193,10 @@ class LearningAPI {
     }
   }
 
-  async updateStreak(token: string): Promise<{ current_streak: number; milestone_achieved: boolean }> {
+  async updateStreak(token?: string): Promise<{ current_streak: number; milestone_achieved: boolean }> {
     const response = await fetch(`${API_BASE}/api/learning/progress/update-streak`, {
       method: 'POST',
-      headers: this.getHeaders(token),
+      headers: await this.getHeaders(token),
     });
     
     if (!response.ok) {
@@ -168,10 +206,10 @@ class LearningAPI {
     return response.json();
   }
 
-  async generatePackage(companyId: number, token: string): Promise<{ file_path: string; version: number }> {
+  async generatePackage(companyId: number, token?: string): Promise<{ file_path: string; version: number }> {
     const response = await fetch(`${API_BASE}/api/learning/packages/generate/${companyId}`, {
       method: 'POST',
-      headers: this.getHeaders(token),
+      headers: await this.getHeaders(token),
     });
     
     if (!response.ok) {
@@ -186,7 +224,7 @@ class LearningAPI {
     companyId: number,
     activityId: string,
     notes: string | null,
-    token: string
+    token?: string
   ): Promise<Submission> {
     const formData = new FormData();
     formData.append('file', file);
@@ -196,11 +234,14 @@ class LearningAPI {
       formData.append('notes', notes);
     }
 
+    const headers = await this.getHeaders(token);
     const response = await fetch(`${API_BASE}/api/learning/submissions/upload`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`,
-      },
+        ...headers,
+        // Remove Content-Type for FormData
+        'Content-Type': undefined,
+      } as any,
       body: formData,
     });
     
@@ -212,9 +253,9 @@ class LearningAPI {
     return response.json();
   }
 
-  async getMySubmissions(token: string): Promise<Submission[]> {
+  async getMySubmissions(token?: string): Promise<Submission[]> {
     const response = await fetch(`${API_BASE}/api/learning/submissions/user/me`, {
-      headers: this.getHeaders(token),
+      headers: await this.getHeaders(token),
     });
     
     if (!response.ok) {
@@ -225,7 +266,7 @@ class LearningAPI {
     return data.submissions;
   }
 
-  async validateSubmission(submissionId: number, token: string): Promise<{
+  async validateSubmission(submissionId: number, token?: string): Promise<{
     validation_status: string;
     passed: boolean;
     errors: any[];
@@ -233,7 +274,7 @@ class LearningAPI {
   }> {
     const response = await fetch(`${API_BASE}/api/learning/submissions/${submissionId}/validate`, {
       method: 'POST',
-      headers: this.getHeaders(token),
+      headers: await this.getHeaders(token),
     });
     
     if (!response.ok) {
@@ -243,7 +284,7 @@ class LearningAPI {
     return response.json();
   }
 
-  async generateFeedback(submissionId: number, token: string, forceRegenerate = false): Promise<{
+  async generateFeedback(submissionId: number, token?: string, forceRegenerate = false): Promise<{
     feedback_id: number;
     overall_score: number;
   }> {
@@ -251,7 +292,7 @@ class LearningAPI {
     
     const response = await fetch(url, {
       method: 'POST',
-      headers: this.getHeaders(token),
+      headers: await this.getHeaders(token),
     });
     
     if (!response.ok) {
@@ -262,9 +303,9 @@ class LearningAPI {
     return response.json();
   }
 
-  async getFeedback(submissionId: number, token: string): Promise<Feedback> {
+  async getFeedback(submissionId: number, token?: string): Promise<Feedback> {
     const response = await fetch(`${API_BASE}/api/learning/submissions/${submissionId}/feedback`, {
-      headers: this.getHeaders(token),
+      headers: await this.getHeaders(token),
     });
     
     if (!response.ok) {
@@ -274,9 +315,9 @@ class LearningAPI {
     return response.json();
   }
 
-  async getLeaderboard(companyId: number, token: string): Promise<Leaderboard> {
+  async getLeaderboard(companyId: number, token?: string): Promise<Leaderboard> {
     const response = await fetch(`${API_BASE}/api/learning/leaderboard/${companyId}`, {
-      headers: this.getHeaders(token),
+      headers: await this.getHeaders(token),
     });
     
     if (!response.ok) {
@@ -286,10 +327,10 @@ class LearningAPI {
     return response.json();
   }
 
-  async submitToLeaderboard(companyId: number, priceTarget: number, token: string): Promise<void> {
+  async submitToLeaderboard(companyId: number, priceTarget: number, token?: string): Promise<void> {
     const response = await fetch(`${API_BASE}/api/learning/leaderboard/submit`, {
       method: 'POST',
-      headers: this.getHeaders(token),
+      headers: await this.getHeaders(token),
       body: JSON.stringify({ company_id: companyId, price_target: priceTarget }),
     });
     
@@ -299,9 +340,9 @@ class LearningAPI {
   }
 
   // Learning content APIs
-  async getModuleContent(moduleId: string, token: string): Promise<LearningContentItem[]> {
+  async getModuleContent(moduleId: string, token?: string): Promise<LearningContentItem[]> {
     const url = `${API_BASE}/api/learning/content/modules/${moduleId}?include_units=true&include_lessons=true`;
-    const response = await fetch(url, { headers: this.getHeaders(token) });
+    const response = await fetch(url, { headers: await this.getHeaders(token) });
     if (!response.ok) {
       throw new Error('Failed to fetch module content');
     }
@@ -311,12 +352,12 @@ class LearningAPI {
   async markLessonComplete(
     lessonId: string,
     payload: { module_id?: string; unit_id?: string; time_spent_minutes?: number; score?: number },
-    token: string
+    token?: string
   ): Promise<any> {
     const url = `${API_BASE}/api/learning/enhanced/content/${lessonId}/complete`;
     const response = await fetch(url, {
       method: 'POST',
-      headers: this.getHeaders(token),
+      headers: await this.getHeaders(token),
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
@@ -327,11 +368,11 @@ class LearningAPI {
   }
 
   // Animation render queue APIs
-  async queueAnimationRender(sceneName: string, token: string): Promise<{ job_id: string; estimated_duration_seconds?: number }> {
+  async queueAnimationRender(sceneName: string, token?: string): Promise<{ job_id: string; estimated_duration_seconds?: number }> {
     const url = `${API_BASE}/api/learning/animations/render`;
     const response = await fetch(url, {
       method: 'POST',
-      headers: this.getHeaders(token),
+      headers: await this.getHeaders(token),
       body: JSON.stringify({ scene_name: sceneName, params: {} }),
     });
     if (!response.ok) {
@@ -341,7 +382,7 @@ class LearningAPI {
     return response.json();
   }
 
-  async getRenderStatus(jobId: string, token: string): Promise<{
+  async getRenderStatus(jobId: string, token?: string): Promise<{
     job_id: string;
     scene_name: string;
     status: string;
@@ -352,7 +393,7 @@ class LearningAPI {
     error_message?: string;
   }> {
     const url = `${API_BASE}/api/learning/animations/status/${jobId}`;
-    const response = await fetch(url, { headers: this.getHeaders(token) });
+    const response = await fetch(url, { headers: await this.getHeaders(token) });
     if (!response.ok) {
       throw new Error('Failed to get render status');
     }
@@ -367,9 +408,9 @@ class LearningAPI {
     return `${API_BASE}/api/learning/animations/${animationId}/thumbnail`;
   }
 
-  async deleteAnimation(animationId: string, token: string): Promise<void> {
+  async deleteAnimation(animationId: string, token?: string): Promise<void> {
     const url = `${API_BASE}/api/learning/animations/${animationId}`;
-    const response = await fetch(url, { method: 'DELETE', headers: this.getHeaders(token) });
+    const response = await fetch(url, { method: 'DELETE', headers: await this.getHeaders(token) });
     if (!response.ok) {
       throw new Error('Failed to delete animation');
     }

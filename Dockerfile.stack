@@ -25,8 +25,8 @@ COPY scripts/ ./scripts/
 RUN mkdir -p /app/data
 
 # Caddy + Supervisor configuration
-COPY ops/production/Caddyfile /etc/caddy/Caddyfile
-COPY ops/production/supervisord-stack.conf /etc/supervisor/conf.d/stack.conf
+COPY infra/production/Caddyfile /etc/caddy/Caddyfile
+COPY infra/production/supervisord-stack.conf /etc/supervisor/conf.d/stack.conf
 
 EXPOSE 80 443 8001
 

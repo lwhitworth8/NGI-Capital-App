@@ -12,8 +12,8 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sqlalchemy.orm import Session
-from src.api.database import get_db
-from src.api.models_learning import LearningContent
+from services.api.database import get_db
+from services.api.models_learning import LearningContent
 
 
 def add(db: Session, **kwargs):

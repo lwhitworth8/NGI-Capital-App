@@ -16,8 +16,8 @@ from decimal import Decimal, InvalidOperation
 
 # Security constants
 ALLOWED_PARTNER_EMAILS = [
-    "anurmamade@ngicapital.com",
-    "lwhitworth@ngicapital.com"
+    "anurmamade@ngicapitaladvisory.com",
+    "lwhitworth@ngicapitaladvisory.com"
 ]
 
 SENSITIVE_FIELDS = [
@@ -40,7 +40,7 @@ class SecurityValidator:
             return False
         
         # NGI Capital domain validation
-        return email.endswith('@ngicapital.com')
+        return email.endswith('@ngicapitaladvisory.com')
     
     @staticmethod
     def validate_partner_authorization(email: str) -> bool:

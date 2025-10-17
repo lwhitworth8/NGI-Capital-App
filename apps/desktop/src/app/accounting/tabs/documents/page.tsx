@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { AnimatedText } from '@ngi/ui';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -35,7 +36,6 @@ import {
   Upload,
   FileText,
   Search,
-  Filter,
   Download,
   Eye,
   Link as LinkIcon,
@@ -48,21 +48,19 @@ import {
   X,
   FolderOpen,
 } from 'lucide-react';
-import { useEntityContext } from '@/hooks/useEntityContext';
-// import { api } from '@/lib/api'; // not used; using direct fetch instead
+import { useEntity } from '@/lib/context/UnifiedEntityContext';
 
 // Document categories
 const DOCUMENT_CATEGORIES = [
   { value: 'formation', label: 'Formation Docs', icon: FileText, color: 'blue' },
   { value: 'ein', label: 'EIN Documents', icon: FileSpreadsheet, color: 'purple' },
-  { value: 'invoices', label: 'Invoices', icon: FileText, color: 'green' },
-  { value: 'board_resolution', label: 'Board Resolutions', icon: FileText, color: 'orange' },
-  { value: 'operating_agreement', label: 'Operating Agreements', icon: FileText, color: 'indigo' },
-  { value: 'contracts', label: 'Contracts', icon: FileText, color: 'orange' },
-  { value: 'bank_statements', label: 'Bank Statements', icon: FileArchive, color: 'indigo' },
   { value: 'tax', label: 'Tax Documents', icon: FileSpreadsheet, color: 'purple' },
+  { value: 'invoices', label: 'Invoices', icon: FileText, color: 'green' },
   { value: 'receipts', label: 'Receipts', icon: FileText, color: 'green' },
-  { value: 'other', label: 'Other', icon: FolderOpen, color: 'gray' },
+  { value: 'operating_agreement', label: 'Operating Agreements', icon: FileText, color: 'indigo' },
+  { value: 'accounting_policies', label: 'Accounting Policies', icon: FileSpreadsheet, color: 'blue' },
+  { value: 'internal_controls', label: 'Internal Controls', icon: FileText, color: 'red' },
+  { value: 'bank_statement', label: 'Bank Statements', icon: FileArchive, color: 'indigo' },
 ];
 
 interface Document {
@@ -74,32 +72,17 @@ interface Document {
   category: string;
   entity: string | null;
   upload_date: string;
-  status: 'uploaded' | 'processing' | 'extracted' | 'journal_entries_created' | 'no_journal_entries_created' | 'journal_creation_failed' | 'failed' | 'error';
+  processing_status: string;
+  status: string;
   file_path: string;
-  extracted_text?: string;
   extracted_data?: any;
   extraction_confidence?: number;
-  vision_model_version?: string;
-  vision_processing_time_ms?: number;
-  agent_validation_id?: number;
-  agent_validation_status?: string;
-  linked_to?: {
-    type: string;
-    id: number;
-    description: string;
-  };
-  journal_entries?: Array<{
-    id: number;
-    entry_number: string;
-    status: string;
-    total_debits: number;
-    total_credits: number;
-  }>;
 }
 
 export default function DocumentsTab() {
-  const { selectedEntityId } = useEntityContext();
-  
+  const { selectedEntity } = useEntity();
+  const selectedEntityId = selectedEntity?.id;
+
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -108,26 +91,35 @@ export default function DocumentsTab() {
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewingDocument, setViewingDocument] = useState<Document | null>(null);
+  const [pdfError, setPdfError] = useState(false);
+  const [viewerUrl, setViewerUrl] = useState<string | null>(null);
+  const [viewerLoading, setViewerLoading] = useState(false);
 
   const fetchDocuments = async () => {
+    if (!selectedEntityId) {
+      console.log('No entity selected, skipping document fetch');
+      setDocuments([]);
+      return;
+    }
+
     setLoading(true);
     try {
-      // Use direct fetch for now since api.documentsList might not exist
+      console.log('Fetching documents for entity:', selectedEntityId);
       const response = await fetch(`/api/accounting/documents/?entity_id=${selectedEntityId}`, {
         credentials: 'include'
       });
-      
+
       if (!response.ok) {
         console.error('Documents API error:', response.status);
         setDocuments([]);
         return;
       }
-      
+
       const data = await response.json();
-      
-      // Handle different response formats
       const docsList = Array.isArray(data) ? data : (data.documents || data.documentsList || []);
-      
+
       // Map API response to our Document interface
       const mappedDocs: Document[] = docsList.map((doc: any) => ({
         id: doc.id || doc.file_id,
@@ -138,23 +130,16 @@ export default function DocumentsTab() {
         category: doc.category || 'other',
         entity: doc.entity || doc.entity_id || doc.entity_name || null,
         upload_date: doc.upload_date || doc.created_at || new Date().toISOString(),
-        status: doc.processing_status || doc.status || 'uploaded',
+        processing_status: doc.processing_status || 'uploaded',
+        status: doc.status || doc.workflow_status || 'pending',
         file_path: doc.file_path || doc.file_url || '',
-        extracted_text: doc.extracted_text || doc.searchable_text,
         extracted_data: doc.extracted_data,
         extraction_confidence: doc.extraction_confidence,
-        vision_model_version: doc.vision_model_version,
-        vision_processing_time_ms: doc.vision_processing_time_ms,
-        agent_validation_id: doc.agent_validation_id,
-        agent_validation_status: doc.agent_validation_status,
-        linked_to: doc.linked_to,
-        journal_entries: doc.journal_entries || [],
       }));
-      
+
       setDocuments(mappedDocs);
     } catch (error) {
       console.error('Failed to fetch documents:', error);
-      // Set empty array on error
       setDocuments([]);
     } finally {
       setLoading(false);
@@ -167,8 +152,6 @@ export default function DocumentsTab() {
     }
   }, [selectedEntityId, categoryFilter]);
 
-  // Removed auto-refresh - only refresh when user uploads documents
-
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       setSelectedFiles(Array.from(e.target.files));
@@ -180,43 +163,47 @@ export default function DocumentsTab() {
     console.log('Selected files:', selectedFiles);
     console.log('Selected entity:', selectedEntityId);
     console.log('Selected category:', selectedCategory);
-    
+
     if (selectedFiles.length === 0) {
       alert('Please select at least one file');
       return;
     }
-    
+
     if (!selectedEntityId) {
       alert('Please select an entity first');
       return;
     }
 
+    if (!selectedCategory) {
+      alert('Please select a document category');
+      return;
+    }
+
     setUploading(true);
-    
+
     try {
       const formData = new FormData();
-      
+
       // Add each file
       selectedFiles.forEach((file, index) => {
         console.log(`Adding file ${index}:`, file.name, file.size, file.type);
         formData.append('files', file);
       });
-      
+
       // Add entity_id and category
       formData.append('entity_id', selectedEntityId.toString());
-      formData.append('category', selectedCategory || 'other');
-      
+      formData.append('category', selectedCategory);
+
       console.log('FormData prepared, sending to:', '/api/accounting/documents/batch-upload');
-      
-      // Direct fetch to accounting documents endpoint
+
       const response = await fetch('/api/accounting/documents/batch-upload', {
         method: 'POST',
         body: formData,
         credentials: 'include'
       });
-      
+
       console.log('Response received:', response.status, response.statusText);
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         console.error('Upload error response:', response.status, errorText);
@@ -228,20 +215,20 @@ export default function DocumentsTab() {
         }
         throw new Error(errorData.detail || errorData.message || `Upload failed with status ${response.status}: ${errorText.substring(0, 200)}`);
       }
-      
+
       const result = await response.json();
       console.log('Upload success result:', result);
-      
+
       const uploadedCount = result.successful || result.uploaded?.length || result.documents?.length || selectedFiles.length;
-      
+
       alert(`Successfully uploaded ${uploadedCount} document(s)!`);
       setUploadDialogOpen(false);
       setSelectedFiles([]);
       setSelectedCategory('');
-      
+
       // Refresh document list
       await fetchDocuments();
-      
+
     } catch (error) {
       console.error('=== UPLOAD FAILED ===');
       console.error('Error details:', error);
@@ -254,58 +241,29 @@ export default function DocumentsTab() {
   const getFileIcon = (fileType: string) => {
     if (fileType.includes('pdf')) return <FileText className="h-5 w-5 text-red-500" />;
     if (fileType.includes('image')) return <FileImage className="h-5 w-5 text-blue-500" />;
-    if (fileType.includes('spreadsheet') || fileType.includes('excel')) 
+    if (fileType.includes('spreadsheet') || fileType.includes('excel'))
       return <FileSpreadsheet className="h-5 w-5 text-green-500" />;
     return <FileText className="h-5 w-5 text-gray-500" />;
   };
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, { color: string; icon: React.ReactNode; text: string }> = {
-      uploaded: { color: 'blue', icon: <CheckCircle2 className="h-3 w-3" />, text: 'Uploaded' },
-      processing: { color: 'yellow', icon: <Loader2 className="h-3 w-3 animate-spin" />, text: 'Processing' },
-      extracted: { color: 'green', icon: <CheckCircle2 className="h-3 w-3" />, text: 'GPT-5 Extracted' },
-      journal_entries_created: { color: 'green', icon: <CheckCircle2 className="h-3 w-3" />, text: 'JE Created' },
-      no_journal_entries_created: { color: 'blue', icon: <CheckCircle2 className="h-3 w-3" />, text: 'No JE Needed' },
-      journal_creation_failed: { color: 'red', icon: <AlertCircle className="h-3 w-3" />, text: 'JE Failed' },
-      failed: { color: 'red', icon: <AlertCircle className="h-3 w-3" />, text: 'Failed' },
-      error: { color: 'red', icon: <AlertCircle className="h-3 w-3" />, text: 'Error' },
-    };
-    
-    const variant = variants[status] || variants.uploaded;
-    
+    // Simplified pipeline: everything is immediately available; no processing spinners
+    const ok: { color: string; icon: React.ReactNode; text: string } = { color: 'green', icon: <CheckCircle2 className="h-3 w-3" />, text: 'Ready' };
+    const failed: { color: string; icon: React.ReactNode; text: string } = { color: 'red', icon: <AlertCircle className="h-3 w-3" />, text: 'Failed' };
+
+    const normalized = (status || '').toLowerCase();
+    const show = normalized === 'failed' || normalized === 'extraction_failed' ? failed : ok;
+
     return (
       <Badge variant="outline" className="flex items-center gap-1">
-        {variant.icon}
-        <span>{variant.text}</span>
+        {show.icon}
+        <span>{show.text}</span>
       </Badge>
     );
   };
 
-  const getProcessingInfo = (doc: Document) => {
-    if (!doc.extracted_data) return null;
-    
-    return {
-      confidence: doc.extraction_confidence || 0,
-      model: doc.vision_model_version || 'GPT-5',
-      processingTime: doc.vision_processing_time_ms || 0,
-      agentStatus: doc.agent_validation_status,
-      journalEntries: doc.journal_entries || []
-    };
-  };
-
-  const handleViewDocument = async (doc: Document) => {
-    try {
-      // Use download endpoint which is properly configured
-      window.open(`/api/accounting/documents/download/${doc.id}`, '_blank');
-    } catch (error) {
-      console.error('Failed to view document:', error);
-      alert('Failed to open document');
-    }
-  };
-
   const handleDownloadDocument = async (doc: Document) => {
     try {
-      // Use download endpoint
       const link = document.createElement('a');
       link.href = `/api/accounting/documents/download/${doc.id}`;
       link.download = doc.filename;
@@ -318,33 +276,33 @@ export default function DocumentsTab() {
     }
   };
 
-  const handleCopyLink = (doc: Document) => {
-    const link = `${window.location.origin}/api${doc.file_path}`;
-    navigator.clipboard.writeText(link).then(() => {
-      alert('Link copied to clipboard!');
-    }).catch(() => {
-      alert('Failed to copy link');
-    });
-  };
-
-  const handleDeleteDocument = async (docId: string) => {
-    if (!confirm('Are you sure you want to delete this document?')) {
-      return;
-    }
-    
+  const handleViewDocument = async (doc: Document) => {
+    setViewingDocument(doc);
+    setPdfError(false);
+    setViewerOpen(true);
+    setViewerLoading(true);
+    // Revoke previous URL to avoid leaks
     try {
-      const response = await fetch(`/api/accounting/documents/${docId}`, {
-        method: 'DELETE',
-        credentials: 'include'
+      if (viewerUrl) {
+        URL.revokeObjectURL(viewerUrl);
+        setViewerUrl(null);
+      }
+    } catch {}
+    try {
+      const resp = await fetch(`/api/accounting/documents/view/${doc.id}`, {
+        credentials: 'include',
       });
-      
-      if (!response.ok) throw new Error('Delete failed');
-      
-      alert('Document deleted successfully');
-      fetchDocuments();
-    } catch (error) {
-      console.error('Failed to delete document:', error);
-      alert('Failed to delete document');
+      if (!resp.ok) {
+        throw new Error(`Viewer fetch failed: ${resp.status}`);
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      setViewerUrl(url);
+    } catch (e) {
+      console.error('Failed to load viewer blob:', e);
+      setPdfError(true);
+    } finally {
+      setViewerLoading(false);
     }
   };
 
@@ -357,12 +315,25 @@ export default function DocumentsTab() {
   const filteredDocuments = documents.filter((doc) => {
     const matchesSearch = doc.filename.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           doc.category.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = categoryFilter === 'all' || doc.category === categoryFilter;
+    
+    let matchesCategory = false;
+    if (categoryFilter === 'all') {
+      matchesCategory = true;
+    } else if (categoryFilter === 'formation') {
+      matchesCategory = ['formation', 'accounting_policies', 'operating_agreement', 'internal_controls'].includes(doc.category);
+    } else if (categoryFilter === 'tax') {
+      matchesCategory = ['ein', 'tax'].includes(doc.category);
+    } else if (categoryFilter === 'financial') {
+      matchesCategory = ['invoices', 'receipts', 'bank_statement'].includes(doc.category);
+    } else {
+      matchesCategory = doc.category === categoryFilter;
+    }
+    
     return matchesSearch && matchesCategory;
   });
 
   const getCategoryInfo = (category: string) => {
-    return DOCUMENT_CATEGORIES.find(c => c.value === category) || DOCUMENT_CATEGORIES[5];
+    return DOCUMENT_CATEGORIES.find(c => c.value === category) || DOCUMENT_CATEGORIES[DOCUMENT_CATEGORIES.length - 1];
   };
 
   return (
@@ -374,36 +345,36 @@ export default function DocumentsTab() {
     >
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Document Center</h2>
-          <p className="text-muted-foreground">
-            Upload, organize, and manage all entity documents
-          </p>
+          <AnimatedText 
+            text="Document Center" 
+            as="h2" 
+            className="text-2xl font-bold tracking-tight"
+            delay={0.1}
+          />
+          <AnimatedText 
+            text="Upload and manage documents with manual categorization" 
+            as="p" 
+            className="text-muted-foreground"
+            delay={0.3}
+            stagger={0.02}
+          />
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={fetchDocuments}
-            disabled={loading}
-          >
-            <Search className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
-          <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>
-                <Upload className="h-4 w-4 mr-2" />
-                Upload Documents
-              </Button>
-            </DialogTrigger>
+        <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+          <DialogTrigger asChild>
+            <Button>
+              <Upload className="h-4 w-4 mr-2" />
+              Upload Documents
+            </Button>
+          </DialogTrigger>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>Upload Documents</DialogTitle>
               <DialogDescription>
-                Upload one or more documents. Supported formats: PDF, DOCX, XLSX, images.
-                Documents will be automatically categorized and OCR-processed.
+                Upload documents and manually categorize them for proper organization.
+                All data from the document will be extracted and categorized.
               </DialogDescription>
             </DialogHeader>
-            
+
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label htmlFor="file-upload">Select Files</Label>
@@ -411,7 +382,7 @@ export default function DocumentsTab() {
                   id="file-upload"
                   type="file"
                   multiple
-                  accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.tiff"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.xps,.png,.jpg,.jpeg,.tiff"
                   onChange={handleFileSelect}
                   disabled={uploading}
                 />
@@ -446,17 +417,17 @@ export default function DocumentsTab() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="category">Category (Optional - Auto-detected)</Label>
+                <Label htmlFor="category">Category *</Label>
                 <Select
                   value={selectedCategory}
                   onValueChange={setSelectedCategory}
                   disabled={uploading}
+                  required
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Auto-detect category" />
+                    <SelectValue placeholder="Select document category" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="auto-detect">Auto-detect</SelectItem>
                     {DOCUMENT_CATEGORIES.map((cat) => (
                       <SelectItem key={cat.value} value={cat.value}>
                         {cat.label}
@@ -466,27 +437,6 @@ export default function DocumentsTab() {
                 </Select>
               </div>
 
-              <div className="rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-950 dark:border-blue-800 p-4">
-                <p className="text-sm font-medium mb-2">Automatic Processing:</p>
-                <ul className="text-sm space-y-1 text-muted-foreground">
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-blue-600 mt-0.5" />
-                    <span>OCR text extraction from PDFs and images</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-blue-600 mt-0.5" />
-                    <span>Auto-categorization (Formation, Tax, Receipts, Contracts, etc.)</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-blue-600 mt-0.5" />
-                    <span>Invoice/receipt data extraction (amount, date, vendor)</span>
-                  </li>
-                  <li className="flex items-start gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-blue-600 mt-0.5" />
-                    <span>Entity detection from document content</span>
-                  </li>
-                </ul>
-              </div>
             </div>
 
             <DialogFooter>
@@ -501,7 +451,7 @@ export default function DocumentsTab() {
                 {uploading ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Uploading...
+                    Uploading & Extracting...
                   </>
                 ) : (
                   <>
@@ -513,12 +463,14 @@ export default function DocumentsTab() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-        </div>
       </div>
 
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
+        <Card 
+          className="hover:scale-105 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer"
+          onClick={() => setCategoryFilter('all')}
+        >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Documents</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
@@ -529,42 +481,51 @@ export default function DocumentsTab() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card 
+          className="hover:scale-105 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer"
+          onClick={() => setCategoryFilter('formation')}
+        >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Formation Docs</CardTitle>
             <FileText className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {documents.filter(d => d.category === 'formation').length}
+              {documents.filter(d => d.category === 'formation' || d.category === 'accounting_policies' || d.category === 'operating_agreement' || d.category === 'internal_controls').length}
             </div>
-            <p className="text-xs text-muted-foreground">Articles, agreements, bylaws</p>
+            <p className="text-xs text-muted-foreground">Certificates, policies, controls, agreements</p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card 
+          className="hover:scale-105 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer"
+          onClick={() => setCategoryFilter('tax')}
+        >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Tax Documents</CardTitle>
+            <CardTitle className="text-sm font-medium">Tax/EIN Documents</CardTitle>
             <FileSpreadsheet className="h-4 w-4 text-purple-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
               {documents.filter(d => d.category === 'ein' || d.category === 'tax').length}
             </div>
-            <p className="text-xs text-muted-foreground">Returns, receipts, forms</p>
+            <p className="text-xs text-muted-foreground">EIN letters, tax forms</p>
           </CardContent>
         </Card>
 
-        <Card>
+        <Card 
+          className="hover:scale-105 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer"
+          onClick={() => setCategoryFilter('financial')}
+        >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Receipts/Invoices</CardTitle>
+            <CardTitle className="text-sm font-medium">Financial Documents</CardTitle>
             <FileText className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {documents.filter(d => d.category === 'invoices' || d.category === 'receipts').length}
+              {documents.filter(d => d.category === 'invoices' || d.category === 'receipts' || d.category === 'bank_statement').length}
             </div>
-            <p className="text-xs text-muted-foreground">Bills, invoices, receipts</p>
+            <p className="text-xs text-muted-foreground">Bills, receipts, invoices, bank statements</p>
           </CardContent>
         </Card>
       </div>
@@ -574,7 +535,7 @@ export default function DocumentsTab() {
         <CardHeader>
           <CardTitle>Document Library</CardTitle>
           <CardDescription>
-            View, search, and manage all documents. Auto-categorized with OCR text extraction.
+            All documents are manually categorized for proper organization and data extraction
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -594,7 +555,17 @@ export default function DocumentsTab() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Categories</SelectItem>
-                {DOCUMENT_CATEGORIES.map((cat) => (
+                <SelectItem value="formation">Formation Documents</SelectItem>
+                <SelectItem value="tax">Tax/EIN Documents</SelectItem>
+                <SelectItem value="financial">Financial Documents</SelectItem>
+                <SelectItem value="invoices">Invoices</SelectItem>
+                <SelectItem value="receipts">Receipts</SelectItem>
+                <SelectItem value="bank_statement">Bank Statements</SelectItem>
+                
+                {/* Other individual categories */}
+                {DOCUMENT_CATEGORIES.filter(cat => 
+                  !['formation', 'accounting_policies', 'operating_agreement', 'internal_controls', 'ein', 'tax', 'invoices', 'receipts', 'bank_statement'].includes(cat.value)
+                ).map((cat) => (
                   <SelectItem key={cat.value} value={cat.value}>
                     {cat.label}
                   </SelectItem>
@@ -618,7 +589,7 @@ export default function DocumentsTab() {
               <h3 className="text-lg font-semibold mb-2">No Documents Yet</h3>
               <p className="text-muted-foreground mb-4">
                 {documents.length === 0
-                  ? 'Upload your first document to get started'
+                  ? 'Upload your first document to get started with automatic extraction'
                   : 'No documents match your search criteria'}
               </p>
               {documents.length === 0 && (
@@ -640,10 +611,6 @@ export default function DocumentsTab() {
                     <TableHead>Size</TableHead>
                     <TableHead>Uploaded</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Processing</TableHead>
-                    <TableHead>Journal Entries</TableHead>
-                    <TableHead>Linked To</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -657,7 +624,8 @@ export default function DocumentsTab() {
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -20 }}
                           transition={{ duration: 0.2, delay: index * 0.05 }}
-                          className="hover:bg-muted/50"
+                          className="hover:bg-muted/50 cursor-pointer"
+                          onClick={() => handleViewDocument(doc)}
                         >
                           <TableCell>{getFileIcon(doc.file_type)}</TableCell>
                           <TableCell className="font-medium">{doc.original_name}</TableCell>
@@ -668,7 +636,7 @@ export default function DocumentsTab() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-muted-foreground">
-                            {doc.entity || 'Auto-detecting...'}
+                            {doc.entity || 'N/A'}
                           </TableCell>
                           <TableCell className="text-muted-foreground">
                             {formatFileSize(doc.size)}
@@ -676,78 +644,7 @@ export default function DocumentsTab() {
                           <TableCell className="text-muted-foreground">
                             {new Date(doc.upload_date).toLocaleDateString()}
                           </TableCell>
-                          <TableCell>{getStatusBadge(doc.status)}</TableCell>
-                          <TableCell>
-                            {(() => {
-                              const processingInfo = getProcessingInfo(doc);
-                              if (!processingInfo) return <span className="text-muted-foreground text-sm">No data</span>;
-                              
-                              return (
-                                <div className="space-y-1">
-                                  <div className="text-xs">
-                                    <span className="font-medium">{processingInfo.model}</span>
-                                    <span className="text-muted-foreground ml-1">
-                                      {Math.round(processingInfo.confidence * 100)}%
-                                    </span>
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">
-                                    {processingInfo.processingTime}ms
-                                  </div>
-                                  {processingInfo.agentStatus && (
-                                    <Badge variant="outline" className="text-xs">
-                                      Agent: {processingInfo.agentStatus}
-                                    </Badge>
-                                  )}
-                                </div>
-                              );
-                            })()}
-                          </TableCell>
-                          <TableCell>
-                            {(() => {
-                              const processingInfo = getProcessingInfo(doc);
-                              if (!processingInfo || processingInfo.journalEntries.length === 0) {
-                                return <span className="text-muted-foreground text-sm">None</span>;
-                              }
-                              
-                              return (
-                                <div className="space-y-1">
-                                  {processingInfo.journalEntries.map((je, idx) => (
-                                    <div key={idx} className="text-xs">
-                                      <Badge variant="outline" className="text-xs">
-                                        {je.entry_number}
-                                      </Badge>
-                                      <div className="text-muted-foreground">
-                                        ${je.total_debits.toLocaleString()}
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              );
-                            })()}
-                          </TableCell>
-                          <TableCell>
-                            {doc.linked_to ? (
-                              <Badge variant="secondary" className="flex items-center gap-1 w-fit">
-                                <LinkIcon className="h-3 w-3" />
-                                {doc.linked_to.type}
-                              </Badge>
-                            ) : (
-                              <span className="text-muted-foreground text-sm">Not linked</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <Button variant="ghost" size="sm" onClick={() => handleDownloadDocument(doc)} title="Download document">
-                                <Download className="h-4 w-4" />
-                              </Button>
-                              <Button variant="ghost" size="sm" onClick={() => handleCopyLink(doc)} title="Copy link">
-                                <LinkIcon className="h-4 w-4" />
-                              </Button>
-                              <Button variant="ghost" size="sm" onClick={() => handleDeleteDocument(doc.id)} title="Delete document">
-                                <X className="h-4 w-4 text-red-500" />
-                              </Button>
-                            </div>
-                          </TableCell>
+                          <TableCell>{getStatusBadge(doc.processing_status)}</TableCell>
                         </motion.tr>
                       );
                     })}
@@ -759,39 +656,104 @@ export default function DocumentsTab() {
         </CardContent>
       </Card>
 
-      {/* Processing Info */}
-      <Card className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950">
-        <CardHeader>
-          <CardTitle className="text-blue-900 dark:text-blue-100">
-            Intelligent Document Processing
-          </CardTitle>
-          <CardDescription className="text-blue-700 dark:text-blue-300">
-            All uploaded documents are automatically processed
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <h4 className="font-semibold mb-2">Text Extraction (OCR)</h4>
-              <ul className="text-sm space-y-1 text-muted-foreground">
-                <li>• PDFs: Full text extraction with pdfplumber/PyMuPDF</li>
-                <li>• Images: PaddleOCR or Tesseract for text recognition</li>
-                <li>• Word Docs: Native DOCX text extraction</li>
-                <li>• Searchable: All extracted text is indexed</li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-semibold mb-2">Smart Categorization</h4>
-              <ul className="text-sm space-y-1 text-muted-foreground">
-                <li>• Auto-detect: Formation, Tax, Receipts, Contracts</li>
-                <li>• Entity Detection: Links to correct NGI Capital entity</li>
-                <li>• Invoice Parsing: Extracts amounts, dates, vendors</li>
-                <li>• Linking: Auto-link to transactions and JEs</li>
-              </ul>
-            </div>
+      {/* Document Viewer Dialog */}
+      <Dialog open={viewerOpen} onOpenChange={(open) => {
+        setViewerOpen(open);
+        if (!open) {
+          try {
+            if (viewerUrl) {
+              URL.revokeObjectURL(viewerUrl);
+            }
+          } catch {}
+          setViewerUrl(null);
+          setViewingDocument(null);
+          setPdfError(false);
+          setViewerLoading(false);
+        }
+      }}>
+        <DialogContent className="max-w-6xl h-[90vh] flex flex-col p-0">
+          <DialogHeader className="px-6 py-4 border-b">
+            <DialogTitle className="flex items-center gap-3">
+              {viewingDocument && getFileIcon(viewingDocument.file_type)}
+              {viewingDocument?.original_name || 'Document Viewer'}
+            </DialogTitle>
+            {viewingDocument && (() => {
+              const catInfo = getCategoryInfo(viewingDocument.category);
+              return (
+                <div className="flex items-center gap-4 mt-2">
+                  <Badge variant="outline" className="flex items-center gap-1">
+                    <catInfo.icon className="h-3 w-3" />
+                    {catInfo.label}
+                  </Badge>
+                  <span className="text-sm text-muted-foreground">
+                    {formatFileSize(viewingDocument.size)}
+                  </span>
+                  <span className="text-sm text-muted-foreground">
+                    Uploaded {new Date(viewingDocument.upload_date).toLocaleDateString()}
+                  </span>
+                  {getStatusBadge(viewingDocument.processing_status)}
+                </div>
+              );
+            })()}
+          </DialogHeader>
+
+          <div className="flex-1 overflow-hidden bg-gray-100 dark:bg-gray-900 relative">
+            {viewerLoading && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            )}
+            {viewingDocument && !pdfError && viewerUrl && (
+              <iframe
+                src={viewerUrl}
+                className="w-full h-full border-0"
+                title={viewingDocument.original_name}
+                onError={() => setPdfError(true)}
+              />
+            )}
+            {pdfError && viewingDocument && (
+              <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+                <AlertCircle className="h-16 w-16 text-red-500 mb-4" />
+                <h3 className="text-lg font-semibold mb-2">Unable to Display Document</h3>
+                <p className="text-muted-foreground mb-4">
+                  The document cannot be displayed in the browser viewer.
+                </p>
+                <Button
+                  onClick={() => handleDownloadDocument(viewingDocument)}
+                  className="mb-2"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Download Document Instead
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => window.open(`/api/accounting/documents/view/${viewingDocument.id}`, '_blank')}
+                >
+                  <Eye className="h-4 w-4 mr-2" />
+                  Open in New Tab
+                </Button>
+              </div>
+            )}
           </div>
-        </CardContent>
-      </Card>
+
+          <div className="px-6 py-4 border-t bg-white dark:bg-gray-950 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => viewingDocument && handleDownloadDocument(viewingDocument)}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Download
+              </Button>
+            </div>
+            <Button variant="outline" onClick={() => setViewerOpen(false)}>
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
     </motion.div>
   );
 }

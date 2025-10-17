@@ -150,24 +150,6 @@ export const formatRatio = (numerator: number, denominator: number): string => {
   return `${ratio.toFixed(1)}:1`
 }
 
-export const formatHealthScore = (score: number): string => {
-  if (isNaN(score)) return '0/100'
-  
-  return `${Math.round(score)}/100`
-}
-
-export const getHealthScoreColor = (score: number): string => {
-  if (score >= 80) return 'text-green-600 dark:text-green-400'
-  if (score >= 60) return 'text-yellow-600 dark:text-yellow-400'
-  return 'text-red-600 dark:text-red-400'
-}
-
-export const getHealthScoreBadgeColor = (score: number): string => {
-  if (score >= 80) return 'text-green-700 dark:text-green-300 bg-green-100 dark:bg-green-900'
-  if (score >= 60) return 'text-yellow-700 dark:text-yellow-300 bg-yellow-100 dark:bg-yellow-900'
-  return 'text-red-700 dark:text-red-300 bg-red-100 dark:bg-red-900'
-}
-
 export const formatTrend = (value: number): { label: string; color: string; icon: string } => {
   if (isNaN(value)) return { label: '0%', color: 'text-muted-foreground', icon: '→' }
   

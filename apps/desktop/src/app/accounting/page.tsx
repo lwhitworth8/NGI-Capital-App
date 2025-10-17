@@ -41,14 +41,11 @@ export default function AccountingPage() {
   // If no entity after loading, something went wrong - but still show the module
   // The entity selector in the header will allow selection
 
-  const currentTab = TABS.find(tab => tab.id === activeTab)
-  const currentTitle = currentTab ? currentTab.label : 'Accounting'
-
   return (
     <div className="flex flex-col h-full bg-background">
-      {/* Fixed header - dynamic title based on selected tab */}
+      {/* Fixed header - static title */}
       <ModuleHeader 
-        title={currentTitle}
+        title="Accounting"
         rightContent={<EntitySelector />}
       />
       

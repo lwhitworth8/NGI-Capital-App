@@ -52,6 +52,7 @@ const nextConfig = {
       { source: '/api/accounting/:path*', destination: `${BACKEND_ORIGIN}/api/accounting/:path*` },
       { source: '/api/health', destination: `${BACKEND_ORIGIN}/api/health` },
       { source: '/api/chatkit/:path*', destination: `${BACKEND_ORIGIN}/api/chatkit/:path*` },
+      { source: '/uploads/:path*', destination: `${BACKEND_ORIGIN}/uploads/:path*` },
     ]
   },
   env: {
@@ -66,6 +67,8 @@ const nextConfig = {
     NEXT_PUBLIC_DISABLE_SESSION_BRIDGE: process.env.NEXT_PUBLIC_DISABLE_SESSION_BRIDGE || '1',
     // Base path for API routes
     NEXT_PUBLIC_BASE_PATH: IS_STANDALONE ? '' : '/admin',
+    // Feature flag to toggle NEX orb visibility (default off for v1)
+    NEXT_PUBLIC_ENABLE_NEX: process.env.NEXT_PUBLIC_ENABLE_NEX || 'false',
   },
   experimental: {
     externalDir: true,

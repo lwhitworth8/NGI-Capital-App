@@ -20,6 +20,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 
 interface Account {
   id: number
@@ -53,6 +62,16 @@ export default function ChartOfAccountsView() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedType, setSelectedType] = useState("all")
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
+  const [newOpen, setNewOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [newNumber, setNewNumber] = useState("")
+  const [newName, setNewName] = useState("")
+  const [newType, setNewType] = useState("Asset")
+  const [newParentId, setNewParentId] = useState<string>("__NONE__")
+  const [newBalance, setNewBalance] = useState("Debit")
+  const [newAllowPosting, setNewAllowPosting] = useState(true)
+  const [newRequireProject, setNewRequireProject] = useState(false)
+  const [newDesc, setNewDesc] = useState("")
 
   // Build tree structure - memoized with useCallback (Context7 pattern)
   const buildTree = useCallback((accounts: Account[]): AccountTreeNode[] => {
@@ -285,55 +304,44 @@ export default function ChartOfAccountsView() {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Filters */}
+    <div className="space-y-6">
+      {/* Account Tree */}
       <Card>
-        <CardContent className="pt-6">
-          <div className="flex gap-4">
-            <div className="flex-1">
+        <CardHeader className="pb-4">
+          <div className="flex items-start justify-between">
+            <CardTitle>Chart of Accounts</CardTitle>
+            <div className="flex items-center gap-3 mt-1">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search accounts..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
+                  className="pl-10 w-64"
                 />
               </div>
+              <Select value={selectedType} onValueChange={setSelectedType}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder="All Types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Types</SelectItem>
+                  <SelectItem value="asset">Assets</SelectItem>
+                  <SelectItem value="liability">Liabilities</SelectItem>
+                  <SelectItem value="equity">Equity</SelectItem>
+                  <SelectItem value="revenue">Revenue</SelectItem>
+                  <SelectItem value="expense">Expenses</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button variant="outline" size="sm">
+                <Download className="mr-2 h-4 w-4" />
+                Export
+              </Button>
+              <Button size="sm" onClick={() => setNewOpen(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                New Account
+              </Button>
             </div>
-            <Select value={selectedType} onValueChange={setSelectedType}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Filter by type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="asset">Assets</SelectItem>
-                <SelectItem value="liability">Liabilities</SelectItem>
-                <SelectItem value="equity">Equity</SelectItem>
-                <SelectItem value="revenue">Revenue</SelectItem>
-                <SelectItem value="expense">Expenses</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant="outline">
-              <Download className="mr-2 h-4 w-4" />
-              Export
-            </Button>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              New Account
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Account Tree */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Chart of Accounts</CardTitle>
-            <span className="text-sm text-muted-foreground">
-              {accounts.length} accounts
-            </span>
           </div>
         </CardHeader>
         <CardContent>
@@ -355,11 +363,106 @@ export default function ChartOfAccountsView() {
           </div>
         </CardContent>
       </Card>
+
+      {/* New Account Dialog */}
+      <Dialog open={newOpen} onOpenChange={setNewOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>New Account</DialogTitle>
+            <DialogDescription>Create a posting or summary account.</DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Number</Label>
+              <Input value={newNumber} onChange={(e) => setNewNumber(e.target.value)} placeholder="5-digit code" />
+            </div>
+            <div>
+              <Label>Normal Balance</Label>
+              <Select value={newBalance} onValueChange={setNewBalance}>
+                <SelectTrigger><SelectValue placeholder="Debit/Credit" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Debit">Debit</SelectItem>
+                  <SelectItem value="Credit">Credit</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-2">
+              <Label>Name</Label>
+              <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Account name" />
+            </div>
+            <div>
+              <Label>Type</Label>
+              <Select value={newType} onValueChange={setNewType}>
+                <SelectTrigger><SelectValue placeholder="Type" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Asset">Asset</SelectItem>
+                  <SelectItem value="Liability">Liability</SelectItem>
+                  <SelectItem value="Equity">Equity</SelectItem>
+                  <SelectItem value="Revenue">Revenue</SelectItem>
+                  <SelectItem value="Expense">Expense</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Parent (optional)</Label>
+              <Select value={newParentId} onValueChange={setNewParentId}>
+                <SelectTrigger><SelectValue placeholder="No parent" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__NONE__">No parent</SelectItem>
+                  {accounts
+                    .sort((a,b)=> a.account_number.localeCompare(b.account_number))
+                    .map(a => (
+                      <SelectItem key={a.id} value={String(a.id)}>
+                        <span className="font-mono mr-2">{a.account_number}</span>{a.account_name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="col-span-2">
+              <Label>Description (optional)</Label>
+              <Input value={newDesc} onChange={(e)=>setNewDesc(e.target.value)} placeholder="Description" />
+            </div>
+            <div className="col-span-2 flex items-center gap-4 mt-1">
+              <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={newAllowPosting} onChange={(e)=>setNewAllowPosting(e.target.checked)} /> Allow posting</label>
+              <label className="text-sm flex items-center gap-2"><input type="checkbox" checked={newRequireProject} onChange={(e)=>setNewRequireProject(e.target.checked)} /> Require project</label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={()=>setNewOpen(false)}>Cancel</Button>
+            <Button onClick={async ()=>{
+              if (!selectedEntityId){ toast.error('Select an entity'); return }
+              if (!newNumber || newNumber.length < 4 || !newName){ toast.error('Enter number and name'); return }
+              try {
+                setCreating(true)
+                const body = {
+                  entity_id: selectedEntityId,
+                  account_number: newNumber,
+                  account_name: newName,
+                  account_type: newType,
+                  parent_account_id: newParentId !== '__NONE__' ? Number(newParentId) : undefined,
+                  description: newDesc || undefined,
+                  allow_posting: newAllowPosting,
+                  require_project: newRequireProject,
+                }
+                const res = await fetch('/api/accounting/coa/', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body), credentials:'include' })
+                if (!res.ok){ throw new Error(await res.text()) }
+                toast.success('Account created')
+                setNewOpen(false)
+                setNewNumber(''); setNewName(''); setNewType('Asset'); setNewParentId('__NONE__'); setNewBalance('Debit'); setNewAllowPosting(true); setNewRequireProject(false); setNewDesc('')
+                await fetchAccounts()
+              } catch (e:any) {
+                toast.error(e?.message || 'Failed to create account')
+              } finally { setCreating(false) }
+            }} disabled={creating}>
+              {creating ? (<><Loader2 className="h-4 w-4 mr-2 animate-spin"/> Creating...</>) : (<><CheckCircle2 className="h-4 w-4 mr-2"/> Create</>)}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
-
-
 
 
 

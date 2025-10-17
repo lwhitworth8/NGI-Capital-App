@@ -43,6 +43,7 @@ services:
     command: sh -c "npm ci && npx next build && npx next start -p 3000"
     volumes:
       - ./apps/desktop:/app
+      - ./tsconfig.base.json:/tsconfig.base.json
       - ./packages:/packages
     expose:
       - "3000"
@@ -70,6 +71,7 @@ services:
     command: sh -c "npm ci && npm run build && npx next start -p 3000"
     volumes:
       - ./apps/student:/app
+      - ./tsconfig.base.json:/tsconfig.base.json
       - ./packages:/packages
     expose:
       - "3000"
@@ -84,7 +86,7 @@ services:
     ports:
       - "3001:80"
     volumes:
-      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - frontend
       - backend

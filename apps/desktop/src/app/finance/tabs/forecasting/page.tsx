@@ -25,6 +25,74 @@ const BarChart = dynamic(() => import('recharts').then(m => m.BarChart as any)) 
 const Bar = dynamic(() => import('recharts').then(m => m.Bar as any)) as any
 const CartesianGrid = dynamic(() => import('recharts').then(m => m.CartesianGrid as any)) as any
 
+// Variance Analysis Component
+function VarianceAnalysis({ entityId, scenarioId, loading }: { entityId: number, scenarioId?: number, loading: boolean }) {
+  const [variances, setVariances] = useState<any[]>([])
+  const [varianceLoading, setVarianceLoading] = useState(false)
+
+  useEffect(() => {
+    if (!entityId) return
+    
+    const loadVariances = async () => {
+      setVarianceLoading(true)
+      try {
+        const response = await fetch(`/api/finance/variance-analysis?entity_id=${entityId}${scenarioId ? `&scenario_id=${scenarioId}` : ''}`)
+        const data = await response.json()
+        setVariances(data?.variances || [])
+      } catch (error) {
+        console.error('Failed to load variance data:', error)
+      } finally {
+        setVarianceLoading(false)
+      }
+    }
+    
+    loadVariances()
+  }, [entityId, scenarioId])
+
+  if (varianceLoading || loading) {
+    return (
+      <div className="space-y-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="animate-pulse">
+            <div className="h-4 bg-muted rounded w-1/4 mb-2"></div>
+            <div className="h-8 bg-muted rounded w-1/2"></div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  if (variances.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-muted-foreground">No variance data available</p>
+        <p className="text-sm text-muted-foreground">Create forecasts and actuals to see variance analysis</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {variances.map((variance: any, index: number) => (
+        <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
+          <div>
+            <p className="font-medium">{variance.metric}</p>
+            <p className="text-sm text-muted-foreground">{variance.period}</p>
+          </div>
+          <div className="text-right">
+            <p className={`text-lg font-semibold ${variance.variance > 0 ? 'text-green-600' : variance.variance < 0 ? 'text-red-600' : ''}`}>
+              {variance.variance > 0 ? '+' : ''}{variance.variance.toFixed(1)}%
+            </p>
+            <p className="text-sm text-muted-foreground">
+              ${variance.actual?.toLocaleString() || 0} vs ${variance.forecast?.toLocaleString() || 0}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function ForecastingTab() {
   const { state } = useApp()
   const entityId = useMemo(() => Number(state.currentEntity?.id || 0), [state.currentEntity])
@@ -578,6 +646,20 @@ export default function ForecastingTab() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Variance Analysis */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5" />
+            Variance Analysis
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground mb-6">Actual vs Forecast performance</p>
+          <VarianceAnalysis entityId={entityId} scenarioId={activeScenario?.id} loading={loading} />
+        </CardContent>
+      </Card>
 
       {/* Validation Warnings */}
       <Card>

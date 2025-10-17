@@ -1,0 +1,157 @@
+services:
+  backend:
+    image: python:3.11-slim
+    container_name: ngi-backend
+    working_dir: /app
+    command: >
+      sh -c "pip install --no-cache-dir -r requirements.txt &&
+             uvicorn services.api.main:app --host 0.0.0.0 --port 8001 --reload --reload-exclude='tests/**' --reload-exclude='*.pyc' --reload-exclude='__pycache__/**'"
+    # Publish API on host 8001 and route via nginx on 3001
+    ports:
+      - "8002:8001"
+    volumes:
+      - ./:/app
+      # Mount your real SQLite DB into the container so API uses it
+      - ./ngi_capital.db:/app/data/ngi_capital.db
+    environment:
+      - PYTHONUNBUFFERED=1
+      # Stable secret for JWTs in dev
+      - SECRET_KEY=${SECRET_KEY:-ngi-capital-secret-key-2025-secure-internal-app}
+      # Explicit DB path for clarity (config also auto-detects /app/data)
+      - DATABASE_PATH=/app/data/ngi_capital.db
+      # Clerk (fill these from your Clerk dashboard)
+      - CLERK_AUDIENCE=backend
+      - CLERK_ISSUER=${CLERK_ISSUER:-https://YOUR-CLERK-SUBDOMAIN.clerk.accounts.dev}
+      - CLERK_JWKS_URL=${CLERK_JWKS_URL:-https://YOUR-CLERK-SUBDOMAIN.clerk.accounts.dev/.well-known/jwks.json}
+      - CLERK_VERIFY_AUDIENCE=${CLERK_VERIFY_AUDIENCE:-0}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
+      - NEXT_PUBLIC_CLERK_ISSUER=${CLERK_ISSUER}
+      - ALLOWED_STUDENT_DOMAINS=${ALLOWED_EMAIL_DOMAINS}
+      - ALLOWED_ADVISORY_ADMINS=${ALLOWED_ADVISORY_ADMINS:-lwhitworth@ngicapitaladvisory.com,anurmamade@ngicapitaladvisory.com}
+      - ADMIN_EMAILS=${ADMIN_EMAILS}
+      - DISABLE_ADVISORY_AUTH=${DISABLE_ADVISORY_AUTH:-1}
+      - DEFAULT_ADMIN_EMAIL=${DEFAULT_ADMIN_EMAIL:-admin@ngicapitaladvisory.com}
+      # Open non-accounting modules in dev for frictionless admin UX
+      - OPEN_NON_ACCOUNTING=${OPEN_NON_ACCOUNTING:-1}
+      # Relax accounting guard in dev
+      - DISABLE_ACCOUNTING_GUARD=${DISABLE_ACCOUNTING_GUARD:-1}
+      # Allow env admin allowlist fallback in dev
+      - ENABLE_ENV_ADMIN_FALLBACK=${ENABLE_ENV_ADMIN_FALLBACK:-1}
+    networks:
+      - ngi-network
+    healthcheck:
+      # Use python stdlib instead of curl (not installed in slim)
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/api/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  frontend:
+    image: node:18-alpine
+    container_name: ngi-frontend
+    working_dir: /app
+    command: >
+      sh -c "npm install &&
+             npm run dev"
+    # No host port; reached via nginx on the bridge network
+    expose:
+      - "3001"
+    volumes:
+      - ./apps/desktop:/app
+      - ./packages:/packages
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NODE_ENV=development
+      - NODE_PATH=/app/node_modules
+      - NEXT_PUBLIC_API_URL=http://backend:8001
+      - BACKEND_ORIGIN=http://backend:8001
+      # Ensure absolute bases resolve to nginx origin even if host env is unset
+      - NEXT_PUBLIC_STUDENT_BASE_URL=${NEXT_PUBLIC_STUDENT_BASE_URL:-http://localhost:3001}
+      - NEXT_PUBLIC_ADMIN_BASE_URL=${NEXT_PUBLIC_ADMIN_BASE_URL:-http://localhost:3001/admin}
+      # Expose issuer for client-side hosted fallback (Clerk hosted pages)
+      - NEXT_PUBLIC_CLERK_ISSUER=${CLERK_ISSUER}
+      # Also expose server-side Clerk vars for diagnostics
+      - CLERK_ISSUER=${CLERK_ISSUER}
+      - CLERK_JWKS_URL=${CLERK_JWKS_URL}
+      # Clerk config for Admin app
+      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      - CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
+      # ADMIN list for routing
+      - ADMIN_EMAILS=${ADMIN_EMAILS}
+      # No in-app sign-in/up pages; we use hosted Clerk sign-in
+      - PARTNER_EMAILS=${PARTNER_EMAILS}
+      - ALLOWED_EMAIL_DOMAINS=${ALLOWED_EMAIL_DOMAINS}
+      - NEXT_PUBLIC_FORCE_LOGOUT_ON_LOAD=${NEXT_PUBLIC_FORCE_LOGOUT_ON_LOAD}
+      - NEXT_PUBLIC_DISABLE_ADVISORY_AUTH=${NEXT_PUBLIC_DISABLE_ADVISORY_AUTH:-1}
+      - WATCHPACK_POLLING=true
+      # Use student app's sign-in at root (handled by Nginx route / -> student app)
+      - CLERK_SIGN_IN_URL=/sign-in
+      - CLERK_SIGN_UP_URL=/sign-up
+    depends_on:
+      - backend
+    networks:
+      - ngi-network
+
+  student:
+    image: node:18-alpine
+    container_name: ngi-student
+    working_dir: /app
+    command: >
+      sh -c "npm install &&
+             npm run dev"
+    # No host port; reached via nginx on the bridge network
+    expose:
+      - "3002"
+    volumes:
+      - ./apps/student:/app
+      - ./packages:/packages
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NODE_ENV=development
+      - NODE_PATH=/app/node_modules
+      - NEXT_PUBLIC_API_URL=http://backend:8001
+      - BACKEND_ORIGIN=http://backend:8001
+      # Ensure absolute bases resolve to nginx origin even if host env is unset
+      - NEXT_PUBLIC_STUDENT_BASE_URL=${NEXT_PUBLIC_STUDENT_BASE_URL:-http://localhost:3001}
+      - NEXT_PUBLIC_ADMIN_BASE_URL=${NEXT_PUBLIC_ADMIN_BASE_URL:-http://localhost:3001/admin}
+      # Expose issuer for client-side hosted fallback (Clerk hosted pages)
+      - NEXT_PUBLIC_CLERK_ISSUER=${CLERK_ISSUER}
+      # Clerk config for Student app
+      - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      - NEXT_PUBLIC_CLERK_ISSUER=${CLERK_ISSUER}
+      - CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
+      # ADMIN list for routing
+      - ADMIN_EMAILS=${ADMIN_EMAILS}
+      - USE_MOCK_AUTH=${USE_MOCK_AUTH:-true}
+      - NEXT_PUBLIC_MOCK_STUDENT_EMAIL=${NEXT_PUBLIC_MOCK_STUDENT_EMAIL:-student@berkeley.edu}
+      - ALLOWED_EMAIL_DOMAINS=${ALLOWED_EMAIL_DOMAINS:-berkeley.edu,ngicapitaladvisory.com}
+      - NEXT_PUBLIC_FORCE_LOGOUT_ON_LOAD=${NEXT_PUBLIC_FORCE_LOGOUT_ON_LOAD}
+      - WATCHPACK_POLLING=true
+    depends_on:
+      - backend
+    networks:
+      - ngi-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: ngi-nginx-dev
+    ports:
+      - "3001:80"
+    volumes:
+      - ./nginx/nginx.dev.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - backend
+      - student
+    networks:
+      - ngi-network
+
+networks:
+  ngi-network:
+    driver: bridge
+name: ngi-dev
+

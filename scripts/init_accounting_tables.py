@@ -3,9 +3,9 @@ Initialize all accounting tables in the database
 Creates tables from SQLAlchemy models
 """
 
-from src.api.database import engine
-from src.api.models_accounting import Base
-from src.api.models import Base as MainBase
+from services.api.database import engine
+from services.api.models_accounting import Base
+from services.api.models import Base as MainBase
 
 
 def init_tables():

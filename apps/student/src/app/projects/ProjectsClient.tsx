@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { PublicProject } from '@/lib/api'
 import { useRouter, usePathname } from 'next/navigation'
 import { postEvent } from '@/lib/telemetry'
@@ -9,10 +9,34 @@ import { StudentProjectModal } from '@/components/projects/StudentProjectModal'
 import { listMyApplications } from '@/lib/api'
 import MyApplicationsModal from '@/components/projects/MyApplicationsModal'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@ngi/ui'
+import { gsap } from 'gsap'
+import { useEffect, useRef } from 'react'
 
 export default function ProjectsClient({ initialItems, initialQ = '', initialTags = [], initialMode = '', initialLocation = '', initialSort = 'newest', pageSize = 20 }: { initialItems: PublicProject[]; initialQ?: string; initialTags?: string[]; initialMode?: string; initialLocation?: string; initialSort?: 'newest'|'name'|'applied'|'oldest'; pageSize?: number }) {
   const router = useRouter()
   const pathname = usePathname()
+  const titleRef = useRef<HTMLDivElement>(null)
+  
+  // GSAP animation for title
+  useEffect(() => {
+    if (titleRef.current) {
+      const chars = titleRef.current.querySelectorAll('.char')
+      
+      // Set initial state
+      gsap.set(chars, { y: 50, opacity: 0 })
+      
+      // Animate characters with stagger
+      gsap.to(chars, {
+        y: 0,
+        opacity: 1,
+        duration: 0.8,
+        ease: 'power3.out',
+        stagger: 0.05,
+        delay: 0.2
+      })
+    }
+  }, [])
+  
   // Filters/state
   const [q, setQ] = useState(initialQ)
   const [sort, setSort] = useState<'newest'|'name'|'applied'|'oldest'>(initialSort as any)
@@ -138,23 +162,16 @@ export default function ProjectsClient({ initialItems, initialQ = '', initialTag
   return (
     <>
       <div aria-label="Projects list" role="region" className="px-6 pt-4 pb-6 space-y-5">
-        {/* Header - NGI Capital Advisory - matching admin exactly */}
+        {/* Header with GSAP animated title */}
         <div className="flex flex-col gap-4">
-          <div>
-            <h1 className="text-4xl font-bold tracking-tight text-foreground">
-              NGI Capital Advisory
+          <div ref={titleRef} className="overflow-hidden" style={{ paddingBottom: '8px' }}>
+            <h1 className="text-5xl font-bold text-foreground tracking-tight leading-tight">
+              {'Advisory Projects'.split('').map((char, i) => (
+                <span key={i} className="char inline-block" style={{ paddingBottom: '4px' }}>
+                  {char === ' ' ? '\u00A0' : char}
+                </span>
+              ))}
             </h1>
-          </div>
-          
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-3xl font-bold tracking-tight text-foreground">
-                Projects
-              </h2>
-              <p className="text-muted-foreground mt-2">
-                Explore available projects and opportunities
-              </p>
-            </div>
           </div>
         </div>
 

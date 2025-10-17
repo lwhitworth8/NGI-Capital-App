@@ -97,58 +97,102 @@ export function DynamicOrgChart({
     )
   }
   
+  // Additional check for required properties
+  if (!data.structure_type) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <p className="text-sm text-muted-foreground">Invalid organizational data structure</p>
+      </div>
+    )
+  }
+  
+  // Ensure all arrays are defined
+  const board = data.board || []
+  const executives = data.executives || []
+  const projects = data.projects || []
+  const teams = data.teams || []
+  
+  
   // Corporate Structure (NGI Capital LLC parent)
-  if (data.structure_type === 'corporate' && data.board.length > 0) {
+  if (data.structure_type === 'corporate' && (board.length > 0 || executives.length > 0)) {
     return (
       <div className="flex flex-col items-center py-8">
         {/* Collapsed View */}
         {expandedTeam === null && (
           <>
             {/* Board of Directors */}
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-              onClick={() => setExpandedTeam('board')}
-              className="bg-gradient-to-br from-primary/10 to-primary/5 
-              border-2 border-primary rounded-xl p-6 
-              transition-all duration-300 cursor-pointer hover:shadow-lg hover:scale-105
-              min-w-[320px]"
-            >
+            {board.length > 0 ? (
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+                onClick={() => setExpandedTeam('board')}
+                className="bg-gradient-to-br from-primary/10 to-primary/5 
+                border-2 border-primary rounded-xl p-6 
+                transition-all duration-300 cursor-pointer hover:shadow-lg hover:scale-105
+                min-w-[320px]"
+              >
               <div className="flex items-start gap-4">
                 <div className="p-3 bg-primary/10 rounded-lg">
                   <Shield className="h-5 w-5 text-primary" />
                 </div>
                 <div className="flex-1">
                   <h3 className="font-bold text-lg mb-1">Board of Directors</h3>
-                  <p className="text-sm text-muted-foreground">{data.board.length} Members - Click to expand</p>
+                  <p className="text-sm text-muted-foreground">{board.length} Members - Click to expand</p>
                 </div>
               </div>
             </motion.div>
+            ) : (
+              <div className="bg-muted/30 border border-border rounded-xl p-6 min-w-[320px]">
+                <div className="flex items-start gap-4">
+                  <div className="p-3 bg-muted/50 rounded-lg">
+                    <Shield className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-bold text-lg mb-1">Board of Directors</h3>
+                    <p className="text-sm text-muted-foreground">No board members found</p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="w-0.5 h-12 bg-border"></div>
 
             {/* Executive Team */}
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, delay: 0.1 }}
-              onClick={() => setExpandedTeam('exec')}
-              className="bg-gradient-to-br from-primary/10 to-primary/5 
-              border-2 border-primary rounded-xl p-6 
-              transition-all duration-300 cursor-pointer hover:shadow-lg hover:scale-105
-              min-w-[320px]"
-            >
-              <div className="flex items-start gap-4">
-                <div className="p-3 bg-primary/10 rounded-lg">
-                  <Users className="h-5 w-5 text-primary" />
+            {executives.length > 0 ? (
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.1 }}
+                onClick={() => setExpandedTeam('exec')}
+                className="bg-gradient-to-br from-primary/10 to-primary/5 
+                border-2 border-primary rounded-xl p-6 
+                transition-all duration-300 cursor-pointer hover:shadow-lg hover:scale-105
+                min-w-[320px]"
+              >
+                <div className="flex items-start gap-4">
+                  <div className="p-3 bg-primary/10 rounded-lg">
+                    <Users className="h-5 w-5 text-primary" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-bold text-lg mb-1">Executive Team</h3>
+                    <p className="text-sm text-muted-foreground">{executives.length} Executives - Click to expand</p>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <h3 className="font-bold text-lg mb-1">Executive Team</h3>
-                  <p className="text-sm text-muted-foreground">{data.executives.length} Executives - Click to expand</p>
+              </motion.div>
+            ) : (
+              <div className="bg-muted/30 border border-border rounded-xl p-6 min-w-[320px]">
+                <div className="flex items-start gap-4">
+                  <div className="p-3 bg-muted/50 rounded-lg">
+                    <Users className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-bold text-lg mb-1">Executive Team</h3>
+                    <p className="text-sm text-muted-foreground">No executives found</p>
+                  </div>
                 </div>
               </div>
-            </motion.div>
+            )}
           </>
         )}
 
@@ -187,7 +231,7 @@ export function DynamicOrgChart({
             {/* Board Members */}
             <div className="flex justify-center gap-12" style={{ width: '680px', margin: '64px auto 0' }}>
               <AnimatePresence>
-                {data.board.map((member, idx) => (
+                {board.map((member, idx) => (
                   <motion.div 
                     key={member.id}
                     initial={{ opacity: 0, y: 20 }}
@@ -252,7 +296,7 @@ export function DynamicOrgChart({
             
             <div className="flex justify-center gap-12" style={{ width: '680px', margin: '64px auto 0' }}>
               <AnimatePresence>
-                {data.executives.map((exec, idx) => (
+                {executives.map((exec, idx) => (
                   <motion.div 
                     key={`exec-${exec.id}`}
                     initial={{ opacity: 0, y: 20 }}
@@ -284,7 +328,7 @@ export function DynamicOrgChart({
 
   // Advisory Structure (NGI Capital Advisory LLC) - Clean Tree Like Corporate Structure
   if (data.structure_type === 'advisory') {
-    if (data.projects.length === 0) {
+    if (projects.length === 0) {
       return (
         <motion.div 
           initial={{ opacity: 0, scale: 0.95 }}
@@ -304,9 +348,11 @@ export function DynamicOrgChart({
       <div className="flex flex-col items-center py-8 w-full">
         {/* Projects with clean tree structure - always expanded */}
         <AnimatePresence mode="wait">
-          {data.projects.map((project, projIdx) => {
-            const hasLeads = project.leads.length > 0
-            const hasMembers = project.team_members.length > 0
+          {projects.map((project, projIdx) => {
+            const leads = project.leads || []
+            const teamMembers = project.team_members || []
+            const hasLeads = leads.length > 0
+            const hasMembers = teamMembers.length > 0
             
             return (
               <motion.div 
@@ -352,21 +398,21 @@ export function DynamicOrgChart({
                       {/* Project Leads - Matching Corporate Board Style */}
                       {hasLeads && (
                         <>
-                          {project.leads.length > 1 && (
+                          {leads.length > 1 && (
                             /* Multiple leads - horizontal tree branching */
                             <div className="relative flex justify-center" style={{ width: '100%', height: '64px' }}>
                               <div 
                                 className="absolute h-0.5 bg-border" 
                                 style={{ 
-                                  width: `${(project.leads.length - 1) * 340}px`,
+                                  width: `${(leads.length - 1) * 340}px`,
                                   top: 0,
                                   left: '50%',
                                   transform: 'translateX(-50%)'
                                 }}
                               ></div>
-                              {project.leads.map((_, idx) => {
+                              {leads.map((_, idx) => {
                                 const spacing = 340
-                                const totalWidth = (project.leads.length - 1) * spacing
+                                const totalWidth = (leads.length - 1) * spacing
                                 const offset = -totalWidth / 2 + (idx * spacing)
                                 return (
                                   <div 
@@ -380,8 +426,8 @@ export function DynamicOrgChart({
                           )}
 
                           {/* Lead Cards */}
-                          <div className="flex justify-center gap-12 flex-wrap" style={{ marginTop: project.leads.length > 1 ? '48px' : '0' }}>
-                            {project.leads.map((lead, leadIdx) => (
+                          <div className="flex justify-center gap-12 flex-wrap" style={{ marginTop: leads.length > 1 ? '48px' : '0' }}>
+                            {leads.map((lead, leadIdx) => (
                               <motion.div
                                 key={lead.id}
                                 initial={{ opacity: 0, y: 20 }}
@@ -419,12 +465,12 @@ export function DynamicOrgChart({
                               <Users className="h-5 w-5 text-primary" />
                               <h4 className="text-base font-semibold">Student Analysts</h4>
                               <Badge variant="secondary" className="text-xs">
-                                {project.team_members.length}
+                                {teamMembers.length}
                               </Badge>
                             </div>
                             
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                              {project.team_members.map((member, memIdx) => (
+                              {teamMembers.map((member, memIdx) => (
                                 <motion.div
                                   key={member.id}
                                   initial={{ opacity: 0, scale: 0.9 }}
@@ -469,7 +515,7 @@ export function DynamicOrgChart({
 
   // Teams Structure (The Creator Terminal)
   if (data.structure_type === 'teams') {
-    if (data.teams.length === 0) {
+    if (teams.length === 0) {
       return (
         <motion.div 
           initial={{ opacity: 0, scale: 0.95 }}
@@ -489,7 +535,7 @@ export function DynamicOrgChart({
       <div className="flex flex-col items-center py-8">
         <div className="w-full max-w-5xl space-y-4">
           <AnimatePresence>
-            {data.teams.map((team, idx) => (
+            {teams.map((team, idx) => (
               <motion.div 
                 key={team.id}
                 initial={{ opacity: 0, x: -20 }}
@@ -515,9 +561,9 @@ export function DynamicOrgChart({
                 </div>
 
                 {/* Team Members */}
-                {team.members.length > 0 && (
+                {(team.members || []).length > 0 && (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-4 pt-4 border-t border-border">
-                    {team.members.map((member) => (
+                    {(team.members || []).map((member) => (
                       <div key={member.id} className="bg-muted/30 border border-border rounded-lg p-3">
                         <div className="flex items-start gap-2">
                           <UserCircle className="h-4 w-4 text-muted-foreground mt-0.5" />

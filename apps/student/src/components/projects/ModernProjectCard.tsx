@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { motion } from "framer-motion";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Building2 } from "lucide-react";
 import { PDFPreview } from "./PDFPreview";
 
 const KNOWN_CLIENTS: Record<string, string> = {
@@ -89,113 +89,96 @@ export default function ModernProjectCard({ project, onPreview, index }: ModernP
   })();
 
   return (
-    <div
-      className="w-full rounded-xl border border-border bg-card cursor-pointer hover:bg-accent/20 transition-colors"
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: index * 0.05 }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       onClick={onPreview}
+      className="group relative w-full rounded-2xl border border-border bg-card cursor-pointer overflow-hidden transition-all duration-300 hover:shadow-xl hover:border-blue-500/50"
     >
-      <div className="flex items-center p-4 gap-4">
-        <div className="relative w-40 md:w-48 aspect-[16/9] bg-black rounded-md overflow-hidden flex-shrink-0">
+      {/* Status Badge - Top Right */}
+      <div className="absolute top-4 right-4 z-10">
+        <motion.span
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ delay: 0.2 }}
+          className={`inline-flex items-center px-2.5 py-1.5 rounded-full text-xs font-semibold ${
+            statusIsActive
+              ? "bg-green-500 text-white"
+              : statusIsClosed
+              ? "bg-gray-500 text-white"
+              : "bg-yellow-500 text-white"
+          }`}
+        >
+          {statusIsActive ? "Open" : statusIsClosed ? "Closed" : "Draft"}
+        </motion.span>
+      </div>
+
+      {/* Card Content */}
+      <div className="px-4 pt-4 pb-3 flex flex-col sm:flex-row gap-4">
+        {/* Hero Image - Rounded for cleaner UI design */}
+        <motion.div
+          className="relative w-full sm:w-64 h-48 sm:h-36 rounded-xl overflow-hidden flex-shrink-0 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-950/30"
+          animate={{ scale: isHovered ? 1.02 : 1 }}
+          transition={{ duration: 0.3 }}
+        >
           {heroSrc ? (
             isPDF ? (
               <PDFPreview 
                 src={heroSrc} 
-                className="absolute inset-0 w-full h-full object-cover" 
+                className="w-full h-full object-contain" 
                 alt="PDF Preview"
               />
             ) : (
-              <img src={heroSrc} alt="hero" className="absolute inset-0 w-full h-full object-cover" />
+              <img src={heroSrc} alt="" className="w-full h-full object-contain" />
             )
           ) : (
-            <div className="absolute inset-0 w-full h-full bg-muted" />
-          )}
-        </div>
-        <div className="flex-1 min-w-0">
-          {/* Title + Status */}
-          <div className="flex items-start gap-2">
-            <div className="text-base md:text-lg font-semibold truncate">{project.project_name}</div>
-            <span className={`text-xxs ml-auto ${statusIsActive ? 'text-green-600' : 'text-muted-foreground'}`}>
-              {statusIsActive ? 'Active' : statusIsClosed ? 'Closed' : (String(project.status || '').charAt(0).toUpperCase() + String(project.status || '').slice(1))}
-            </span>
-          </div>
-          
-          {/* Client Logos - Multiple logos in a row */}
-          {clientLogos.length > 0 && (
-            <div className="flex items-center gap-2 mt-2">
-              {clientLogos.map((client: any, idx: number) => (
-                <motion.div
-                  key={idx}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  whileHover={{ scale: 1.02, y: -1 }}
-                  transition={{ delay: 0.1 * idx, type: "spring", stiffness: 400, damping: 25 }}
-                  className="inline-flex items-center gap-2.5 px-3 py-2 rounded-lg bg-background/80 border-2 border-border/60 backdrop-blur-sm flex-shrink-0 cursor-pointer hover:bg-background hover:border-border hover:shadow-lg"
-                >
-                  {client.url && !logoErrors[idx] ? (
-                    <>
-                      <div className="flex-shrink-0 w-6 h-6 flex items-center justify-center bg-white dark:bg-gray-900 rounded-md p-1 shadow-sm">
-                        <img
-                          src={withBasePath(client.url)}
-                          alt={client.name}
-                          className="w-full h-full object-contain"
-                          onError={() => setLogoErrors(prev => ({ ...prev, [idx]: true }))}
-                        />
-                      </div>
-                      <span className="text-sm font-semibold text-foreground">{client.name}</span>
-                    </>
-                  ) : (
-                    <span className="text-sm font-semibold text-foreground">{client.name}</span>
-                  )}
-                </motion.div>
-              ))}
+            <div className="w-full h-full flex items-center justify-center">
+              <span className="text-muted-foreground text-xs">No Image</span>
             </div>
           )}
-          
-          {/* Summary */}
-          <div className="text-sm text-muted-foreground mt-1 line-clamp-2">{project.summary}</div>
-          
-          {/* Blue Metadata Tags */}
-          <div className="flex flex-wrap items-center gap-2 mt-2">
+        </motion.div>
+
+        {/* Project Details */}
+        <div className="flex-1 flex flex-col gap-1 min-w-0">
+          {/* Title with proper spacing for status badge */}
+          <div className="pr-20">
+            <h3 className="text-lg sm:text-xl font-bold text-foreground tracking-tight leading-tight line-clamp-2">
+              {project.project_name || "Untitled Project"}
+            </h3>
+          </div>
+
+          {/* Summary (minimal spacing from title) */}
+          <p className="text-sm text-foreground/90 line-clamp-2 leading-relaxed">{project.summary}</p>
+
+          {/* All tags - Clients first, then metadata */}
+          <div className="flex items-center gap-2 overflow-x-auto py-2 -my-2 pl-2 -ml-2">
+            {/* Client tags - Same styling as metadata */}
+            {clientLogos.length > 0 && clientLogos.map((client: any, idx: number) => (
+              <motion.div
+                key={`${client.name}-${idx}`}
+                whileHover={{ scale: 1.05, y: -2 }}
+                transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-muted/50 border border-border text-xs text-foreground flex-shrink-0 cursor-pointer hover:bg-muted hover:border-border/80 hover:shadow-md"
+              >
+                <span className="truncate">{client.name}</span>
+              </motion.div>
+            ))}
             {(project.location_text || project.mode) && (
               <motion.div 
                 whileHover={{ scale: 1.05, y: -2 }}
                 transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-blue-500/10 border-2 border-blue-500/20 text-xs font-medium text-blue-600 dark:text-blue-400 flex-shrink-0 cursor-pointer hover:bg-blue-500/15 hover:border-blue-500/40 hover:shadow-md"
+                className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-muted/50 border border-border text-xs text-foreground flex-shrink-0 cursor-pointer hover:bg-muted hover:border-border/80 hover:shadow-md"
               >
                 <span className="truncate">
                   {(() => {
                     const mode = String(project.mode || '').toLowerCase();
                     const loc = String(project.location_text || '').trim();
-                    if (mode === 'hybrid' && loc) return `Hybrid - ${loc}`;
-                    if (mode === 'in_person' && loc) return `In Person - ${loc}`;
+                    if (mode === 'hybrid' && loc) return `Hybrid • ${loc}`;
+                    if (mode === 'in_person' && loc) return `In Person • ${loc}`;
                     return loc || (mode === 'remote' ? 'Remote' : '');
-                  })()}
-                </span>
-              </motion.div>
-            )}
-            {(project.start_date && project.end_date) && (
-              <motion.div 
-                whileHover={{ scale: 1.05, y: -2 }}
-                transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-blue-500/10 border-2 border-blue-500/20 text-xs font-medium text-blue-600 dark:text-blue-400 flex-shrink-0 cursor-pointer hover:bg-blue-500/15 hover:border-blue-500/40 hover:shadow-md"
-              >
-                <span className="truncate">
-                  {(() => {
-                    const getOrdinal = (day: number) => {
-                      if (day > 3 && day < 21) return 'th';
-                      switch (day % 10) {
-                        case 1: return 'st';
-                        case 2: return 'nd';
-                        case 3: return 'rd';
-                        default: return 'th';
-                      }
-                    };
-                    const formatDate = (dateStr: string) => {
-                      const d = new Date(dateStr);
-                      const month = d.toLocaleDateString('en-US', { month: 'short' });
-                      const day = d.getDate();
-                      return `${month} ${day}${getOrdinal(day)}`;
-                    };
-                    return `${formatDate(project.start_date)} - ${formatDate(project.end_date)}`;
                   })()}
                 </span>
               </motion.div>
@@ -204,22 +187,50 @@ export default function ModernProjectCard({ project, onPreview, index }: ModernP
               <motion.div 
                 whileHover={{ scale: 1.05, y: -2 }}
                 transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-blue-500/10 border-2 border-blue-500/20 text-xs font-medium text-blue-600 dark:text-blue-400 flex-shrink-0 cursor-pointer hover:bg-blue-500/15 hover:border-blue-500/40 hover:shadow-md"
+                className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-muted/50 border border-border text-xs text-foreground flex-shrink-0 cursor-pointer hover:bg-muted hover:border-border/80 hover:shadow-md"
               >
-                <span>{project.team_size} {project.team_size === 1 ? 'Open Position' : 'Open Positions'}</span>
+                <span>Team Size: {project.team_size}</span>
               </motion.div>
             )}
-            {typeof (project as any).default_hourly_rate === 'number' && (
+            {(project.start_date && project.end_date) && (
               <motion.div 
                 whileHover={{ scale: 1.05, y: -2 }}
                 transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-blue-500/10 border-2 border-blue-500/20 text-xs font-medium text-blue-600 dark:text-blue-400 flex-shrink-0 cursor-pointer hover:bg-blue-500/15 hover:border-blue-500/40 hover:shadow-md"
+                className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-muted/50 border border-border text-xs text-foreground flex-shrink-0 cursor-pointer hover:bg-muted hover:border-border/80 hover:shadow-md"
               >
                 <span>
                   {(() => {
-                    const r = (project as any).default_hourly_rate as number;
-                    const cur = String((project as any).pay_currency || 'USD').toUpperCase();
-                    try { return `${new Intl.NumberFormat(undefined, { style: 'currency', currency: cur, maximumFractionDigits: 0 }).format(r)}/hr`; } catch { return `$${r}/hr`; }
+                    try {
+                      const getOrdinal = (day: number) => {
+                        if (day > 3 && day < 21) return 'th';
+                        switch (day % 10) {
+                          case 1: return 'st';
+                          case 2: return 'nd';
+                          case 3: return 'rd';
+                          default: return 'th';
+                        }
+                      };
+                      
+                      const formatDate = (dateStr: string) => {
+                        // Ensure consistent date parsing by using UTC
+                        const d = new Date(dateStr + 'T00:00:00.000Z');
+                        if (isNaN(d.getTime())) {
+                          // Fallback for invalid dates
+                          return dateStr;
+                        }
+                        const month = d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
+                        const day = d.getUTCDate();
+                        return `${month} ${day}${getOrdinal(day)}`;
+                      };
+                      
+                      const startFormatted = formatDate(project.start_date);
+                      const endFormatted = formatDate(project.end_date);
+                      
+                      return `${startFormatted} - ${endFormatted}`;
+                    } catch (error) {
+                      // Fallback to raw dates if formatting fails
+                      return `${project.start_date} - ${project.end_date}`;
+                    }
                   })()}
                 </span>
               </motion.div>
@@ -234,6 +245,6 @@ export default function ModernProjectCard({ project, onPreview, index }: ModernP
           )}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

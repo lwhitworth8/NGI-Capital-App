@@ -20,7 +20,7 @@ export default function FinancePage() {
         {/* Scrollable content area */}
         <div className="flex-1 overflow-auto">
           {/* Animated Market Ticker - scrolls with content */}
-          <div className="border-b bg-card/30 backdrop-blur-sm py-2">
+          <div className="bg-card/30 backdrop-blur-sm py-2">
             <MarketTicker />
           </div>
           

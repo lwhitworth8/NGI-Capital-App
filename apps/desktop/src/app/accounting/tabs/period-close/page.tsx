@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { AnimatedText } from '@ngi/ui';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -284,10 +285,19 @@ export default function PeriodClosePage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Period Close</h2>
-          <p className="text-muted-foreground">
-            Month, quarter, and year-end close process with comprehensive checklist
-          </p>
+          <AnimatedText 
+            text="Period Close" 
+            as="h2" 
+            className="text-3xl font-bold tracking-tight"
+            delay={0.1}
+          />
+          <AnimatedText 
+            text="Month, quarter, and year-end close process with comprehensive checklist" 
+            as="p" 
+            className="text-muted-foreground"
+            delay={0.3}
+            stagger={0.02}
+          />
         </div>
         <Button onClick={() => setInitiateModalOpen(true)} size="lg">
           <Calendar className="mr-2 h-4 w-4" />

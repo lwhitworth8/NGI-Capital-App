@@ -1,5 +1,5 @@
 """
-Configuration settings for NGI Capital Internal System
+Configuration settings for NGI Capital Internal App 
 """
 
 import os
@@ -36,8 +36,8 @@ EMAIL_FROM = os.getenv("EMAIL_FROM", "noreply@ngicapital.com")
 
 # Partner emails
 PARTNER_EMAILS = [
-    "anurmamade@ngicapital.com",
-    "lwhitworth@ngicapital.com"
+    "anurmamade@ngicapitaladvisory.com",
+    "lwhitworth@ngicapitaladvisory.com"
 ]
 
 # Approval thresholds

@@ -94,15 +94,6 @@ describe('FinanceDashboardTab', () => {
     expect(screen.getByText('Quick Ratio')).toBeInTheDocument()
   })
 
-  it('renders health score section', () => {
-    renderWithQueryClient(<FinanceDashboardTab />)
-    
-    expect(screen.getByText('Three-Statement Health Score')).toBeInTheDocument()
-    expect(screen.getByText('P&L Quality:')).toBeInTheDocument()
-    expect(screen.getByText('Balance Sheet:')).toBeInTheDocument()
-    expect(screen.getByText('Cash Flow:')).toBeInTheDocument()
-  })
-
   it('renders unit economics section', () => {
     renderWithQueryClient(<FinanceDashboardTab />)
     
@@ -205,17 +196,6 @@ describe('MetricCard Component', () => {
     
     // Should show status indicators
     expect(screen.getByText('✓ HEALTHY')).toBeInTheDocument()
-  })
-})
-
-describe('Health Score Calculation', () => {
-  it('calculates health score correctly', () => {
-    renderWithQueryClient(<FinanceDashboardTab />)
-    
-    // Should display health score components
-    expect(screen.getByText('92')).toBeInTheDocument() // P&L Quality
-    expect(screen.getByText('85')).toBeInTheDocument() // Balance Sheet
-    expect(screen.getByText('84')).toBeInTheDocument() // Cash Flow
   })
 })
 

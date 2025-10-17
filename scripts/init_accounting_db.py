@@ -9,11 +9,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import create_engine
-from src.api.database import Base
-from src.api import models
-from src.api import models_accounting
-from src.api import models_accounting_part2
-from src.api import models_accounting_part3
+from services.api.database import Base
+from services.api import models
+from services.api import models_accounting
+from services.api import models_accounting_part2
+from services.api import models_accounting_part3
 
 # Remove old database if exists
 if os.path.exists('ngi_capital.db'):

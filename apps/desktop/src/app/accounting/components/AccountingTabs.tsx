@@ -17,6 +17,8 @@ const TABS = [
   { id: 'taxes', label: 'Taxes' },
   { id: 'period-close', label: 'Period Close' },
   { id: 'documents', label: 'Documents' },
+  { id: 'audit', label: 'Audit Package' },
+  { id: 'conversion', label: 'Conversion' },
 ];
 
 // Lazy load tabs for performance
@@ -30,6 +32,8 @@ const ReportingTab = lazy(() => import('../tabs/reporting/page'));
 const TaxesTab = lazy(() => import('../tabs/taxes/page'));
 const PeriodCloseTab = lazy(() => import('../tabs/period-close/page'));
 const DocumentsTab = lazy(() => import('../tabs/documents/page'));
+const AuditPackageTab = lazy(() => import('../tabs/audit-package/page'));
+const ConversionTab = lazy(() => import('../tabs/conversion/page'));
 
 interface AccountingTabsProps {
   onTabChange?: (tabId: string) => void;
@@ -98,32 +102,37 @@ export function AccountingTabs({ onTabChange }: AccountingTabsProps) {
   
   return (
     <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-      <TabsList className="grid w-full mb-6 h-auto" style={{gridTemplateColumns: `repeat(5, 1fr)`}}>
-        {TABS.slice(0, 5).map(tab => (
-          <TabsTrigger 
-            key={tab.id} 
-            value={tab.id} 
-            className="flex items-center justify-center py-2"
-            title={`${tab.label} (Cmd/Ctrl+${TABS.indexOf(tab) + 1})`}
-          >
-            <span className="text-base">{tab.label}</span>
-          </TabsTrigger>
-        ))}
-      </TabsList>
+      {/* First row of tabs - compact design matching Finance module */}
+      <div className="mb-6 flex justify-center">
+        <TabsList className="h-11 bg-muted/50">
+          {TABS.slice(0, 5).map(tab => (
+            <TabsTrigger 
+              key={tab.id} 
+              value={tab.id} 
+              className="data-[state=active]:bg-background px-6"
+              title={`${tab.label} (Cmd/Ctrl+${TABS.indexOf(tab) + 1})`}
+            >
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </div>
       
-      {/* Second row of tabs for better UX */}
-      <TabsList className="grid w-full mb-6 h-auto" style={{gridTemplateColumns: `repeat(5, 1fr)`}}>
-        {TABS.slice(5).map(tab => (
-          <TabsTrigger 
-            key={tab.id} 
-            value={tab.id} 
-            className="flex items-center justify-center py-2"
-            title={`${tab.label} (Cmd/Ctrl+${TABS.indexOf(tab) + 1})`}
-          >
-            <span className="text-base">{tab.label}</span>
-          </TabsTrigger>
-        ))}
-      </TabsList>
+      {/* Second row of tabs - compact design matching Finance module */}
+      <div className="mb-6 flex justify-center">
+        <TabsList className="h-11 bg-muted/50">
+          {TABS.slice(5).map(tab => (
+            <TabsTrigger 
+              key={tab.id} 
+              value={tab.id} 
+              className="data-[state=active]:bg-background px-6"
+              title={`${tab.label} (Cmd/Ctrl+${TABS.indexOf(tab) + 1})`}
+            >
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </div>
       
       <div className="mt-6">
         <Suspense fallback={
@@ -173,6 +182,12 @@ export function AccountingTabs({ onTabChange }: AccountingTabsProps) {
               </TabsContent>
               <TabsContent value="documents" className="mt-0">
                 <DocumentsTab />
+              </TabsContent>
+              <TabsContent value="audit" className="mt-0">
+                <AuditPackageTab />
+              </TabsContent>
+              <TabsContent value="conversion" className="mt-0">
+                <ConversionTab />
               </TabsContent>
             </motion.div>
           </AnimatePresence>

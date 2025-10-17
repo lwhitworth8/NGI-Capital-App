@@ -3,9 +3,9 @@ from datetime import datetime, timedelta
 from jose import jwt
 from sqlalchemy import text as sa_text
 
-from src.api.main import app
-from src.api.config import SECRET_KEY, ALGORITHM
-from src.api.database import get_db
+from services.api.main import app
+from services.api.config import SECRET_KEY, ALGORITHM
+from services.api.database import get_db
 
 
 def make_token(email: str) -> str:

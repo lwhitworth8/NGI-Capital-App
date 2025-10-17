@@ -77,7 +77,7 @@ function TickerItem({
   return (
     <button 
       onClick={onClick}
-      className="inline-flex items-center gap-3 px-4 py-2 hover:bg-accent/50 rounded-lg transition-colors group"
+      className="inline-flex items-center gap-3 px-4 py-2 hover:bg-transparent rounded-lg transition-colors group focus:outline-none focus:ring-0 active:bg-transparent"
     >
       <span className="font-medium text-foreground whitespace-nowrap group-hover:text-primary transition-colors">
         {label}

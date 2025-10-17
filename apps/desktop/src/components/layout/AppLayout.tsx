@@ -13,9 +13,13 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const pathname = usePathname();
   
-  // Show ChatKit agent on admin pages only
-  const showChatKit = !pathname.startsWith('/ngi-advisory') && 
-                       !pathname.startsWith('/learning');
+  // Feature flag (default off): enable to show NEX orb
+  const NEX_ENABLED = ((process.env.NEXT_PUBLIC_ENABLE_NEX ?? 'false') + '').toLowerCase() === 'true'
+
+  // Show ChatKit agent only when enabled and not on excluded sections
+  const showChatKit = NEX_ENABLED &&
+                      !pathname.startsWith('/ngi-advisory') &&
+                      !pathname.startsWith('/learning');
 
   const toggleSidebar = () => {
     setSidebarCollapsed(!sidebarCollapsed);

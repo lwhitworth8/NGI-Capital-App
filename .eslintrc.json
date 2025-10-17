@@ -1,0 +1,16 @@
+{
+  "root": true,
+  "env": {
+    "es2021": true,
+    "node": true,
+    "browser": false
+  },
+  "ignorePatterns": [
+    "services/**",
+    "legacy/**",
+    "db/**",
+    "infra/**",
+    "packages/ui/node_modules/**",
+    "node_modules/**"
+  ]
+}

@@ -149,6 +149,15 @@
   }
 }
 
+/* Hide scrollbars but allow scrolling */
+.no-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
 /* Modern Card Styles */
 .card-modern {
   @apply bg-card rounded-2xl border border-border/50;

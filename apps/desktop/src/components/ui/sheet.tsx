@@ -49,9 +49,9 @@ export function Sheet({ children, open, onOpenChange }: SheetProps) {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-[9999]" role="dialog" aria-modal="true">
       {/* Backdrop layer */}
-      <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={() => onOpenChange?.(false)} />
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-md" onClick={() => onOpenChange?.(false)} />
       {/* Slot for content; SheetContent renders absolute/fixed positioned box and stops propagation */}
       {children}
     </div>

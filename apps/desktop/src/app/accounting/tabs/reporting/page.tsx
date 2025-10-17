@@ -22,6 +22,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { AnimatedText } from '@ngi/ui';
 import {
   FileText,
   Download,
@@ -228,6 +229,25 @@ export default function ReportingPage() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <AnimatedText 
+            text="Reporting" 
+            as="h2" 
+            className="text-2xl font-bold tracking-tight"
+            delay={0.1}
+          />
+          <AnimatedText 
+            text="Generate US GAAP financial statements and comprehensive reporting packages" 
+            as="p" 
+            className="text-muted-foreground"
+            delay={0.3}
+            stagger={0.02}
+          />
+        </div>
+      </div>
+
       {/* Period Selector Card */}
       <Card>
         <CardHeader>
@@ -325,12 +345,22 @@ export default function ReportingPage() {
 
       {/* Financial Statements Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="balance-sheet">Balance Sheet</TabsTrigger>
-          <TabsTrigger value="income-statement">Income Statement</TabsTrigger>
-          <TabsTrigger value="cash-flow">Cash Flow</TabsTrigger>
-          <TabsTrigger value="equity">Equity</TabsTrigger>
-        </TabsList>
+        <div className="mb-6 flex justify-center">
+          <TabsList className="h-11 bg-muted/50">
+            <TabsTrigger value="balance-sheet" className="data-[state=active]:bg-background px-6">
+              Balance Sheet
+            </TabsTrigger>
+            <TabsTrigger value="income-statement" className="data-[state=active]:bg-background px-6">
+              Income Statement
+            </TabsTrigger>
+            <TabsTrigger value="cash-flow" className="data-[state=active]:bg-background px-6">
+              Cash Flow
+            </TabsTrigger>
+            <TabsTrigger value="equity" className="data-[state=active]:bg-background px-6">
+              Equity
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         {/* ============================================================================ */}
         {/* BALANCE SHEET TAB */}

@@ -234,35 +234,5 @@ export const LEARNING_GROUPS: GroupedLearningModule[] = [
       { id: 'microeconomics', submoduleName: 'Microeconomics', status: 'coming_soon' },
     ],
   },
-  {
-    mainModule: 'Technology & Innovation',
-    order: 4,
-    submodules: [
-      { id: 'computer_science', submoduleName: 'Computer Science', status: 'coming_soon' },
-      { id: 'software_engineering', submoduleName: 'Software Engineering', status: 'coming_soon' },
-      { id: 'data_science_analytics', submoduleName: 'Data Science & Analytics', status: 'coming_soon' },
-      { id: 'artificial_intelligence', submoduleName: 'Artificial Intelligence', status: 'coming_soon' },
-    ],
-  },
-  {
-    mainModule: 'Leadership & Management',
-    order: 5,
-    submodules: [
-      { id: 'project_management', submoduleName: 'Project Management', status: 'coming_soon' },
-      { id: 'team_leadership', submoduleName: 'Team Leadership', status: 'coming_soon' },
-      { id: 'organizational_behavior', submoduleName: 'Organizational Behavior', status: 'coming_soon' },
-      { id: 'change_management', submoduleName: 'Change Management', status: 'coming_soon' },
-    ],
-  },
-  {
-    mainModule: 'Communication & Presentation',
-    order: 6,
-    submodules: [
-      { id: 'business_communication', submoduleName: 'Business Communication', status: 'coming_soon' },
-      { id: 'presentation_skills', submoduleName: 'Presentation Skills', status: 'coming_soon' },
-      { id: 'public_speaking', submoduleName: 'Public Speaking', status: 'coming_soon' },
-      { id: 'writing_skills', submoduleName: 'Professional Writing', status: 'coming_soon' },
-    ],
-  },
 ];
 

@@ -4,8 +4,8 @@ Landon Whitworth (CEO & Co-Founder) and Andre Nurmamade (Co-Founder, CFO & COO)
 """
 
 from datetime import date
-from src.api.database import get_db
-from src.api.models import Partners  # Using existing Partners model for employees
+from services.api.database import get_db
+from services.api.models import Partners  # Using existing Partners model for employees
 
 
 def seed_employees():
@@ -15,8 +15,8 @@ def seed_employees():
     db = next(get_db())
     try:
         # Check if employees already exist
-        existing_landon = db.query(Partners).filter_by(email="landon@ngicapital.com").first()
-        existing_andre = db.query(Partners).filter_by(email="andre@ngicapital.com").first()
+        existing_landon = db.query(Partners).filter_by(email="lwhitworth@ngicapitaladvisory.com").first()
+        existing_andre = db.query(Partners).filter_by(email="anurmamade@ngicapitaladvisory.com").first()
         
         if existing_landon and existing_andre:
             print("[INFO] Employees already seeded")
@@ -27,7 +27,7 @@ def seed_employees():
         # Landon Whitworth - CEO & Co-Founder
         if not existing_landon:
             landon = Partners(
-                email="landon@ngicapital.com",
+                email="lwhitworth@ngicapitaladvisory.com",
                 name="Landon Whitworth (CEO & Co-Founder)",
                 password_hash="hashed_placeholder",  # Placeholder, will be set by auth system
                 ownership_percentage=50.0,  # 50% ownership
@@ -40,7 +40,7 @@ def seed_employees():
         # Andre Nurmamade - Co-Founder, CFO & COO
         if not existing_andre:
             andre = Partners(
-                email="andre@ngicapital.com",
+                email="anurmamade@ngicapitaladvisory.com",
                 name="Andre Nurmamade (Co-Founder, CFO & COO)",
                 password_hash="hashed_placeholder",  # Placeholder, will be set by auth system
                 ownership_percentage=50.0,  # 50% ownership

@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
+import { AnimatedText } from '@ngi/ui/components/animated';
 import {
   Search, 
   Mail, 
@@ -167,7 +168,12 @@ export default function OnboardingPage() {
       <div className="border-b bg-card p-6" data-testid="module-header">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-[24px] font-bold text-foreground tracking-tight">Advisory Onboarding</h1>
+            <AnimatedText 
+              text="Advisory Onboarding" 
+              as="h1" 
+              className="text-[24px] font-bold text-foreground tracking-tight"
+              delay={0.1}
+            />
           </div>
             </div>
           </div>

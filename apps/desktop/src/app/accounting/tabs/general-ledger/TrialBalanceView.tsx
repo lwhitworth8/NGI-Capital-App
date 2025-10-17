@@ -1,7 +1,7 @@
 ﻿"use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { useEntityContext } from "@/hooks/useEntityContext"
+import { useEntity } from "@/lib/context/UnifiedEntityContext"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -27,7 +27,8 @@ interface TrialBalanceSummary {
 }
 
 export default function TrialBalanceView() {
-  const { selectedEntityId } = useEntityContext()
+  const { selectedEntity } = useEntity()
+  const selectedEntityId = selectedEntity?.id
   const [asOfDate, setAsOfDate] = useState(new Date().toISOString().split("T")[0])
   const [rows, setRows] = useState<TrialBalanceRow[]>([])
   const [summary, setSummary] = useState<TrialBalanceSummary | null>(null)
@@ -110,92 +111,84 @@ export default function TrialBalanceView() {
       transition={{ duration: 0.2 }}
       className="space-y-6"
     >
-      {/* Header */}
-      <div>
-        <h3 className="text-lg font-semibold">Trial Balance</h3>
-        <p className="text-sm text-muted-foreground">Verify that debits equal credits</p>
-      </div>
-
-      {/* Controls */}
+      {/* Controls and Display - Merged */}
       <Card>
         <CardHeader>
-          <CardTitle>Generate Trial Balance</CardTitle>
-          <CardDescription>Select a date to view the trial balance as of that date</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-end gap-4">
-            <div className="flex-1 space-y-2">
-              <Label htmlFor="as_of_date">As of Date</Label>
+          <div className="flex items-start justify-between">
+            <div>
+              <CardTitle>Generate Trial Balance</CardTitle>
+              <CardDescription>Select a date to view the trial balance as of that date</CardDescription>
+            </div>
+            <div className="flex items-end gap-3">
               <Input
                 id="as_of_date"
                 type="date"
                 value={asOfDate}
                 onChange={(e) => setAsOfDate(e.target.value)}
+                className="w-40 h-9"
               />
+              <Button onClick={fetchTrialBalance} disabled={loading} size="sm" className="h-9">
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  <>
+                    <FileText className="mr-2 h-4 w-4" />
+                    Generate
+                  </>
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleDownload}
+                disabled={downloading || rows.length === 0}
+                size="sm"
+                className="h-9"
+              >
+                {downloading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Downloading...
+                  </>
+                ) : (
+                  <>
+                    <Download className="mr-2 h-4 w-4" />
+                    Download
+                  </>
+                )}
+              </Button>
             </div>
-            <Button onClick={fetchTrialBalance} disabled={loading}>
-              {loading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Loading...
-                </>
-              ) : (
-                <>
-                  <FileText className="mr-2 h-4 w-4" />
-                  Generate
-                </>
-              )}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleDownload}
-              disabled={downloading || rows.length === 0}
-            >
-              {downloading ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Downloading...
-                </>
-              ) : (
-                <>
-                  <Download className="mr-2 h-4 w-4" />
-                  Download
-                </>
-              )}
-            </Button>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Results */}
-      {loading ? (
-        <Card>
-          <CardContent className="flex items-center justify-center py-12">
+        </CardHeader>
+        <CardContent className="space-y-4">
+          
+          {/* Trial Balance Display Area */}
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+              >
+                <Loader2 className="h-8 w-8 text-primary" />
+              </motion.div>
+            </div>
+          ) : rows.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-center">
+              <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No Data</h3>
+              <p className="text-sm text-muted-foreground">
+                Click Generate to view the trial balance.
+              </p>
+            </div>
+          ) : (
             <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.3 }}
+              className="space-y-6"
             >
-              <Loader2 className="h-8 w-8 text-primary" />
-            </motion.div>
-          </CardContent>
-        </Card>
-      ) : rows.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-            <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No Data</h3>
-            <p className="text-sm text-muted-foreground">
-              Click Generate to view the trial balance.
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.3 }}
-          className="space-y-6"
-        >
           {/* Summary */}
           {summary && (
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -312,9 +305,11 @@ export default function TrialBalanceView() {
                 </TableBody>
               </Table>
             </CardContent>
-          </Card>
-        </motion.div>
-      )}
+            </Card>
+            </motion.div>
+          )}
+        </CardContent>
+      </Card>
     </motion.div>
   )
 }

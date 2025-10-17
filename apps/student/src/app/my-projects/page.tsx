@@ -48,43 +48,44 @@ export default function MyProjectsPage() {
       {/* Scrollable content area */}
       <div className="flex-1 overflow-auto">
         <div className="p-6">
-      {loading && <div className="text-sm text-muted-foreground mt-2">Loading...</div>}
-      {error && <div className="text-sm text-red-600 mt-2">{error}</div>}
-      <div className="mt-6">
-        <h2 className="text-lg font-medium">Active Projects</h2>
-        <div className="mt-2 grid md:grid-cols-2 gap-3">
-          {active.map(p => (
-            <div key={p.id} className="border rounded-xl p-4 bg-card">
-              <div className="text-sm text-muted-foreground">{p.project_code}</div>
-              <div className="text-base font-semibold">{p.project_name}</div>
-              <div className="text-sm text-muted-foreground mt-1">{p.summary || ''}</div>
-              <div className="mt-2">
-                <Link href={`/my-projects/${p.id}`} className="text-blue-600">Open</Link>
-              </div>
+          {loading && <div className="text-sm text-muted-foreground mt-2">Loading...</div>}
+          {error && <div className="text-sm text-red-600 mt-2">{error}</div>}
+          <div className="mt-6">
+            <h2 className="text-lg font-medium">Active Projects</h2>
+            <div className="mt-2 grid md:grid-cols-2 gap-3">
+              {active.map(p => (
+                <div key={p.id} className="border rounded-xl p-4 bg-card">
+                  <div className="text-sm text-muted-foreground">{p.project_code}</div>
+                  <div className="text-base font-semibold">{p.project_name}</div>
+                  <div className="text-sm text-muted-foreground mt-1">{p.summary || ''}</div>
+                  <div className="mt-2">
+                    <Link href={`/my-projects/${p.id}`} className="text-blue-600">Open</Link>
+                  </div>
+                </div>
+              ))}
+              {!loading && active.length === 0 && (
+                <div className="text-sm text-muted-foreground">You have no active projects yet.</div>
+              )}
             </div>
-          ))}
-          {!loading && active.length === 0 && (
-            <div className="text-sm text-muted-foreground">You have no active projects yet.</div>
-          )}
-        </div>
-      </div>
-      <div className="mt-8">
-        <h2 className="text-lg font-medium">Past Projects</h2>
-        <div className="mt-2 grid md:grid-cols-2 gap-3">
-          {past.map(p => (
-            <div key={p.id} className="border rounded-xl p-4 bg-card">
-              <div className="text-sm text-muted-foreground">{p.project_code}</div>
-              <div className="text-base font-semibold">{p.project_name}</div>
-              <div className="text-sm text-muted-foreground mt-1">{p.summary || ''}</div>
-              <div className="mt-2">
-                <Link href={`/my-projects/${p.id}`} className="text-blue-600">Open</Link>
-              </div>
+          </div>
+          <div className="mt-8">
+            <h2 className="text-lg font-medium">Past Projects</h2>
+            <div className="mt-2 grid md:grid-cols-2 gap-3">
+              {past.map(p => (
+                <div key={p.id} className="border rounded-xl p-4 bg-card">
+                  <div className="text-sm text-muted-foreground">{p.project_code}</div>
+                  <div className="text-base font-semibold">{p.project_name}</div>
+                  <div className="text-sm text-muted-foreground mt-1">{p.summary || ''}</div>
+                  <div className="mt-2">
+                    <Link href={`/my-projects/${p.id}`} className="text-blue-600">Open</Link>
+                  </div>
+                </div>
+              ))}
+              {!loading && past.length === 0 && (
+                <div className="text-sm text-muted-foreground">No past projects.</div>
+              )}
             </div>
-          ))}
-          {!loading && past.length === 0 && (
-            <div className="text-sm text-muted-foreground">No past projects.</div>
-          )}
-        </div>
+          </div>
         </div>
       </div>
     </div>

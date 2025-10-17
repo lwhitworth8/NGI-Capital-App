@@ -9,9 +9,9 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath('.'))
 
-from src.api.database import get_db
-from src.api.models_accounting import AccountingEntity, EntityRelationship
-from src.api.models import Partners, Entities
+from services.api.database import get_db
+from services.api.models_accounting import AccountingEntity, EntityRelationship
+from services.api.models import Partners, Entities
 from datetime import date
 
 def seed_entities():

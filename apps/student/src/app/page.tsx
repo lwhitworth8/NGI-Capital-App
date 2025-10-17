@@ -2,17 +2,15 @@
 
 import Link from 'next/link'
 import { useEffect, useRef, useState } from 'react'
+import { gsap } from 'gsap'
 import { spFetch } from '@/lib/api'
-import AnimatedNGILogo from '@/components/AnimatedNGILogo'
 import StreamlinedSignIn from '@/components/StreamlinedSignIn'
 
-const WORDS = ['Experiences', 'Opportunities', 'Impacts']
+
 
 export default function MarketingHomepage() {
-  const [wordIdx, setWordIdx] = useState(0)
-  const [reduceMotion, setReduceMotion] = useState(false)
   const [active, setActive] = useState<'projects'|'learning'|'incubator'>('projects')
-  const [logoAnimationComplete, setLogoAnimationComplete] = useState(false)
+  const heroRef = useRef<HTMLDivElement>(null)
 
   // Telemetry: marketing_view on mount
   useEffect(() => {
@@ -22,23 +20,27 @@ export default function MarketingHomepage() {
     }).catch(() => {})
   }, [])
 
-  // Reduced motion detection
+  // GSAP animation on mount
   useEffect(() => {
-    try {
-      const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
-      setReduceMotion(mq.matches)
-      const onChange = () => setReduceMotion(mq.matches)
-      mq.addEventListener?.('change', onChange)
-      return () => mq.removeEventListener?.('change', onChange)
-    } catch {}
+    if (heroRef.current) {
+      const chars = heroRef.current.querySelectorAll('.char')
+      
+      // Set initial state
+      gsap.set(chars, { y: 100, opacity: 0 })
+      
+      // Animate characters with stagger
+      gsap.to(chars, {
+        y: 0,
+        opacity: 1,
+        duration: 0.8,
+        ease: 'power3.out',
+        stagger: 0.05,
+        delay: 0.5
+      })
+    }
   }, [])
 
-  // Word rotation every 3s (only after logo animation completes)
-  useEffect(() => {
-    if (reduceMotion || !logoAnimationComplete) return
-    const id = setInterval(() => setWordIdx((i) => (i + 1) % WORDS.length), 3000)
-    return () => clearInterval(id)
-  }, [reduceMotion, logoAnimationComplete])
+
 
   // IntersectionObserver for sticky subnav active state
   useEffect(() => {
@@ -73,19 +75,32 @@ export default function MarketingHomepage() {
 
   return (
     <>
-      {/* Clean Black Hero Section - Much Smaller */}
+      {/* Clean Black Hero Section */}
       <div className="relative bg-black h-64 flex items-center justify-center">
-        {/* Hero Section with Animated Logo */}
-        <section id="hero" className="w-full px-8">
-          <div className="max-w-6xl mx-auto">
-            {/* Animated Logo with Centered Text */}
-            <AnimatedNGILogo 
-              onAnimationComplete={() => setLogoAnimationComplete(true)}
-              className="justify-center"
-            />
+        <div ref={heroRef} className="text-center">
+            {/* NGI Capital - White text */}
+            <div className="overflow-hidden">
+              <h1 className="text-6xl md:text-7xl font-bold tracking-tight text-white">
+                {'NGI Capital'.split('').map((char, i) => (
+                  <span key={i} className="char inline-block">
+                    {char === ' ' ? '\u00A0' : char}
+                  </span>
+                ))}
+              </h1>
+            </div>
+            
+            {/* Next Generation Investors - Blue text */}
+            <div className="overflow-hidden mt-4">
+              <p className="text-2xl md:text-3xl font-medium tracking-wide text-blue-600">
+                {'Next Generation Investors'.split('').map((char, i) => (
+                  <span key={i} className="char inline-block">
+                    {char === ' ' ? '\u00A0' : char}
+                  </span>
+                ))}
+              </p>
+            </div>
           </div>
-        </section>
-      </div>
+        </div>
 
       {/* Secondary navbar - clean white with border */}
       <div id="subnav" className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm">
@@ -488,47 +503,3 @@ function AdvisoryFeature({
   )
 }
 
-function AnimatedWord({ word, reduceMotion }: { word: string; reduceMotion?: boolean }) {
-  const [display, setDisplay] = useState(word)
-  const [phase, setPhase] = useState<'in'|'out'|'idle'>('in')
-  const prev = useRef(word)
-  
-  useEffect(() => {
-    if (reduceMotion) {
-      setDisplay(word)
-      setPhase('idle')
-      prev.current = word
-      return
-    }
-    if (word === prev.current) return
-    
-    setPhase('out')
-    const t = setTimeout(() => {
-      setDisplay(word)
-      setPhase('in')
-      prev.current = word
-      const t2 = setTimeout(() => setPhase('idle'), 300)
-      return () => clearTimeout(t2)
-    }, 300)
-    return () => clearTimeout(t)
-  }, [word, reduceMotion])
-  
-  const cls = phase === 'in'
-    ? 'opacity-100 translate-y-0'
-    : phase === 'out'
-      ? 'opacity-0 -translate-y-2'
-      : 'opacity-100 translate-y-0'
-  
-  return (
-    <span 
-      className={`inline-block transition-all duration-300 ease-out ${cls} font-extrabold`}
-      style={{
-        color: '#2563eb',
-        textShadow: '0 0 20px rgba(37, 99, 235, 0.5), 0 0 40px rgba(37, 99, 235, 0.3), 0 2px 4px rgba(0, 0, 0, 0.3)',
-        filter: 'brightness(1.1)'
-      }}
-    >
-      {display}
-    </span>
-  )
-}

@@ -679,49 +679,27 @@ function IncomeStatementView({ data, entityName, periodEnd }: { data: any; entit
 
 // Cash Flow Statement
 function CashFlowView({ data, entityName, periodEnd }: { data: any; entityName: string; periodEnd: string }) {
-  const year = new Date(periodEnd).getFullYear();
-  
-  return (
-        <Card>
-          <CardHeader>
-        <CardTitle className="text-xl">{entityName}</CardTitle>
-        <CardTitle className="text-lg">STATEMENT OF CASH FLOWS</CardTitle>
-        <CardDescription>
-          For the Year Ended December 31, {year} (Indirect Method - ASC 230)
-        </CardDescription>
-          </CardHeader>
-          <CardContent>
-        <div className="py-12 text-center text-muted-foreground">
-          <p>Cash flow statement requires journal entry analysis to reconcile net income to cash flows.</p>
-          <p className="text-xs mt-2">This will be generated after you create journal entries and post them.</p>
-        </div>
-          </CardContent>
-        </Card>
-  );
-}
+  if (!data) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center text-muted-foreground">
+          No cash flow data available
+        </CardContent>
+      </Card>
+    );
+  }
 
 // Equity Statement
 function EquityStatementView({ data, entityName, periodEnd }: { data: any; entityName: string; periodEnd: string }) {
-  const year = new Date(periodEnd).getFullYear();
-  
-  return (
-        <Card>
-          <CardHeader>
-        <CardTitle className="text-xl">{entityName}</CardTitle>
-        <CardTitle className="text-lg">STATEMENT OF STOCKHOLDERS' EQUITY</CardTitle>
-        <CardDescription>
-          For the Year Ended December 31, {year}
-        </CardDescription>
-          </CardHeader>
-          <CardContent>
-        <div className="py-12 text-center text-muted-foreground">
-          <p>Equity statement shows all changes in members' capital or stockholders' equity.</p>
-          <p className="text-xs mt-2">Will display contributions, distributions, and net income once equity transactions are recorded.</p>
-        </div>
-          </CardContent>
-        </Card>
-  );
-}
+  if (!data) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center text-muted-foreground">
+          No equity statement data available
+        </CardContent>
+      </Card>
+    );
+  }
 
 // Notes Component
 function NotesToFinancialsView({ notes, entityName, periodEnd }: { notes: any; entityName: string; periodEnd: string }) {

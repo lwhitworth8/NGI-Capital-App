@@ -7,7 +7,7 @@ with open('src/api/routes/advisory_public.py', 'r', encoding='utf-8') as f:
     content = f.read()
 
 # Change imports
-content = content.replace('from src.api.database_async import get_async_db', 'from src.api.database import get_db')
+content = content.replace('from services.api.database_async import get_async_db', 'from services.api.database import get_db')
 
 # Change all get_async_db to get_db
 content = content.replace('get_async_db', 'get_db')
@@ -27,7 +27,7 @@ with open('src/api/routes/advisory_public.py', 'r', encoding='utf-8') as f:
     content = f.read()
 
 # Change imports
-content = content.replace('from src.api.database_async import get_async_db', 'from src.api.database import get_db')
+content = content.replace('from services.api.database_async import get_async_db', 'from services.api.database import get_db')
 
 # Change all get_async_db to get_db
 content = content.replace('get_async_db', 'get_db')

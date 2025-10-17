@@ -4,6 +4,9 @@ import { useState, useEffect } from 'react';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@ngi/ui'
 import { useTheme } from 'next-themes';
 import { useUser } from '@clerk/nextjs';
+import { ModuleHeader } from '@ngi/ui/components/layout';
+import { Label } from '@ngi/ui/components/label';
+import { Input } from '@ngi/ui/components/input';
 import { 
   Moon, 
   Sun, 
@@ -38,6 +41,8 @@ type Profile = {
   location?: string | null;
   theme?: string | null;
   uc_investments_academy?: string | null;
+  profile_color?: string | null;
+  profile_photo_url?: string | null;
 }
 
 export default function Settings() {
@@ -50,6 +55,8 @@ export default function Settings() {
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [profileColor, setProfileColor] = useState<string>("");
+  const [photoUrl, setPhotoUrl] = useState<string>("");
 
   // Editable fields
   const [firstName, setFirstName] = useState('');
@@ -83,8 +90,11 @@ export default function Settings() {
       console.log('[SETTINGS] Loading profile for:', email);
       
       const res = await fetch('/api/public/profile', {
-        headers: { 'X-Student-Email': email }
-      });
+        headers: {
+          'X-Student-Email': email
+        }
+      }); 
+      try { window.dispatchEvent(new CustomEvent('avatar-updated')); } catch {}
       if (res.ok) {
         const data = await res.json();
         console.log('[SETTINGS] Profile loaded:', data);
@@ -99,6 +109,8 @@ export default function Settings() {
         setLinkedin(data.linkedin_url || '');
         setGpa((typeof data.gpa === 'number' ? data.gpa : null) ?? '');
         setLocation(data.location || '');
+        setProfileColor((data.profile_color || '#0066FF') as string);
+        setPhotoUrl((data.profile_photo_url || '') as string);
         
         // Handle UC Academy explicitly - convert null/undefined to "none"
         setUcAcademy(data.uc_investments_academy !== null && data.uc_investments_academy !== undefined ? data.uc_investments_academy : 'none');
@@ -110,6 +122,60 @@ export default function Settings() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const colorOptions = [
+    '#0066FF', // NGI Capital Primary Blue
+    '#FF6B35', // Orange
+    '#32CD32', // Lime Green
+    '#9B59B6', // Purple
+    '#E74C3C', // Red
+    '#F39C12', // Gold
+    '#FF69B4'  // Pink
+  ];
+
+  const selectColor = async (hex: string) => {
+    try {
+      setProfileColor(hex);
+      const email = user?.primaryEmailAddress?.emailAddress;
+      if (email) {
+        await fetch('/api/public/profile', {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Student-Email': email
+          },
+          body: JSON.stringify({ profile_color: hex })
+        }); 
+        try { window.dispatchEvent(new CustomEvent('avatar-updated')); } catch {}
+      }
+    } catch {}
+  };
+
+  const uploadPhoto = async (file: File) => {
+    try {
+      const email = user?.primaryEmailAddress?.emailAddress;
+      if (!email) return;
+      const fd = new FormData(); fd.append('file', file);
+      const res = await fetch('/api/public/profile/photo', { method: 'POST', headers: { 'X-Student-Email': email }, body: fd });
+      if (!res.ok) return;
+      const r = await res.json();
+      if (r?.profile_photo_url) setPhotoUrl(r.profile_photo_url);
+      setSuccess('Profile photo updated'); setTimeout(() => setSuccess(null), 2000); try { window.dispatchEvent(new CustomEvent('avatar-updated')); } catch {} } catch (e: any) { setError('Upload failed'); setTimeout(() => setError(null), 2500); }
+  };
+
+  const removePhoto = async () => {
+    try {
+      const email = user?.primaryEmailAddress?.emailAddress;
+      if (!email) return;
+      let ok = false;
+      const del = await fetch('/api/public/profile/photo', { method: 'DELETE', headers: { 'X-Student-Email': email } });
+      if (!del.ok) {
+        const alt = await fetch('/api/public/profile/photo/delete', { method: 'POST', headers: { 'X-Student-Email': email } });
+        ok = alt.ok;
+      } else { ok = true }
+      if (ok) { setPhotoUrl(''); setSuccess('Profile photo removed'); setTimeout(() => setSuccess(null), 1500); try { window.dispatchEvent(new CustomEvent('avatar-updated')); } catch {} }
+    } catch { setError('Failed to remove photo'); setTimeout(() => setError(null), 2500); }
   };
 
   const formatPhoneForDisplay = (value: string) => {
@@ -197,7 +263,8 @@ export default function Settings() {
           'X-Student-Email': email
         },
         body: JSON.stringify(payload)
-      });
+      }); 
+      try { window.dispatchEvent(new CustomEvent('avatar-updated')); } catch {}
       
       if (!res.ok) {
         const text = await res.text();
@@ -302,7 +369,8 @@ export default function Settings() {
           'X-Student-Email': email
         },
         body: JSON.stringify({ resume_url: null })
-      });
+      }); 
+      try { window.dispatchEvent(new CustomEvent('avatar-updated')); } catch {}
       
       if (!res.ok) throw new Error('Delete failed');
       
@@ -317,419 +385,330 @@ export default function Settings() {
   if (!mounted) return null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-gray-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
-      <div className="max-w-5xl mx-auto p-6 md:p-10 space-y-8">
-        {/* Header */}
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Settings</h1>
-          <p className="text-base text-gray-600 dark:text-gray-400">
-            Manage your profile and preferences
-          </p>
-        </div>
+    <div className="flex flex-col h-full bg-background">
+      {/* Animated Header - consistent with admin module headers */}
+      <ModuleHeader title="Settings" />
+      
+      <div className="flex-1 overflow-auto">
+        <main className="max-w-5xl ml-3 mr-auto px-3 md:ml-6 md:px-6">
 
-        {/* Error/Success Messages */}
-        {error && (
-          <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-4 flex items-start gap-3">
-            <X className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-            <p className="text-red-900 dark:text-red-200 text-sm">{error}</p>
+        {/* Success/Error Messages */}
+        {success && (
+          <div className="mb-6 p-4 bg-green-500/10 border border-green-500/20 rounded-xl flex items-center gap-2">
+            <Check className="h-5 w-5 text-green-600" />
+            <span className="text-sm text-green-600">{success}</span>
           </div>
         )}
-        
-        {success && (
-          <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-xl p-4 flex items-start gap-3">
-            <Check className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-            <p className="text-green-900 dark:text-green-200 text-sm">{success}</p>
+        {error && (
+          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-2">
+            <X className="h-5 w-5 text-red-600" />
+            <span className="text-sm text-red-600">{error}</span>
           </div>
         )}
 
         {loading ? (
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-12">
-            <div className="flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              <span className="ml-3 text-gray-600 dark:text-gray-400">Loading settings...</span>
-            </div>
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <span className="ml-3 text-muted-foreground">Loading settings...</span>
           </div>
         ) : (
-          <div className="space-y-6">
-            {/* Resume Upload Section */}
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-              <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-5">
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                  <FileText className="w-5 h-5" />
-                  Resume
-                </h2>
-                <p className="text-sm text-blue-100 mt-1">Required for project applications</p>
-              </div>
-              
-              <div className="p-6 space-y-4">
-                {profile?.resume_url ? (
-                  <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-xl p-5">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex items-start gap-3 flex-1">
-                        <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
-                          <Check className="w-5 h-5 text-green-600" />
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-semibold text-green-900 dark:text-green-100">Resume Uploaded</p>
-                          <p className="text-sm text-green-700 dark:text-green-300 mt-1">
-                            Your resume is ready for project applications
-                          </p>
-                        </div>
-                      </div>
+          <div className="pb-12 space-y-6">
+            {/* Profile Information (with integrated resume + avatar + appearance) */}
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
+              <div className="p-6 space-y-6">
+                {/* Avatar + upload + color */}
+                <div className="flex items-center gap-4">
+                  {/* Profile Avatar - larger but proportional to sidebar */}
+                  <div className="h-16 w-16 rounded-full flex items-center justify-center text-white font-semibold overflow-hidden"
+                    style={{ background: photoUrl ? 'transparent' : (profileColor || '#0066FF') }}>
+                    {photoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={photoUrl} alt="Profile" className="h-16 w-16 rounded-full object-cover" />
+                    ) : (
+                      <span className="text-2xl font-bold">{(firstName || user?.firstName || 'S').toString().slice(0,1).toUpperCase()}{(lastName || user?.lastName || '').toString().slice(0,1).toUpperCase()}</span>
+                    )}
+                  </div>
+                  
+                  {/* Upload and color controls */}
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center gap-3">
+                      <label className="inline-flex items-center gap-2 text-sm text-foreground cursor-pointer px-3 py-1.5 rounded-lg border border-border bg-card hover:bg-accent transition-colors">
+                        Upload photo
+                        <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadPhoto(f); }} />
+                      </label>
+                      {photoUrl && (
+                        <button type="button" onClick={removePhoto} className="text-sm text-muted-foreground hover:text-foreground underline">Remove photo</button>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {colorOptions.map(c => (
+                        <button key={c} type="button" onClick={() => selectColor(c)} aria-label={`Color ${c}`} className="h-6 w-6 rounded-full border-2 border-border hover:border-primary transition-colors" style={{ background: c, boxShadow: profileColor === c ? '0 0 0 2px #2563EB inset' : undefined }} />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                {/* Name Fields */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="firstName">First Name</Label>
+                    <Input
+                      id="firstName"
+                      type="text"
+                      value={firstName}
+                      onChange={e => setFirstName(e.target.value)}
+                      placeholder="John"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="lastName">Last Name</Label>
+                    <Input
+                      id="lastName"
+                      type="text"
+                      value={lastName}
+                      onChange={e => setLastName(e.target.value)}
+                      placeholder="Doe"
+                    />
+                  </div>
+                </div>
+
+                {/* Academic Info */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="school">Institution</Label>
+                    <Input
+                      id="school"
+                      type="text"
+                      value={school}
+                      onChange={e => setSchool(e.target.value)}
+                      placeholder="University Name"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="program">Major/Program</Label>
+                    <Input
+                      id="program"
+                      type="text"
+                      value={program}
+                      onChange={e => setProgram(e.target.value)}
+                      placeholder="Field of Study"
+                    />
+                  </div>
+                </div>
+
+                {/* Graduation Year & GPA */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="gradYear">Graduation Year</Label>
+                    <Input
+                      id="gradYear"
+                      type="number"
+                      value={gradYear}
+                      onChange={e => setGradYear(e.target.value ? Number(e.target.value) : '')}
+                      placeholder="2026"
+                      min="2020"
+                      max="2030"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="gpa">GPA</Label>
+                    <Input
+                      id="gpa"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="4"
+                      value={gpa}
+                      onChange={e => setGpa(e.target.value ? Number(e.target.value) : '')}
+                      placeholder="3.75"
+                    />
+                  </div>
+                </div>
+
+                {/* Contact Info */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Phone Number</Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      value={phone}
+                      onChange={handlePhoneChange}
+                      placeholder="(123) 456-7890"
+                      maxLength={14}
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="location">Location</Label>
+                    <Input
+                      id="location"
+                      type="text"
+                      value={location}
+                      onChange={e => setLocation(e.target.value)}
+                      placeholder="City, State/Country"
+                    />
+                  </div>
+                </div>
+
+                {/* Resume Upload Section */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-medium text-muted-foreground">Resume</h3>
+                    {profile?.resume_url ? (
                       <div className="flex items-center gap-2">
                         <a
                           href={profile.resume_url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+                          className="p-1.5 rounded-md bg-muted text-muted-foreground hover:bg-accent transition-colors"
                           title="View Resume"
                         >
                           <Eye className="w-4 h-4" />
                         </a>
                         <button
                           onClick={handleDeleteResume}
-                          className="p-2 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
+                          className="p-1.5 rounded-md bg-muted text-muted-foreground hover:bg-accent transition-colors"
                           title="Delete Resume"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
-                    </div>
+                    ) : null}
                   </div>
-                ) : (
-                  <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-xl p-5">
-                    <div className="flex items-start gap-3">
-                      <Upload className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <p className="font-semibold text-amber-900 dark:text-amber-100">No Resume Uploaded</p>
-                        <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                          Upload your resume to apply for projects
-                        </p>
-                      </div>
+                  
+                  {profile?.resume_url ? (
+                    <div className="flex items-center gap-2 text-sm text-green-600">
+                      <Check className="w-4 h-4" />
+                      <span>Resume uploaded</span>
                     </div>
-                  </div>
-                )}
-                
-                <label className="block">
-                  <input
-                    type="file"
-                    accept=".pdf"
-                    onChange={onUpload}
-                    disabled={uploading}
-                    className="hidden"
-                    id="resume-upload"
-                  />
-                  <label
-                    htmlFor="resume-upload"
-                    className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-semibold transition-all cursor-pointer
-                      ${uploading
-                        ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
-                        : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/30'
-                      }`}
-                  >
-                    {uploading ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        Uploading...
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="w-5 h-5" />
-                        {profile?.resume_url ? 'Replace Resume' : 'Upload Resume'}
-                      </>
-                    )}
+                  ) : (
+                    <div className="flex items-center gap-2 text-sm text-amber-600">
+                      <Upload className="w-4 h-4" />
+                      <span>No resume uploaded</span>
+                    </div>
+                  )}
+                  
+                  <label className="block">
+                    <input
+                      type="file"
+                      accept=".pdf"
+                      onChange={onUpload}
+                      disabled={uploading}
+                      className="hidden"
+                      id="resume-upload"
+                    />
+                    <label
+                      htmlFor="resume-upload"
+                      className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer
+                        ${uploading
+                          ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                          : 'bg-primary text-primary-foreground hover:bg-primary/90'
+                        }`}
+                    >
+                      {uploading ? (
+                        <>
+                          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current"></div>
+                          Uploading...
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-4 h-4" />
+                          {profile?.resume_url ? 'Replace Resume' : 'Upload Resume'}
+                        </>
+                      )}
+                    </label>
                   </label>
-                </label>
-                <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                  PDF only, max 10MB
-                </p>
-              </div>
-            </div>
-
-            {/* Profile Information */}
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-              <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-5">
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                  <User className="w-5 h-5" />
-                  Profile Information
-                </h2>
-                <p className="text-sm text-blue-100 mt-1">Your personal and academic details</p>
-              </div>
-
-              <div className="p-6 space-y-6">
-                {/* Name Fields */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                      First Name
-                    </label>
-                    <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                      <input
-                        type="text"
-                        value={firstName}
-                        onChange={e => setFirstName(e.target.value)}
-                        className="w-full pl-11 pr-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                        placeholder="John"
-                      />
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                      Last Name
-                    </label>
-                    <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                      <input
-                        type="text"
-                        value={lastName}
-                        onChange={e => setLastName(e.target.value)}
-                        className="w-full pl-11 pr-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                        placeholder="Doe"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Academic Info */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                      School
-                    </label>
-                    <div className="relative">
-                      <GraduationCap className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                      <input
-                        type="text"
-                        value={school}
-                        onChange={e => setSchool(e.target.value)}
-                        className="w-full pl-11 pr-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                        placeholder="UC Berkeley"
-                      />
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                      Major/Program
-                    </label>
-                    <div className="relative">
-                      <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                      <input
-                        type="text"
-                        value={program}
-                        onChange={e => setProgram(e.target.value)}
-                        className="w-full pl-11 pr-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                        placeholder="Computer Science"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Graduation Year & GPA */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                      Graduation Year
-                    </label>
-                    <div className="relative">
-                      <GraduationCap className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                      <input
-                        type="number"
-                        value={gradYear}
-                        onChange={e => setGradYear(e.target.value ? Number(e.target.value) : '')}
-                        className="w-full pl-11 pr-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                        placeholder="2026"
-                        min="2020"
-                        max="2030"
-                      />
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                      GPA (Optional)
-                    </label>
-                    <div className="relative">
-                      <Award className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        max="4"
-                        value={gpa}
-                        onChange={e => setGpa(e.target.value ? Number(e.target.value) : '')}
-                        className="w-full pl-11 pr-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                        placeholder="3.75"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Contact Info */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                      Phone Number
-                    </label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                      <input
-                        type="tel"
-                        value={phone}
-                        onChange={handlePhoneChange}
-                        className="w-full pl-11 pr-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                        placeholder="(123) 456-7890"
-                        maxLength={14}
-                      />
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                      Location
-                    </label>
-                    <div className="relative">
-                      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                      <input
-                        type="text"
-                        value={location}
-                        onChange={e => setLocation(e.target.value)}
-                        className="w-full pl-11 pr-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                        placeholder="San Francisco, CA"
-                      />
-                    </div>
-                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    PDF only, max 10MB
+                  </p>
                 </div>
 
                 {/* LinkedIn */}
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                    LinkedIn URL (Optional)
-                  </label>
-                  <div className="relative">
-                    <Linkedin className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                    <input
-                      type="url"
-                      value={linkedin}
-                      onChange={e => setLinkedin(e.target.value)}
-                      className="w-full pl-11 pr-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all"
-                      placeholder="https://linkedin.com/in/yourprofile"
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="linkedin">LinkedIn URL</Label>
+                  <Input
+                    id="linkedin"
+                    type="url"
+                    value={linkedin}
+                    onChange={e => setLinkedin(e.target.value)}
+                    placeholder="https://linkedin.com/in/yourprofile"
+                  />
                 </div>
 
                 {/* UC Investments Academy */}
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                    UC Investments Academy
-                  </label>
-                  <div className="relative">
-                    <GraduationCap className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none z-10" />
-                    <div className="pl-9">
-                      {/* shadcn/Radix Select via @ngi/ui for consistent theming */}
-                      <Select value={ucAcademy} onValueChange={(v: any) => setUcAcademy(v as 'yes'|'no'|'none')}>
-                        <SelectTrigger className="w-full h-11 rounded-xl">
-                          <SelectValue placeholder="Select..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Select...</SelectItem>
-                          <SelectItem value="yes">Yes</SelectItem>
-                          <SelectItem value="no">No</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                <div className="space-y-2">
+                  <Label htmlFor="ucAcademy">UC Investments Academy</Label>
+                  <Select value={ucAcademy} onValueChange={(v: any) => setUcAcademy(v as 'yes'|'no'|'none')}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Select...</SelectItem>
+                      <SelectItem value="yes">Yes</SelectItem>
+                      <SelectItem value="no">No</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
                     Are you part of the UC Investments Academy program?
                   </p>
                 </div>
 
+                {/* Appearance */}
+                <div className="space-y-2">
+                  <Label>Appearance</Label>
+                  <div className="flex gap-2">
+                    {(['light','dark'] as const).map((opt) => (
+                      <button
+                        key={opt}
+                        onClick={() => handleThemeChange(opt)}
+                        aria-pressed={theme === opt}
+                        className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${
+                          theme === opt 
+                            ? 'border-primary text-primary bg-primary/10' 
+                            : 'border-border text-foreground hover:bg-accent'
+                        }`}
+                      >
+                        {opt === 'light' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                        <span className="capitalize">{opt}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Save Button */}
-                <button
-                  onClick={saveProfileDetails}
-                  disabled={savingProfile}
-                  className={`w-full flex items-center justify-center gap-2 px-6 py-4 rounded-xl font-semibold text-lg transition-all
-                    ${savingProfile
-                      ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg shadow-blue-600/30'
-                    }`}
-                >
-                {savingProfile ? (
-                  <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-5 h-5" />
-                    Save Profile
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-
-            {/* Theme Preferences */}
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-              <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-5">
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                  <Monitor className="w-5 h-5" />
-                  Appearance
-                </h2>
-                <p className="text-sm text-blue-100 mt-1">Choose your preferred theme</p>
-              </div>
-
-              <div className="p-6">
-                <div className="grid grid-cols-3 gap-4">
+                <div className="pt-4">
                   <button
-                    onClick={() => handleThemeChange('light')}
-                    className={`p-6 rounded-xl border-2 transition-all ${
-                      theme === 'light'
-                        ? 'border-blue-600 bg-blue-50 dark:bg-blue-950/30'
-                        : 'border-gray-200 dark:border-gray-700 hover:border-blue-400'
+                    onClick={saveProfileDetails}
+                    disabled={savingProfile}
+                    className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+                      savingProfile
+                        ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                        : 'bg-primary text-primary-foreground hover:bg-primary/90'
                     }`}
                   >
-                    <Sun className={`w-8 h-8 mx-auto mb-2 ${theme === 'light' ? 'text-blue-600' : 'text-gray-400'}`} />
-                    <p className={`text-sm font-semibold text-center ${theme === 'light' ? 'text-blue-600' : 'text-gray-600 dark:text-gray-400'}`}>
-                      Light
-                    </p>
-                  </button>
-
-                  <button
-                    onClick={() => handleThemeChange('dark')}
-                    className={`p-6 rounded-xl border-2 transition-all ${
-                      theme === 'dark'
-                        ? 'border-blue-600 bg-blue-50 dark:bg-blue-950/30'
-                        : 'border-gray-200 dark:border-gray-700 hover:border-blue-400'
-                    }`}
-                  >
-                    <Moon className={`w-8 h-8 mx-auto mb-2 ${theme === 'dark' ? 'text-blue-600' : 'text-gray-400'}`} />
-                    <p className={`text-sm font-semibold text-center ${theme === 'dark' ? 'text-blue-600' : 'text-gray-600 dark:text-gray-400'}`}>
-                      Dark
-                    </p>
-                  </button>
-
-                  <button
-                    onClick={() => handleThemeChange('system')}
-                    className={`p-6 rounded-xl border-2 transition-all ${
-                      theme === 'system'
-                        ? 'border-blue-600 bg-blue-50 dark:bg-blue-950/30'
-                        : 'border-gray-200 dark:border-gray-700 hover:border-blue-400'
-                    }`}
-                  >
-                    <Monitor className={`w-8 h-8 mx-auto mb-2 ${theme === 'system' ? 'text-blue-600' : 'text-gray-400'}`} />
-                    <p className={`text-sm font-semibold text-center ${theme === 'system' ? 'text-blue-600' : 'text-gray-600 dark:text-gray-400'}`}>
-                      System
-                    </p>
+                    {savingProfile ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4" />
+                        Save changes
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
             </div>
           </div>
         )}
+        </main>
       </div>
     </div>
   );
 }
+

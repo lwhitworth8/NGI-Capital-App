@@ -93,7 +93,7 @@ export default function EntitiesPage() {
   const [expandedProject, setExpandedProject] = useState<number | null>(null)
 
   // Fetch entities
-  const fetchEntities = useCallback(async () => {
+  const fetchEntities = async () => {
     try {
       const response = await fetch("/api/accounting/entities", { credentials: "include" })
       if (response.ok) {
@@ -103,45 +103,31 @@ export default function EntitiesPage() {
     } catch (error) {
       console.error("Failed to fetch entities:", error)
     }
-  }, [])
+  }
 
-  // Fetch employees
-  const fetchEmployees = useCallback(async () => {
+  // Fetch employees from the employees API
+  const fetchEmployees = async (entityId?: number) => {
     try {
-      console.log("Fetching employees from /api/partners...")
-      const response = await fetch("/api/partners", { credentials: "include" })
-      console.log("Partners response status:", response.status)
+      console.log("Fetching employees from /api/employees...")
+      const url = entityId ? `/api/employees?entity_id=${entityId}` : "/api/employees?entity_id=1"
+      const response = await fetch(url, { credentials: "include" })
+      console.log("Employees response status:", response.status)
       
       if (response.ok) {
         const data = await response.json()
-        console.log("Partners data received:", data)
+        console.log("Employees data received:", data)
         
         // API returns array directly
-        const partnersList = Array.isArray(data) ? data : (data.partners || [])
-        console.log("Setting employees:", partnersList)
-        setEmployees(partnersList)
+        const employeesList = Array.isArray(data) ? data : (data.employees || [])
+        console.log("Setting employees:", employeesList)
+        setEmployees(employeesList)
       } else {
-        console.error("Partners API returned error:", response.status, response.statusText)
+        console.error("Employees API returned error:", response.status, response.statusText)
       }
     } catch (error) {
       console.error("Failed to fetch employees:", error)
     }
-  }, [])
-
-  useEffect(() => {
-    const loadData = async () => {
-      setLoading(true)
-      try {
-        await Promise.all([fetchEntities(), fetchEmployees()])
-      } catch (error) {
-        console.error("Failed to load data:", error)
-      } finally {
-        setLoading(false)
-      }
-    }
-    
-    loadData()
-  }, [fetchEntities, fetchEmployees])
+  }
 
   // Get entity display name (remove duplicate LLC/Corp)
   const getEntityDisplayName = (entity: Entity) => {
@@ -176,37 +162,40 @@ export default function EntitiesPage() {
     return name.split("(")[0].trim()
   }
 
-  const parentEntity = entities.find(e => e.is_available && e.parent_entity_id === null)
-  const subsidiaries = entities.filter(e => e.parent_entity_id !== null)
-
   const handleEntityClick = async (entity: Entity) => {
     // Allow viewing org chart even for pending conversion entities
     setSelectedEntity(entity)
     setLoadingOrgChart(true)
     setShowOrgChart(true)
     
+    // Clear any existing org chart data to ensure fresh loading
+    setOrgChartData(null)
+    
     try {
-      console.log(`Fetching org chart for entity ${entity.id}...`)
-      const response = await fetch(`/api/entities/${entity.id}/org-chart`, { 
+      const response = await fetch(`/api/accounting/entities/${entity.id}/org-chart`, { 
         credentials: "include" 
       })
       
       if (response.ok) {
         const data = await response.json()
-        console.log("Org chart data received:", data)
-        setOrgChartData(data)
+        // Ensure the data structure matches what DynamicOrgChart expects
+        setOrgChartData({
+          entity: data.entity,
+          structure_type: data.structure_type,
+          board: data.board || [],
+          executives: data.executives || [],
+          projects: data.projects || [],
+          teams: data.teams || []
+        })
       } else {
-        console.error("Failed to fetch org chart:", response.status)
+        console.error("Failed to fetch org chart:", response.status, response.statusText)
         
-        // Smart fallback based on entity name
-        const isAdvisory = entity.entity_name?.toLowerCase().includes('advisory')
-        const isCreator = entity.entity_name?.toLowerCase().includes('creator')
-        
+        // Set empty org chart data if API fails
         setOrgChartData({
           entity,
-          structure_type: isAdvisory ? 'advisory' : (isCreator ? 'teams' : 'corporate'),
-          board: (!isAdvisory && !isCreator) ? employees : [],
-          executives: (!isAdvisory && !isCreator) ? employees : [],
+          structure_type: 'corporate',
+          board: [],
+          executives: [],
           projects: [],
           teams: []
         })
@@ -214,15 +203,12 @@ export default function EntitiesPage() {
     } catch (error) {
       console.error("Error fetching org chart:", error)
       
-      // Smart fallback based on entity name
-      const isAdvisory = entity.entity_name?.toLowerCase().includes('advisory')
-      const isCreator = entity.entity_name?.toLowerCase().includes('creator')
-      
+      // Set empty org chart data if there's an error
       setOrgChartData({
         entity,
-        structure_type: isAdvisory ? 'advisory' : (isCreator ? 'teams' : 'corporate'),
-        board: (!isAdvisory && !isCreator) ? employees : [],
-        executives: (!isAdvisory && !isCreator) ? employees : [],
+        structure_type: 'corporate',
+        board: [],
+        executives: [],
         projects: [],
         teams: []
       })
@@ -230,6 +216,28 @@ export default function EntitiesPage() {
       setLoadingOrgChart(false)
     }
   }
+
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true)
+      try {
+        await fetchEntities()
+        // Always fetch employees for entity ID 1 (NGI Capital LLC)
+        await fetchEmployees(1)
+      } catch (error) {
+        console.error("Failed to load data:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    loadData()
+  }, [])
+
+  // Show entities overview by default - no auto-loading
+
+  const parentEntity = entities.find(e => e.is_available && e.parent_entity_id === null)
+  const subsidiaries = entities.filter(e => e.parent_entity_id !== null)
 
   if (loading) {
     return (
@@ -269,6 +277,8 @@ export default function EntitiesPage() {
                     setShowOrgChart(false)
                     setSelectedEntity(null)
                     setOrgChartData(null)
+                    setExpandedTeam(null)
+                    setExpandedProject(null)
                   }}
                   className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
                 >
@@ -281,14 +291,23 @@ export default function EntitiesPage() {
           <CardContent>
             {showOrgChart ? (
               // Show org chart in same position
-              <DynamicOrgChart 
-                data={orgChartData}
-                loading={loadingOrgChart}
-                expandedTeam={expandedTeam}
-                setExpandedTeam={setExpandedTeam}
-                expandedProject={expandedProject}
-                setExpandedProject={setExpandedProject}
-              />
+              loadingOrgChart ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="text-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
+                    <p className="text-sm text-muted-foreground">Loading organization chart...</p>
+                  </div>
+                </div>
+              ) : (
+                <DynamicOrgChart 
+                  data={orgChartData}
+                  loading={loadingOrgChart}
+                  expandedTeam={expandedTeam}
+                  setExpandedTeam={setExpandedTeam}
+                  expandedProject={expandedProject}
+                  setExpandedProject={setExpandedProject}
+                />
+              )
             ) : entities.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12">
                 <Building2 className="h-16 w-16 text-muted-foreground mb-4 opacity-50" />

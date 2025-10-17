@@ -14,8 +14,13 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Users, Archive, TrendingUp, AlertCircle, Download, Filter } from 'lucide-react'
+import { Users, Archive, TrendingUp, AlertCircle, Download, Filter, Search, UserPlus, Edit, Trash2, MoreHorizontal, Briefcase, DollarSign, Clock, Target, Building2, MapPin, FileText, CheckCircle, XCircle, Eye, BookOpen } from 'lucide-react'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { motion, AnimatePresence } from 'framer-motion'
 import type { AdvisoryStudent } from '@/types'
+import { AnimatedText } from '@ngi/ui/components/animated'
 import { UC_SCHOOLS } from '@/lib/uc-schools'
 import { UC_MAJORS } from '@/lib/uc-majors'
 import { MultiSelect } from '@/components/ui/multi-select'
@@ -23,7 +28,6 @@ import { ProjectPicker } from '@/components/ui/project-picker'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
 const BASE_ALLOWED = new Set([
-  'lwhitworth@ngicapitaladvisory.com',
   'anurmamade@ngicapitaladvisory.com',
 ])
 
@@ -154,6 +158,16 @@ export default function AdvisoryStudentsPage() {
         if (gradMin !== '') params.grad_year_min = Number(gradMin)
         if (gradMax !== '') params.grad_year_max = Number(gradMax)
         if (appliedProjectId !== null) params.applied_project_id = appliedProjectId
+        
+        console.log('🔍 Student filters debug:', {
+          schoolMulti,
+          programMulti,
+          gradMin,
+          gradMax,
+          appliedProjectId,
+          params
+        })
+        
         const list = await advisoryListStudents(params)
         setStudents(list)
         // Fetch learning progress and map by email (best-effort)
@@ -178,7 +192,7 @@ export default function AdvisoryStudentsPage() {
 
   useEffect(() => {
     loadStudents()
-  }, [allowed, activeTab, statusFilter, sortBy, hasResume, page, archPage, searchQuery])
+  }, [allowed, activeTab, statusFilter, sortBy, hasResume, page, archPage, searchQuery, schoolMulti, programMulti, gradMin, gradMax, appliedProjectId])
 
   // Load projects for assignments
   useEffect(() => {
@@ -254,209 +268,395 @@ export default function AdvisoryStudentsPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Students Database</h1>
-            <p className="text-muted-foreground mt-2">
-              Manage student profiles, assignments, and activity tracking
-            </p>
+            <AnimatedText 
+              text="Students Database" 
+              as="h1" 
+              className="text-3xl font-bold tracking-tight"
+              delay={0.1}
+            />
+            <AnimatedText 
+              text="Manage and view students profiles and activity" 
+              as="p" 
+              className="text-muted-foreground mt-2"
+              delay={0.3}
+              stagger={0.02}
+            />
           </div>
+        </div>
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-3 gap-3 min-w-[320px] max-w-md">
-            <Card className="rounded-xl">
-              <CardContent className="py-3">
-                <div className="flex items-center space-x-2">
-                  <Users className="h-3 w-3 text-muted-foreground" />
-                  <div className="text-center">
-                    <p className="text-xl font-semibold leading-tight">{students.length}</p>
-                    <p className="text-[11px] text-muted-foreground">Active Students</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="rounded-xl">
-              <CardContent className="py-3">
-                <div className="flex items-center space-x-2">
-                  <TrendingUp className="h-3 w-3 text-muted-foreground" />
-                  <div className="text-center">
-                    <p className="text-xl font-semibold leading-tight">
-                      {students.filter(s => (s.profile_completeness?.percentage || 0) >= 80).length}
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">Complete Profiles</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="rounded-xl">
-              <CardContent className="py-3">
-                <div className="flex items-center space-x-2">
-                  <Archive className="h-3 w-3 text-muted-foreground" />
-                  <div className="text-center">
-                    <p className="text-xl font-semibold leading-tight">{archived.length}</p>
-                    <p className="text-[11px] text-muted-foreground">Archived</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+        {/* KPI Cards */}
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card className="hover:scale-105 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Active Students</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{students.filter(s => s.status_effective === 'active' || s.status === 'active').length}</div>
+              <p className="text-xs text-muted-foreground">
+                Currently enrolled
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:scale-105 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Complete Profiles</CardTitle>
+              <CheckCircle className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{students.filter(s => s.profile_completeness?.percentage >= 80).length}</div>
+              <p className="text-xs text-muted-foreground">
+                80%+ completion
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:scale-105 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Active Learning</CardTitle>
+              <BookOpen className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {Object.keys(learningByEmail).filter(email => {
+                  const learning = learningByEmail[email];
+                  return learning && learning.completion > 0;
+                }).length}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                In learning modules
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="hover:scale-105 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Archived</CardTitle>
+              <Archive className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{archived.length}</div>
+              <p className="text-xs text-muted-foreground">
+                Previously enrolled
+              </p>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Main Content */}
         <div className="space-y-6">
-          {/* Filters */}
-          <Card className="rounded-xl border bg-card">
-          <div className="flex flex-wrap items-center gap-3 p-3" aria-label="Students filters toolbar">
-            <div className="relative">
-              <Input
-                placeholder="Search by name or email..."
-                value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); setPage(1) }}
-                className="w-80"
-                aria-label="Search students"
-              />
-            </div>
-            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1) }}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="alumni">Alumni</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={sortBy} onValueChange={(v) => setSortBy(v)}>
-              <SelectTrigger className="w-44">
-                <SelectValue placeholder="Sort By" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="last_activity_desc">Last Activity</SelectItem>
-                <SelectItem value="name_asc">Name A-Z</SelectItem>
-                <SelectItem value="grad_year_asc">Grad Year Asc</SelectItem>
-                <SelectItem value="grad_year_desc">Grad Year Desc</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={hasResume} onValueChange={(v) => setHasResume(v as any)}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Has Resume" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="yes">Has Resume</SelectItem>
-                <SelectItem value="no">No Resume</SelectItem>
-              </SelectContent>
-            </Select>
-            <MultiSelect
-              options={UC_SCHOOLS}
-              selected={schoolMulti}
-              onChange={setSchoolMulti}
-              placeholder="UC Schools"
-              searchPlaceholder="Filter schools"
-              ariaLabel="Filter by UC schools"
-            />
-            <MultiSelect
-              options={UC_MAJORS}
-              selected={programMulti}
-              onChange={setProgramMulti}
-              placeholder="Majors"
-              searchPlaceholder="Filter majors"
-              ariaLabel="Filter by majors"
-            />
-            <ProjectPicker
-              projects={projects as any}
-              value={appliedProjectId}
-              onChange={(id)=> setAppliedProjectId(id)}
-              placeholder="Applied Project"
-              ariaLabel="Filter by applied project"
-            />
-            <div className="flex items-center space-x-2" aria-label="Grad year range">
-              <Input
-                type="number"
-                placeholder="Min Year"
-                value={gradMin as any}
-                onChange={(e) => setGradMin(e.target.value === '' ? '' : Number(e.target.value))}
-                className="w-28"
-                aria-label="Minimum graduation year"
-              />
-              <span className="text-sm text-muted-foreground">to</span>
-              <Input
-                type="number"
-                placeholder="Max Year"
-                value={gradMax as any}
-                onChange={(e) => setGradMax(e.target.value === '' ? '' : Number(e.target.value))}
-                className="w-28"
-                aria-label="Maximum graduation year"
-              />
-            </div>
-            <div className="ml-auto" />
-            <Button variant="outline" onClick={() => { setSearchQuery(''); setStatusFilter('all'); setHasResume('all'); setSortBy('last_activity_desc'); setSchoolMulti([]); setProgramMulti([]); setAppliedProjectId(null); setGradMin(''); setGradMax(''); setPage(1) }}>
-              Clear Filters
-            </Button>
-          </div>
-          </Card>
           <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'active'|'archived')}>
-            <TabsList>
-              <TabsTrigger value="active" className="flex items-center space-x-2">
-                <Users className="h-4 w-4" />
-                <span>Active Students</span>
-              </TabsTrigger>
-              <TabsTrigger value="archived" className="flex items-center space-x-2">
-                <Archive className="h-4 w-4" />
-                <span>Archived</span>
-              </TabsTrigger>
-            </TabsList>
+            <div className="flex justify-center">
+              <TabsList>
+                <TabsTrigger value="active" className="text-center">
+                  Active Students
+                </TabsTrigger>
+                <TabsTrigger value="archived" className="text-center">
+                  Archived
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
             <TabsContent value="active" className="space-y-6">
-              <StudentsDataTable
-                data={students}
-                loading={listLoading}
-                onStudentSelect={handleStudentSelect}
-                onBulkAction={handleBulkAction}
-                learningByEmail={learningByEmail}
-                hideToolbar
-              />
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+                className="space-y-6"
+              >
+                <Card>
+                  <CardHeader className="pb-4">
+                    <CardTitle>Student Directory</CardTitle>
+                    <CardDescription>Manage student profiles and track learning progress</CardDescription>
+                  </CardHeader>
+                  
+                  {/* Filters Section */}
+                  <div className="px-6 pb-4">
+                    <div className="flex flex-wrap items-center gap-3" aria-label="Students filters toolbar">
+                      <div className="relative">
+                        <Input
+                          placeholder="Search by name or email..."
+                          value={searchQuery}
+                          onChange={(e) => { setSearchQuery(e.target.value); setPage(1) }}
+                          className="w-80"
+                          aria-label="Search students"
+                        />
+                      </div>
+                      <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1) }}>
+                        <SelectTrigger className="w-40">
+                          <SelectValue placeholder="Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Status</SelectItem>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="alumni">Alumni</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Select value={sortBy} onValueChange={(v) => setSortBy(v)}>
+                        <SelectTrigger className="w-44">
+                          <SelectValue placeholder="Sort By" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="last_activity_desc">Last Activity</SelectItem>
+                          <SelectItem value="name_asc">Name A-Z</SelectItem>
+                          <SelectItem value="grad_year_asc">Grad Year Asc</SelectItem>
+                          <SelectItem value="grad_year_desc">Grad Year Desc</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Select value={hasResume} onValueChange={(v) => setHasResume(v as any)}>
+                        <SelectTrigger className="w-40">
+                          <SelectValue placeholder="Has Resume" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All</SelectItem>
+                          <SelectItem value="yes">Has Resume</SelectItem>
+                          <SelectItem value="no">No Resume</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <MultiSelect
+                        options={UC_SCHOOLS}
+                        selected={schoolMulti}
+                        onChange={setSchoolMulti}
+                        placeholder="UC Schools"
+                        searchPlaceholder="Filter schools"
+                        ariaLabel="Filter by UC schools"
+                      />
+                      <MultiSelect
+                        options={UC_MAJORS}
+                        selected={programMulti}
+                        onChange={setProgramMulti}
+                        placeholder="Majors"
+                        searchPlaceholder="Filter majors"
+                        ariaLabel="Filter by majors"
+                      />
+                      <div className="flex items-center gap-2">
+                        <ProjectPicker
+                          projects={projects as any}
+                          value={appliedProjectId}
+                          onChange={(id)=> setAppliedProjectId(id)}
+                          placeholder="Applied Project"
+                          ariaLabel="Filter by applied project"
+                        />
+                        <div className="flex items-center space-x-1" aria-label="Grad year range">
+                          <Input
+                            type="number"
+                            placeholder="Min"
+                            value={gradMin as any}
+                            onChange={(e) => setGradMin(e.target.value === '' ? '' : Number(e.target.value))}
+                            className="w-20"
+                            aria-label="Minimum graduation year"
+                          />
+                          <span className="text-xs text-muted-foreground">-</span>
+                          <Input
+                            type="number"
+                            placeholder="Max"
+                            value={gradMax as any}
+                            onChange={(e) => setGradMax(e.target.value === '' ? '' : Number(e.target.value))}
+                            className="w-20"
+                            aria-label="Maximum graduation year"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <CardContent>
+                    {listLoading ? (
+                      <div className="flex items-center justify-center py-12">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                      </div>
+                    ) : students.length === 0 ? (
+                      <div className="text-center py-8">
+                        <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                        <h3 className="text-lg font-semibold mb-2">No students found</h3>
+                        <p className="text-muted-foreground mb-4">
+                          Get started by adding your first student to the database
+                        </p>
+                      </div>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Name</TableHead>
+                            <TableHead>Email</TableHead>
+                            <TableHead>School</TableHead>
+                            <TableHead>Major</TableHead>
+                            <TableHead>Grad Year</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Profile</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          <AnimatePresence>
+                            {students.map((student, index) => (
+                              <motion.tr
+                                key={student.id}
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -10 }}
+                                transition={{ delay: index * 0.03 }}
+                                className="hover:bg-muted/50 cursor-pointer"
+                                onClick={() => handleStudentSelect(student)}
+                              >
+                                <TableCell className="font-medium">
+                                  {student.first_name} {student.last_name}
+                                </TableCell>
+                                <TableCell className="text-muted-foreground">{student.email}</TableCell>
+                                <TableCell>{student.school || '-'}</TableCell>
+                                <TableCell>{student.major || '-'}</TableCell>
+                                <TableCell>{student.grad_year || '-'}</TableCell>
+                                <TableCell>
+                                  <Badge 
+                                    variant={student.status === 'active' ? 'default' : 'secondary'}
+                                    className="capitalize"
+                                  >
+                                    {student.status || 'active'}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-16 bg-muted rounded-full h-2">
+                                      <div 
+                                        className="bg-primary h-2 rounded-full transition-all duration-300"
+                                        style={{ 
+                                          width: `${student.profile_completeness?.percentage || 0}%` 
+                                        }}
+                                      />
+                                    </div>
+                                    <span className="text-xs text-muted-foreground">
+                                      {Math.round(student.profile_completeness?.percentage || 0)}%
+                                    </span>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleStudentSelect(student)
+                                      }}
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        // Handle edit
+                                      }}
+                                    >
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        // Handle delete
+                                      }}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </motion.tr>
+                            ))}
+                          </AnimatePresence>
+                        </TableBody>
+                      </Table>
+                    )}
+                  </CardContent>
+                </Card>
+              </motion.div>
             </TabsContent>
 
             <TabsContent value="archived" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Archived Students</CardTitle>
-                  <CardDescription>
-                    Students who have been removed from the active list but preserved for reference
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+                className="space-y-6"
+              >
+                <Card>
+                  <CardHeader className="pb-4">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <CardTitle>Archived Students</CardTitle>
+                        <CardDescription>
+                          Students who have been removed from the active list but preserved for reference
+                        </CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
                     {archived.length === 0 ? (
-                      <div className="text-center py-8 text-muted-foreground">
-                        No archived students found
+                      <div className="text-center py-8">
+                        <Archive className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                        <h3 className="text-lg font-semibold mb-2">No archived students</h3>
+                        <p className="text-muted-foreground">
+                          Archived students will appear here when they are removed from the active list
+                        </p>
                       </div>
                     ) : (
-                      <div className="space-y-2">
-                        {archived.map((student) => (
-                          <div key={student.id} className="flex items-center justify-between p-4 border rounded-lg">
-                            <div>
-                              <p className="font-medium">
-                                {student.snapshot?.first_name} {student.snapshot?.last_name}
-                              </p>
-                              <p className="text-sm text-muted-foreground">{student.email}</p>
-                              <p className="text-xs text-muted-foreground">
-                                Archived {new Date(student.deleted_at).toLocaleDateString()}
-                              </p>
-                            </div>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => advisoryRestoreStudent(student.original_id)}
-                            >
-                              Restore
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Name</TableHead>
+                            <TableHead>Email</TableHead>
+                            <TableHead>School</TableHead>
+                            <TableHead>Archived Date</TableHead>
+                            <TableHead>Archived By</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          <AnimatePresence>
+                            {archived.map((student, index) => (
+                              <motion.tr
+                                key={student.id}
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -10 }}
+                                transition={{ delay: index * 0.03 }}
+                                className="hover:bg-muted/50"
+                              >
+                                <TableCell className="font-medium">
+                                  {student.snapshot?.first_name} {student.snapshot?.last_name}
+                                </TableCell>
+                                <TableCell className="text-muted-foreground">{student.email}</TableCell>
+                                <TableCell>{student.snapshot?.school || '-'}</TableCell>
+                                <TableCell>
+                                  {new Date(student.deleted_at).toLocaleDateString()}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant="outline" className="text-xs">
+                                    {student.deleted_by || 'System'}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => advisoryRestoreStudent(student.original_id)}
+                                  >
+                                    <Archive className="h-4 w-4 mr-2" />
+                                    Restore
+                                  </Button>
+                                </TableCell>
+                              </motion.tr>
+                            ))}
+                          </AnimatePresence>
+                        </TableBody>
+                      </Table>
                     )}
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              </motion.div>
             </TabsContent>
           </Tabs>
         </div>

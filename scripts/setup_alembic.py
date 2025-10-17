@@ -8,7 +8,7 @@ import sys
 alembic_ini_content = """# A generic, single database configuration.
 
 [alembic]
-script_location = alembic
+script_location = db/migrations/alembic
 prepend_sys_path = .
 version_path_separator = os
 sqlalchemy.url = sqlite:///./ngi_capital.db
@@ -60,11 +60,11 @@ from alembic import context
 import sys
 sys.path.append('.')
 
-from src.api.database import Base
-from src.api import models
-from src.api import models_accounting
-from src.api import models_accounting_part2
-from src.api import models_accounting_part3
+from services.api.database import Base
+from services.api import models
+from services.api import models_accounting
+from services.api import models_accounting_part2
+from services.api import models_accounting_part3
 
 # this is the Alembic Config object
 config = context.config
@@ -113,7 +113,8 @@ else:
 with open('alembic.ini', 'w') as f:
     f.write(alembic_ini_content)
 
-with open('alembic/env.py', 'w') as f:
+os.makedirs('db/migrations/alembic', exist_ok=True)
+with open('db/migrations/alembic/env.py', 'w') as f:
     f.write(env_py_content)
 
 print("[OK] Alembic configuration updated")

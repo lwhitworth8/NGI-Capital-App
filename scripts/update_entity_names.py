@@ -6,8 +6,8 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.api.database import get_db
-from src.api.models_accounting import AccountingEntity
+from services.api.database import get_db
+from services.api.models_accounting import AccountingEntity
 
 def update_entities():
     """Update entity names"""

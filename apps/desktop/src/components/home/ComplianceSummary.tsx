@@ -2,14 +2,17 @@
 
 import { useEffect, useState } from 'react'
 import { apiClient } from '@/lib/api'
+import { useEntityContext } from '@/hooks/useEntityContext'
 
 export function ComplianceSummary(){
   const [approvals, setApprovals] = useState<number>(0)
   const [cleared, setCleared] = useState<{ name: string; pct: number }[]>([])
+  const { selectedEntityId } = useEntityContext()
   useEffect(()=>{ (async()=>{
-    try { const items = await apiClient.accountingApprovalsPending(); setApprovals(items?.length || 0) } catch {}
-    try { const stats = await apiClient.bankingReconciliationStats(); setCleared((stats||[]).map((s:any)=> ({ name: s.account_name, pct: s.percent }))) } catch {}
-  })() }, [])
+    if (!selectedEntityId) return
+    try { const items = await apiClient.accountingApprovalsPending(selectedEntityId); setApprovals(items?.length || 0) } catch {}
+    try { const stats = await apiClient.bankingReconciliationStats(selectedEntityId); setCleared((stats||[]).map((s:any)=> ({ name: s.account_name, pct: s.percent }))) } catch {}
+  })() }, [selectedEntityId])
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       <div className="rounded-xl border border-border bg-card p-4">
@@ -32,4 +35,3 @@ export function ComplianceSummary(){
     </div>
   )
 }
-

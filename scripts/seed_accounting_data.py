@@ -10,11 +10,11 @@ from sqlalchemy.orm import Session
 from datetime import date, datetime
 from decimal import Decimal
 
-from src.api.models import Partners, Entities
-from src.api.models_accounting import ChartOfAccounts
+from services.api.models import Partners, Entities
+from services.api.models_accounting import ChartOfAccounts
 # Import all models to resolve relationships
-from src.api import models_accounting_part2
-from src.api import models_accounting_part3
+from services.api import models_accounting_part2
+from services.api import models_accounting_part3
 
 engine = create_engine('sqlite:///./ngi_capital.db')
 

@@ -32,7 +32,7 @@ def validate_email(email: str) -> bool:
     """
     if not email:
         return False
-    return email.lower().endswith('@ngicapital.com') or email.lower().endswith('@ngicapitaladvisory.com')
+    return email.lower().endswith('@ngicapitaladvisory.com') 
 
 def validate_routing_number(routing_number: str) -> bool:
     """

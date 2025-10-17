@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { AdvisoryProject } from "@/types";
-import { Calendar, Clock, Users, MapPin, Building2, DollarSign, ChevronLeft, ChevronRight } from "lucide-react";
+import { Building2, ChevronLeft, ChevronRight } from "lucide-react";
 import { PDFPreview } from "./PDFPreview";
 
 const KNOWN_CLIENTS: Record<string, string> = {
@@ -160,10 +160,10 @@ export default function ModernProjectCard({ project, onEdit, onPreview, index }:
       </div>
 
       {/* Card Content */}
-      <div className="p-5 flex gap-5">
-        {/* Hero Image - PowerPoint/PDF proportions */}
+      <div className="px-4 pt-4 pb-3 flex flex-col sm:flex-row gap-4">
+        {/* Hero Image - Rounded for cleaner UI design */}
         <motion.div
-          className="relative w-64 aspect-[16/9] rounded-xl overflow-hidden flex-shrink-0 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-950/30"
+          className="relative w-full sm:w-64 h-48 sm:h-36 rounded-xl overflow-hidden flex-shrink-0 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-950/30"
           animate={{ scale: isHovered ? 1.02 : 1 }}
           transition={{ duration: 0.3 }}
         >
@@ -171,11 +171,11 @@ export default function ModernProjectCard({ project, onEdit, onPreview, index }:
             isPDF ? (
               <PDFPreview 
                 src={heroSrc} 
-                className="w-full h-full object-cover" 
+                className="w-full h-full object-contain" 
                 alt="PDF Preview"
               />
             ) : (
-              <img src={heroSrc} alt="" className="w-full h-full object-cover" />
+              <img src={heroSrc} alt="" className="w-full h-full object-contain" />
             )
           ) : (
             <div className="w-full h-full flex items-center justify-center">
@@ -185,16 +185,16 @@ export default function ModernProjectCard({ project, onEdit, onPreview, index }:
         </motion.div>
 
         {/* Project Details */}
-        <div className="flex-1 flex flex-col gap-3">
+        <div className="flex-1 flex flex-col gap-1 min-w-0">
           {/* Title with proper spacing for Open button */}
           <div className="pr-20">
-            <h3 className="text-xl font-bold text-foreground tracking-tight leading-tight line-clamp-2">
+            <h3 className="text-lg sm:text-xl font-bold text-foreground tracking-tight leading-tight line-clamp-2">
               {project.project_name || "Untitled Project"}
             </h3>
           </div>
 
-          {/* Summary (one line under title, slightly larger) */}
-          <p className="text-[15px] text-foreground/90 line-clamp-2 leading-relaxed">{project.summary}</p>
+          {/* Summary (minimal spacing from title) */}
+          <p className="text-sm text-foreground/90 line-clamp-2 leading-relaxed">{project.summary}</p>
 
           {/* Location line moved below into widgets */}
           {false && (
@@ -208,41 +208,25 @@ export default function ModernProjectCard({ project, onEdit, onPreview, index }:
             </div>
           )}
 
-          {/* Clients - Single line layout */}
-          {clientLogos.length > 0 && (
-            <div className="flex items-center gap-2 overflow-x-auto">
-              {clientLogos.map((client: any, idx: number) => (
-                <div
-                  key={`${client.name}-${idx}`}
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-background/50 border border-border/50 backdrop-blur-sm flex-shrink-0"
-                >
-                  {client.url ? (
-                    <>
-                      <div className="flex-shrink-0 w-4 h-4 flex items-center justify-center bg-white dark:bg-gray-800 rounded-sm p-0.5">
-                        <img
-                          src={withBasePath(client.url)}
-                          alt={client.name}
-                          className="w-full h-full object-contain"
-                          onError={(e) => {
-                            e.currentTarget.style.display = 'none';
-                          }}
-                        />
-                      </div>
-                      <span className="text-xs font-medium text-foreground">{client.name}</span>
-                    </>
-                  ) : (
-                    <span className="text-xs font-medium text-foreground">{client.name}</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Metadata widgets - All blue, single line */}
-          <div className="flex items-center gap-2 overflow-x-auto">
+          {/* All tags - Clients first, then metadata */}
+          <div className="flex items-center gap-2 overflow-x-auto py-2 -my-2 pl-2 -ml-2">
+            {/* Client tags - Same styling as metadata */}
+            {clientLogos.length > 0 && clientLogos.map((client: any, idx: number) => (
+              <motion.div
+                key={`${client.name}-${idx}`}
+                whileHover={{ scale: 1.05, y: -2 }}
+                transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-muted/50 border border-border text-xs text-foreground flex-shrink-0 cursor-pointer hover:bg-muted hover:border-border/80 hover:shadow-md"
+              >
+                <span className="truncate">{client.name}</span>
+              </motion.div>
+            ))}
             {(project.location_text || (project as any).mode) && (
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">
-                <MapPin className="w-3.5 h-3.5" />
+              <motion.div 
+                whileHover={{ scale: 1.05, y: -2 }}
+                transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-muted/50 border border-border text-xs text-foreground flex-shrink-0 cursor-pointer hover:bg-muted hover:border-border/80 hover:shadow-md"
+              >
                 <span className="truncate">
                   {(() => {
                     const mode = String((project as any).mode || '').toLowerCase();
@@ -252,25 +236,59 @@ export default function ModernProjectCard({ project, onEdit, onPreview, index }:
                     return loc || (mode === 'remote' ? 'Remote' : '');
                   })()}
                 </span>
-              </div>
+              </motion.div>
             )}
             {typeof (project as any).team_size === "number" && (project as any).team_size > 0 && (
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">
-                <Users className="w-3.5 h-3.5" />
-                <span>Team {(project as any).team_size}</span>
-              </div>
+              <motion.div 
+                whileHover={{ scale: 1.05, y: -2 }}
+                transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-muted/50 border border-border text-xs text-foreground flex-shrink-0 cursor-pointer hover:bg-muted hover:border-border/80 hover:shadow-md"
+              >
+                <span>Team Size: {(project as any).team_size}</span>
+              </motion.div>
             )}
-            {typeof (project as any).default_hourly_rate === 'number' && (
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">
-                <DollarSign className="w-3.5 h-3.5" />
+            {(project.start_date && project.end_date) && (
+              <motion.div 
+                whileHover={{ scale: 1.05, y: -2 }}
+                transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-muted/50 border border-border text-xs text-foreground flex-shrink-0 cursor-pointer hover:bg-muted hover:border-border/80 hover:shadow-md"
+              >
                 <span>
                   {(() => {
-                    const r = (project as any).default_hourly_rate as number;
-                    const cur = String((project as any).pay_currency || 'USD').toUpperCase();
-                    try { return `${new Intl.NumberFormat(undefined, { style: 'currency', currency: cur, maximumFractionDigits: 0 }).format(r)}/hr`; } catch { return `${r}/hr`; }
+                    try {
+                      const getOrdinal = (day: number) => {
+                        if (day > 3 && day < 21) return 'th';
+                        switch (day % 10) {
+                          case 1: return 'st';
+                          case 2: return 'nd';
+                          case 3: return 'rd';
+                          default: return 'th';
+                        }
+                      };
+                      
+                      const formatDate = (dateStr: string) => {
+                        // Ensure consistent date parsing by using UTC
+                        const d = new Date(dateStr + 'T00:00:00.000Z');
+                        if (isNaN(d.getTime())) {
+                          // Fallback for invalid dates
+                          return dateStr;
+                        }
+                        const month = d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
+                        const day = d.getUTCDate();
+                        return `${month} ${day}${getOrdinal(day)}`;
+                      };
+                      
+                      const startFormatted = formatDate(project.start_date);
+                      const endFormatted = formatDate(project.end_date);
+                      
+                      return `${startFormatted} - ${endFormatted}`;
+                    } catch (error) {
+                      // Fallback to raw dates if formatting fails
+                      return `${project.start_date} - ${project.end_date}`;
+                    }
                   })()}
                 </span>
-              </div>
+              </motion.div>
             )}
           </div>
 

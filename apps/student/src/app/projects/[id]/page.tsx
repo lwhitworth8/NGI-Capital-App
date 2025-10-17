@@ -64,7 +64,6 @@ export default async function ProjectDetailPage({ params }: { params: { id: stri
             <ApplyWidget
               projectId={Number(id)}
               allowApply={!!p.allow_applications && (!p.applications_close_date || (new Date(p.applications_close_date) >= new Date()))}
-              coffeechat={p.coffeechat_calendly || ''}
               questions={p.questions || []}
             />
             </div>

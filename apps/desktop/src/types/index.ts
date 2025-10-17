@@ -192,7 +192,6 @@ export type AdvisoryProject = {
   team_requirements?: string[] | null;
   allow_applications?: number | boolean;
   is_public?: number | boolean;
-  coffeechat_calendly?: string | null;
   showcase_pdf_url?: string | null;
   // Compensation
   default_hourly_rate?: number | null;

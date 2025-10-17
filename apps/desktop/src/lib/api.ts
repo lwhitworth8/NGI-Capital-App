@@ -199,6 +199,9 @@ class ApiClient {
       '/investor-relations/cap-table',
       '/api/auth/profile',
       '/api/profile',
+      // Settings self-profile endpoints are non-critical; suppress console noise if unavailable
+      '/me/profile',
+      '/me/profile/photo',
       '/finance/metrics/',
       '/finance/ai-insights'
     ]
@@ -366,19 +369,25 @@ class ApiClient {
 
   // Entity management endpoints
   async getEntities(): Promise<AppEntity[]> {
-    const response = await this.client.get('/accounting/entities/')
+    // Use no-trailing-slash path to avoid 307s
+    const response = await this.client.get('/accounting/entities')
     const items = Array.isArray(response.data) ? response.data : (response.data?.entities ?? [])
-    const mapped: AppEntity[] = items.map((e: any) => ({
-      id: e.id?.toString?.() ?? '0',
-      legal_name: e.legal_name ?? '',
-      entity_type: e.entity_type ?? '',
-      ein: e.ein ?? '',
-      formation_date: e.formation_date ?? new Date().toISOString(),
-      state: e.state ?? '',
-      parent_entity_id: e.parent_entity_id?.toString?.(),
-      is_active: e.is_active ?? true,
-      created_at: e.created_at ?? new Date().toISOString(),
-    }))
+    const mapped: AppEntity[] = items.map((e: any) => {
+      const id = e.id?.toString?.() ?? '0'
+      const legal_name = e.legal_name ?? e.entity_name ?? ''
+      const is_active = (typeof e.is_active === 'boolean') ? e.is_active : ((e.entity_status ?? '').toLowerCase() === 'active' || !!e.is_available)
+      return {
+        id,
+        legal_name,
+        entity_type: e.entity_type ?? '',
+        ein: e.ein ?? '',
+        formation_date: e.formation_date ?? new Date().toISOString(),
+        state: e.state ?? '',
+        parent_entity_id: e.parent_entity_id?.toString?.(),
+        is_active,
+        created_at: e.created_at ?? new Date().toISOString(),
+      }
+    })
     return mapped
   }
 
@@ -419,17 +428,19 @@ class ApiClient {
   // Accounting endpoints
   async getChartOfAccounts(entityId?: number): Promise<ChartAccount[]> {
     if (!entityId) return []
-    const response = await this.client.get(`/accounting/chart-of-accounts/${entityId}`)
+    const response = await this.client.get(`/accounting/coa?entity_id=${entityId}`)
     return response.data
   }
 
   async createChartAccount(accountData: Partial<ChartAccount>): Promise<ChartAccount> {
-    const response = await this.client.post('/accounting/chart-of-accounts', accountData)
+    // Aligned to new COA endpoints
+    const response = await this.client.post('/accounting/coa', accountData)
     return response.data
   }
 
   async updateChartAccount(id: number, accountData: Partial<ChartAccount>): Promise<ChartAccount> {
-    const response = await this.client.put(`/accounting/chart-of-accounts/${id}`, accountData)
+    // Aligned to new COA endpoints
+    const response = await this.client.patch(`/accounting/coa/${id}`, accountData)
     return response.data
   }
 
@@ -437,13 +448,14 @@ class ApiClient {
     if (!params?.entity_id) return []
     const { entity_id, ...rest } = params
     const response = await this.client.get('/accounting/journal-entries', { params: { entity_id, ...rest } })
-    
+
     // Map the API response to match the frontend interface
+    // Backend already returns correct status field, so don't override it
     return response.data.map((entry: any) => ({
       ...entry,
-      total_debits: parseFloat(entry.total_debit || '0'),
-      total_credits: parseFloat(entry.total_credit || '0'),
-      status: entry.is_posted ? 'posted' : (entry.approval_status || 'draft'),
+      total_debits: parseFloat(entry.total_debit || entry.total_debits || '0'),
+      total_credits: parseFloat(entry.total_credit || entry.total_credits || '0'),
+      // Keep status as-is from backend (draft/posted/etc.)
       fiscal_year: entry.fiscal_year || new Date().getFullYear(),
       fiscal_period: entry.fiscal_period || 1,
       created_by: entry.created_by || 1,
@@ -459,7 +471,7 @@ class ApiClient {
   }
 
   async getJournalEntryDetails(entryId: number): Promise<any> {
-    const response = await this.client.get(`/accounting/journal-entries/entry/${entryId}`)
+    const response = await this.client.get(`/accounting/journal-entries/${entryId}`)
     return response.data
   }
 
@@ -671,29 +683,21 @@ class ApiClient {
   }
 
   // Banking/Mercury
-  async bankingMercurySync(entitySlug?: string): Promise<{ accounts: number; transactions: number; matched: number }>{
-    const res = await this.client.post('/banking/mercury/sync', undefined, { params: { entity: entitySlug } })
-    return res.data
-  }
-  async bankingListUnmatched(): Promise<any[]> {
-    const res = await this.client.get('/banking/reconciliation/unmatched')
-    return res.data
-  }
-  async bankingManualMatch(txnId: number, journalEntryId: number): Promise<{ message: string }>{
-    const res = await this.client.post('/banking/reconciliation/match', { txn_id: txnId, journal_entry_id: journalEntryId })
-    return res.data
-  }
-  async bankingCreateJEFromTxn(data: { txn_id: number; entity_id: number; debit_account_id: number; credit_account_id: number; description?: string }): Promise<{ id: number }>{
-    const res = await this.client.post('/banking/reconciliation/create-je', data)
-    return res.data
-  }
-  async bankingSplitTxn(data: { txn_id: number; splits: { amount: number; description?: string }[] }): Promise<{ message: string; parts: number }>{
-    const res = await this.client.post('/banking/reconciliation/split', data)
-    return res.data
-  }
-  async bankingReconciliationStats(): Promise<{ bank_account_id: number; account_name: string; cleared: number; total: number; percent: number }[]> {
-    const res = await this.client.get('/banking/reconciliation/stats')
-    return res.data
+  // Removed legacy banking endpoints (moved to /accounting/bank-reconciliation)
+  async bankingReconciliationStats(entityId: number): Promise<{ bank_account_id: number; account_name: string; cleared: number; total: number; percent: number }[]> {
+    // Replace legacy stats endpoint by deriving from smart-status
+    const res = await this.client.get('/accounting/bank-reconciliation/smart-status', { params: { entity_id: entityId } })
+    const payload: any = res.data || {}
+    const accounts = Array.isArray(payload.bank_accounts) ? payload.bank_accounts : []
+    return accounts.map((acc: any) => {
+      const matched = Number(acc?.matched_transactions || 0)
+      const unmatched = Number(acc?.unmatched_transactions || 0)
+      const total = matched + unmatched
+      const percent = total > 0 ? Math.round((matched / total) * 100) : 0
+      const id = acc?.bank_account?.id ?? acc?.bank_account_id ?? 0
+      const name = acc?.bank_account?.account_name ?? acc?.account_name ?? 'Bank Account'
+      return { bank_account_id: id, account_name: name, cleared: matched, total, percent }
+    })
   }
 
   // Accounting conversion + close
@@ -713,9 +717,33 @@ class ApiClient {
     const res = await this.client.post('/accounting/close/run', { entity_id: entityId, year, month })
     return res.data
   }
-  async accountingApprovalsPending(): Promise<any[]> {
-    const res = await this.client.get('/accounting/approvals/pending')
+  // Conversion (in-place)
+  async accountingConversionPrerequisites(entityId: number, effectiveDate: string): Promise<any> {
+    const res = await this.client.post('/accounting/conversion/prerequisites', { entity_id: entityId, effective_date: effectiveDate })
     return res.data
+  }
+  async accountingConversionApprovalApprove(entityId: number, effectiveDate: string): Promise<any> {
+    const res = await this.client.post('/accounting/conversion/approval/approve', { entity_id: entityId, effective_date: effectiveDate, approve: true })
+    return res.data
+  }
+  async accountingConversionApprovalStatus(entityId: number, effectiveDate: string): Promise<any> {
+    const res = await this.client.get('/accounting/conversion/approval/status', { params: { entity_id: entityId, effective_date: effectiveDate } })
+    return res.data
+  }
+  async accountingConversionExecuteInplace(data: { entity_id: number; effective_date: string; ein: string; formation_state?: string; formation_date?: string; par_value: number; authorized_shares?: number; issued_shares: number; document_ids?: number[] }): Promise<any> {
+    const res = await this.client.post('/accounting/conversion/execute-inplace', data)
+    return res.data
+  }
+  // Admin helper: align entities
+  async accountingAdminAlignEntities(): Promise<any> {
+    const res = await this.client.post('/accounting/admin/align-entities', {})
+    return res.data
+  }
+  async accountingApprovalsPending(entityId: number): Promise<any[]> {
+    // Derive pending approvals from journal entries list (no direct legacy endpoint)
+    const res = await this.client.get('/accounting/journal-entries', { params: { entity_id: entityId } })
+    const items: any[] = Array.isArray(res.data) ? res.data : []
+    return items.filter((je) => je?.status === 'pending_first_approval' || je?.status === 'pending_final_approval')
   }
   async accountingApproveJE(entryId: number): Promise<any> {
     const res = await this.client.post(`/accounting/journal-entries/${entryId}/approve`, { approve: true })
@@ -864,6 +892,43 @@ export async function hrCreateEmployeeTodo(data: { entity_id: number; employee_i
 
 export async function hrPatchEmployeeTodo(id: number, patch: { title?: string; notes?: string; due_at?: string; status?: string; employee_id?: number }): Promise<{ message: string }> {
   return apiClient.request('PATCH', `/employee-todos/${id}`, patch)
+}
+
+// Timesheet API functions
+export async function hrGetTimesheets(entityId: number, filters?: { employee_id?: number; status?: string; pay_period?: string }): Promise<{ timesheets: any[]; count: number }> {
+  const params: any = { entity_id: entityId }
+  if (filters?.employee_id) params.employee_id = filters.employee_id
+  if (filters?.status) params.status = filters.status
+  if (filters?.pay_period) params.pay_period = filters.pay_period
+  return apiClient.request('GET', '/timesheets', undefined, { params })
+}
+
+export async function hrCreateTimesheet(data: { entity_id: number; employee_id: number; pay_period_start: string; pay_period_end: string }): Promise<{ id: number; message: string }> {
+  return apiClient.request('POST', '/timesheets', data)
+}
+
+export async function hrGetTimesheet(timesheetId: number): Promise<any> {
+  return apiClient.request('GET', `/timesheets/${timesheetId}`)
+}
+
+export async function hrAddTimesheetEntries(timesheetId: number, entries: any[]): Promise<{ message: string; total_hours: number }> {
+  return apiClient.request('POST', `/timesheets/${timesheetId}/entries`, { entries })
+}
+
+export async function hrSubmitTimesheet(timesheetId: number): Promise<{ message: string }> {
+  return apiClient.request('POST', `/timesheets/${timesheetId}/submit`)
+}
+
+export async function hrApproveTimesheet(timesheetId: number): Promise<{ message: string; timesheet_id: number }> {
+  return apiClient.request('POST', `/timesheets/${timesheetId}/approve`)
+}
+
+export async function hrRejectTimesheet(timesheetId: number, reason: string): Promise<{ message: string }> {
+  return apiClient.request('POST', `/timesheets/${timesheetId}/reject`, { reason })
+}
+
+export async function hrGetPendingApprovals(entityId: number): Promise<{ timesheets: any[]; count: number }> {
+  return apiClient.request('GET', '/timesheets/pending-approval', undefined, { params: { entity_id: entityId } })
 }
 // ===================== NGI Advisory API =====================
 import type { AdvisoryProject, AdvisoryStudent, AdvisoryApplication, AdvisoryCoffeeChat } from '@/types'
@@ -1366,5 +1431,3 @@ export async function accountingGetUnpostedEntries(entityId: number): Promise<{ 
 export async function accountingPostBatchEntries(options: { entity_id?: number; entry_ids?: number[]; start_date?: string; end_date?: string }): Promise<{ posted: number }> {
   return apiClient.request('POST', '/accounting/journal-entries/post-batch', options)
 }
-
-

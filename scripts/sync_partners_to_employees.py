@@ -7,7 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import text as sa_text
-from src.api.database import get_db
+from services.api.database import get_db
 
 def sync_partners_to_employees():
     """Create employee records for Landon and Andre if they don't exist"""
@@ -64,7 +64,7 @@ def sync_partners_to_employees():
                 {
                     "e": entity_id,
                     "n": "Landon Whitworth",
-                    "em": "lwhitworth@ngicapital.com",
+                    "em": "lwhitworth@ngicapitaladvisory.com",
                     "ti": "CEO & Co-Founder",
                     "ro": "Chief Executive Officer",
                     "cl": "executive",
@@ -94,7 +94,7 @@ def sync_partners_to_employees():
                 {
                     "e": entity_id,
                     "n": "Andre Nurmamade",
-                    "em": "anurmamade@ngicapital.com",
+                    "em": "anurmamade@ngicapitaladvisory.com",
                     "ti": "CFO & COO, Co-Founder",
                     "ro": "Chief Financial & Operating Officer",
                     "cl": "executive",

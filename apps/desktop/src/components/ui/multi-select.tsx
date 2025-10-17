@@ -26,17 +26,23 @@ export function MultiSelect({ options, selected, onChange, placeholder = 'Select
     return options.filter(o => o.toLowerCase().includes(qq))
   }, [options, q])
 
+  // Reset search when dropdown closes
+  React.useEffect(() => {
+    if (!open) {
+      setQ('')
+    }
+  }, [open])
+
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" aria-label={ariaLabel} className="justify-between w-56" onClick={() => setOpen(o=>!o)}>
+        <Button variant="outline" aria-label={ariaLabel} className="justify-between w-56">
           <span className="truncate text-left">
             {selected.length === 0 ? placeholder : `${selected.length} selected`}
           </span>
           <ChevronDown className="h-4 w-4 ml-2" />
         </Button>
       </DropdownMenuTrigger>
-      {open && (
       <DropdownMenuContent align="start" className="w-72 p-2">
         <Input
           placeholder={searchPlaceholder}
@@ -49,13 +55,19 @@ export function MultiSelect({ options, selected, onChange, placeholder = 'Select
           {filtered.map(opt => {
             const checked = selected.includes(opt)
             return (
-              <label key={opt} className="flex items-center space-x-2 px-2 py-1 cursor-pointer">
+              <label key={opt} className="flex items-center space-x-2 px-2 py-1 cursor-pointer hover:bg-muted/50 rounded">
                 <Checkbox
                   checked={checked}
                   onCheckedChange={(v) => {
                     const isChecked = !!v
-                    if (isChecked && !checked) onChange([...selected, opt])
-                    if (!isChecked && checked) onChange(selected.filter(s => s !== opt))
+                    if (isChecked && !checked) {
+                      const newSelected = [...selected, opt]
+                      onChange(newSelected)
+                    }
+                    if (!isChecked && checked) {
+                      const newSelected = selected.filter(s => s !== opt)
+                      onChange(newSelected)
+                    }
                   }}
                   aria-label={opt}
                 />
@@ -68,7 +80,6 @@ export function MultiSelect({ options, selected, onChange, placeholder = 'Select
           )}
         </div>
       </DropdownMenuContent>
-      )}
     </DropdownMenu>
   )
 }

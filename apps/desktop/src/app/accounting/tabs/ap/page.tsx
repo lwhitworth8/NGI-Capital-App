@@ -48,6 +48,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { AnimatedText } from '@ngi/ui';
 import { Checkbox } from '@/components/ui/checkbox';
 
 interface Vendor {
@@ -153,11 +154,12 @@ export default function AccountsPayableTab() {
     setLoading(true);
     try {
       const response = await fetch(`/api/accounting/ap/vendors?entity_id=${selectedEntityId}`);
-      if (response.ok) {
-      const data = await response.json();
-      setVendors(data.vendors || []);
-      }
-    } catch (error) {
+            if (response.ok) {
+              const data = await response.json();
+              if (data) {
+                setVendors(data.vendors || []);
+              }
+            }    } catch (error) {
       console.error('Failed to fetch vendors:', error);
     } finally {
       setLoading(false);
@@ -169,11 +171,12 @@ export default function AccountsPayableTab() {
     setLoading(true);
     try {
       const response = await fetch(`/api/accounting/ap/bills?entity_id=${selectedEntityId}`);
-      if (response.ok) {
-      const data = await response.json();
-      setBills(data.bills || []);
-      }
-    } catch (error) {
+            if (response.ok) {
+              const data = await response.json();
+              if (data) {
+                setBills(data.bills || []);
+              }
+            }    } catch (error) {
       console.error('Failed to fetch bills:', error);
     } finally {
       setLoading(false);
@@ -392,14 +395,25 @@ export default function AccountsPayableTab() {
     >
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Accounts Payable</h2>
-          <p className="text-muted-foreground">Manage vendors and bills with intelligent automation</p>
+          <AnimatedText 
+            text="Accounts Payable" 
+            as="h2" 
+            className="text-2xl font-bold tracking-tight"
+            delay={0.1}
+          />
+          <AnimatedText 
+            text="Manage vendors and bills with intelligent automation" 
+            as="p" 
+            className="text-muted-foreground"
+            delay={0.3}
+            stagger={0.02}
+          />
         </div>
       </div>
 
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
+        <Card className="hover:scale-105 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Open Bills</CardTitle>
             <FileText className="h-4 w-4 text-muted-foreground" />
@@ -418,7 +432,7 @@ export default function AccountsPayableTab() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hover:scale-105 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Outstanding</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
@@ -431,7 +445,7 @@ export default function AccountsPayableTab() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hover:scale-105 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Vendors</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
@@ -444,7 +458,7 @@ export default function AccountsPayableTab() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hover:scale-105 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">1099 Vendors</CardTitle>
             <Building2 className="h-4 w-4 text-muted-foreground" />
@@ -459,24 +473,34 @@ export default function AccountsPayableTab() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="vendors">Vendors</TabsTrigger>
-          <TabsTrigger value="bills">Bills</TabsTrigger>
-        </TabsList>
+        <div className="mb-6 flex justify-center">
+          <TabsList className="h-11 bg-muted/50">
+            <TabsTrigger value="vendors" className="data-[state=active]:bg-background px-6">
+              Vendors
+            </TabsTrigger>
+            <TabsTrigger value="bills" className="data-[state=active]:bg-background px-6">
+              Bills
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         {/* VENDORS TAB */}
-        <TabsContent value="vendors" className="space-y-4">
-          <div className="flex justify-between items-center">
-            <div className="flex-1 relative max-w-md">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder="Search vendors..." 
-                className="pl-10" 
-                value={searchVendor}
-                onChange={(e) => setSearchVendor(e.target.value)}
-              />
-            </div>
-            <Dialog open={isCreateVendorModalOpen} onOpenChange={setIsCreateVendorModalOpen}>
+        <TabsContent value="vendors" className="space-y-6 mt-6">
+          <Card>
+            <CardHeader className="pb-4">
+              <div className="flex items-start justify-between">
+                <CardTitle>Vendors</CardTitle>
+                <div className="flex items-center gap-3 mt-1">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input 
+                      placeholder="Search vendors..." 
+                      className="pl-10 w-64"
+                      value={searchVendor}
+                      onChange={(e) => setSearchVendor(e.target.value)}
+                    />
+                  </div>
+                  <Dialog open={isCreateVendorModalOpen} onOpenChange={setIsCreateVendorModalOpen}>
               <DialogTrigger asChild>
                 <Button>
                   <Plus className="h-4 w-4 mr-2" />
@@ -652,9 +676,9 @@ export default function AccountsPayableTab() {
                 </form>
               </DialogContent>
             </Dialog>
-          </div>
-
-          <Card>
+                </div>
+              </div>
+            </CardHeader>
             <CardContent className="pt-6">
               {loading ? (
                 <div className="flex items-center justify-center p-12">
@@ -717,23 +741,26 @@ export default function AccountsPayableTab() {
         </TabsContent>
 
         {/* BILLS TAB */}
-        <TabsContent value="bills" className="space-y-4">
-          <div className="flex justify-between items-center gap-4">
-            <div className="flex-1 relative max-w-md">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder="Search bills..." 
-                className="pl-10" 
-                value={searchBill}
-                onChange={(e) => setSearchBill(e.target.value)}
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline">
-                <Upload className="h-4 w-4 mr-2" />
-                Upload Bill
-              </Button>
-            <Dialog open={isCreateBillModalOpen} onOpenChange={setIsCreateBillModalOpen}>
+        <TabsContent value="bills" className="space-y-6 mt-6">
+          <Card>
+            <CardHeader className="pb-4">
+              <div className="flex items-start justify-between">
+                <CardTitle>Bills</CardTitle>
+                <div className="flex items-center gap-3 mt-1">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input 
+                      placeholder="Search bills..." 
+                      className="pl-10 w-64"
+                      value={searchBill}
+                      onChange={(e) => setSearchBill(e.target.value)}
+                    />
+                  </div>
+                  <Button variant="outline">
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload Bill
+                  </Button>
+                  <Dialog open={isCreateBillModalOpen} onOpenChange={setIsCreateBillModalOpen}>
               <DialogTrigger asChild>
                 <Button>
                   <Plus className="h-4 w-4 mr-2" />
@@ -925,10 +952,9 @@ export default function AccountsPayableTab() {
                 </form>
               </DialogContent>
             </Dialog>
-            </div>
-          </div>
-
-          <Card>
+                </div>
+              </div>
+            </CardHeader>
             <CardContent className="pt-6">
               {loading ? (
                 <div className="flex items-center justify-center p-12">

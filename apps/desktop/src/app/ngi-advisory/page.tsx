@@ -5,13 +5,14 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Loader2 } from 'lucide-react'
 import { useSearchParams, useRouter } from 'next/navigation'
+import { ModuleHeader } from '@ngi/ui/components/layout'
+import { AnimatedText } from '@ngi/ui/components/animated'
 
 const TABS = [
   { id: 'projects', label: 'Projects' },
   { id: 'students', label: 'Students' },
   { id: 'onboarding', label: 'Onboarding' },
   { id: 'project-center', label: 'Project Center' },
-  { id: 'learning-center', label: 'Learning Center' },
 ]
 
 // Import existing page components as content
@@ -19,7 +20,6 @@ const ProjectsContent = lazy(() => import('./projects/page'))
 const StudentsContent = lazy(() => import('./students/page'))
 const OnboardingContent = lazy(() => import('./onboarding/page'))
 const ProjectCenterContent = lazy(() => import('./lead-manager/page'))
-const LearningCenterContent = lazy(() => import('../learning/page'))
 
 export default function AdvisoryPage() {
   const searchParams = useSearchParams()
@@ -79,27 +79,29 @@ export default function AdvisoryPage() {
 
   return (
     <div className="flex flex-col h-full bg-background">
+      {/* Fixed header with GSAP animation */}
+      <ModuleHeader 
+        title="NGI Capital Advisory" 
+      />
+      
       {/* Scrollable content area */}
       <div className="flex-1 overflow-auto">
         <div className="p-6">
-          {/* Large title like original projects page */}
-          <h1 className="text-4xl font-bold tracking-tight text-foreground mb-4">
-            NGI Capital Advisory
-          </h1>
-          
           <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-            <TabsList className="grid w-full mb-4 h-auto" style={{gridTemplateColumns: `repeat(5, 1fr)`}}>
-              {TABS.map(tab => (
-                <TabsTrigger 
-                  key={tab.id} 
-                  value={tab.id} 
-                  className="flex items-center justify-center py-2"
-                  title={`${tab.label} (Cmd/Ctrl+${TABS.indexOf(tab) + 1})`}
-                >
-                  <span className="text-base">{tab.label}</span>
-                </TabsTrigger>
-              ))}
-            </TabsList>
+            <div className="mb-6 flex justify-center">
+              <TabsList className="h-11 bg-muted/50">
+                {TABS.map(tab => (
+                  <TabsTrigger 
+                    key={tab.id} 
+                    value={tab.id} 
+                    className="data-[state=active]:bg-background px-6"
+                    title={`${tab.label} (Cmd/Ctrl+${TABS.indexOf(tab) + 1})`}
+                  >
+                    {tab.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </div>
             
             <div className="mt-6">
               <Suspense fallback={
@@ -131,9 +133,6 @@ export default function AdvisoryPage() {
                     </TabsContent>
                     <TabsContent value="project-center" className="mt-0">
                       <ProjectCenterContent />
-                    </TabsContent>
-                    <TabsContent value="learning-center" className="mt-0">
-                      <LearningCenterContent />
                     </TabsContent>
                   </motion.div>
                 </AnimatePresence>

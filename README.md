@@ -1,12 +1,12 @@
 # NGI Capital Internal Application
 
-Unified internal platform for NGI Capital Advisory LLC. Secure, GAAP‑compliant operations with dual authorization, full audit trail, and role‑gated access for partners and students.
+Unified internal platform for NGI Capital Secure
 
 ## Architecture
 - Backend: FastAPI + SQLAlchemy
 - Frontends: Next.js 14 (Admin “desktop”) and Next.js 14 (Student portal)
 - Database: SQLite (dev) / PostgreSQL (prod)
-- Authentication: Clerk (OIDC/JWT) end‑to‑end; legacy password login and cookie bridge are removed
+- Authentication: Clerk (OIDC/JWT) end‑to‑end;
 
 ## Local Development
 ### Docker (recommended)
@@ -16,25 +16,6 @@ docker compose -f docker-compose.dev.yml up -d --build
 - Unified app: http://localhost:3001 (Student at `/`, Admin at `/admin`)
 - Backend: http://localhost:8001 (health at `/api/health`, docs at `/docs`)
 
-### Manual
-```bash
-# Backend
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-python scripts\init_database.py
-uvicorn src.api.main:app --host 127.0.0.1 --port 8001 --reload
-
-# Admin app
-cd apps/desktop
-npm install
-npm run dev
-
-# Student app
-cd ../student
-npm install
-npm run dev
-```
 
 ## Authentication (Clerk‑only)
 - Frontends managed by Clerk; backend verifies Clerk tokens (JWKS) and session cookies where applicable.

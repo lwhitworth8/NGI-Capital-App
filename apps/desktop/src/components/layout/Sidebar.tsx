@@ -13,6 +13,8 @@ export default function Sidebar() {
   const { user } = useUser();
   const { signOut } = useClerk();
   const [pendingApplicationsCount, setPendingApplicationsCount] = useState(0);
+  const [avatarColor, setAvatarColor] = useState<string | undefined>(undefined);
+  const [avatarPhoto, setAvatarPhoto] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     const loadPendingCount = async () => {
@@ -25,6 +27,29 @@ export default function Sidebar() {
       }
     };
     loadPendingCount();
+  }, []);
+
+  useEffect(() => {
+    // Load self profile for avatar color/photo
+    const loadProfile = async () => {
+      try {
+        const res = await fetch('/api/me/profile');
+        if (!res.ok) return;
+        const me = await res.json();
+        setAvatarColor(me?.profile_color || '#0066FF');
+        if (me?.profile_photo_url) setAvatarPhoto(me.profile_photo_url as string);
+      } catch {}
+    };
+    
+    loadProfile();
+    
+    // Listen for avatar updates from settings page
+    const handleAvatarUpdate = () => loadProfile();
+    window.addEventListener('avatar-updated', handleAvatarUpdate);
+    
+    return () => {
+      window.removeEventListener('avatar-updated', handleAvatarUpdate);
+    };
   }, []);
 
   const items: NGINavItem[] = useMemo(() => [
@@ -52,9 +77,11 @@ export default function Sidebar() {
       items={items}
       activePath={pathname || "/"}
       LinkComponent={Link as any}
-      user={{ initials, displayName }}
+      user={{ initials, displayName, color: avatarColor, photoUrl: avatarPhoto }}
       onSettings={() => router.push("/settings")}
       onSignOut={async () => { await signOut(); router.push("/"); }}
     />
   );
 }
+
+

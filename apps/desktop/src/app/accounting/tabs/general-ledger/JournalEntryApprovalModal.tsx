@@ -14,17 +14,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { 
-  CheckCircle2, 
-  XCircle, 
-  AlertCircle, 
-  FileText, 
+import {
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  FileText,
   Calendar,
   DollarSign,
   User,
   Clock,
   ChevronRight,
-  Loader2
+  Loader2,
+  Book
 } from "lucide-react";
 import {
   Table,
@@ -41,6 +42,9 @@ interface JournalEntryLine {
   debit_amount: number;
   credit_amount: number;
   description: string;
+  xbrl_element_name?: string;
+  primary_asc_topic?: string;
+  xbrl_standard_label?: string;
 }
 
 interface JournalEntry {
@@ -392,7 +396,13 @@ export function JournalEntryApprovalModal({
 
           {/* Line Items Table */}
           <div>
-            <h3 className="text-sm font-semibold mb-3">Journal Entry Lines</h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold">Journal Entry Lines</h3>
+              <div className="flex items-center gap-2">
+                <Book className="h-4 w-4 text-blue-600" />
+                <span className="text-xs text-muted-foreground">XBRL/ASC Tagged</span>
+              </div>
+            </div>
             <div className="border rounded-lg overflow-hidden">
               <Table>
                 <TableHeader>
@@ -406,17 +416,53 @@ export function JournalEntryApprovalModal({
                 </TableHeader>
                 <TableBody>
                   {journalEntry.lines.map((line, index) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-mono text-sm">{line.account_number}</TableCell>
-                      <TableCell className="font-medium">{line.account_name}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{line.description}</TableCell>
-                      <TableCell className="text-right font-mono">
-                        {line.debit_amount > 0 ? `$${line.debit_amount.toFixed(2)}` : '-'}
-                      </TableCell>
-                      <TableCell className="text-right font-mono">
-                        {line.credit_amount > 0 ? `$${line.credit_amount.toFixed(2)}` : '-'}
-                      </TableCell>
-                    </TableRow>
+                    <React.Fragment key={index}>
+                      <TableRow>
+                        <TableCell className="font-mono text-sm">{line.account_number}</TableCell>
+                        <TableCell className="font-medium">{line.account_name}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{line.description}</TableCell>
+                        <TableCell className="text-right font-mono">
+                          {line.debit_amount > 0 ? `$${line.debit_amount.toFixed(2)}` : '-'}
+                        </TableCell>
+                        <TableCell className="text-right font-mono">
+                          {line.credit_amount > 0 ? `$${line.credit_amount.toFixed(2)}` : '-'}
+                        </TableCell>
+                      </TableRow>
+                      {/* XBRL/ASC Compliance Row */}
+                      {(line.xbrl_element_name || line.primary_asc_topic) && (
+                        <TableRow className="bg-blue-50 dark:bg-blue-950/20">
+                          <TableCell colSpan={5} className="py-2 px-4">
+                            <div className="flex items-start gap-4 text-xs">
+                              <div className="flex items-center gap-2">
+                                <Book className="h-3 w-3 text-blue-600" />
+                                <span className="font-semibold text-blue-900 dark:text-blue-100">US GAAP:</span>
+                              </div>
+                              <div className="flex-1 space-y-1">
+                                {line.primary_asc_topic && (
+                                  <div>
+                                    <span className="font-medium text-blue-700 dark:text-blue-300">ASC Topic: </span>
+                                    <Badge variant="outline" className="text-xs bg-blue-100 dark:bg-blue-900 border-blue-300">
+                                      {line.primary_asc_topic}
+                                    </Badge>
+                                  </div>
+                                )}
+                                {line.xbrl_element_name && (
+                                  <div>
+                                    <span className="font-medium text-blue-700 dark:text-blue-300">XBRL Element: </span>
+                                    <span className="font-mono text-blue-600 dark:text-blue-400">{line.xbrl_element_name}</span>
+                                  </div>
+                                )}
+                                {line.xbrl_standard_label && (
+                                  <div className="text-muted-foreground italic">
+                                    {line.xbrl_standard_label}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </React.Fragment>
                   ))}
                   <TableRow className="bg-muted/50 font-semibold">
                     <TableCell colSpan={3} className="text-right">Total:</TableCell>
@@ -579,5 +625,6 @@ export function JournalEntryApprovalModal({
     </Dialog>
   );
 }
+
 
 

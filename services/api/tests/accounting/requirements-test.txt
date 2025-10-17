@@ -1,0 +1,16 @@
+# Testing dependencies for accounting module tests
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+pytest-timeout>=2.1.0
+httpx>=0.24.0
+sqlalchemy>=2.0.0
+aiosqlite>=0.19.0
+
+# For generating test fixtures
+reportlab>=4.0.0
+pillow>=10.0.0
+
+# Optional: For full extraction testing
+# google-cloud-vision>=3.4.0
+# pdf2image>=1.16.0

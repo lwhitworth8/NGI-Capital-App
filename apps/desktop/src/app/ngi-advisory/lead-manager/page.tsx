@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useApp } from '@/lib/context/AppContext'
 import { advisoryListProjects, plmCreateTask, plmListTasks, plmCreateMeeting, plmListMeetings, plmAddResourceLink, plmListResources, plmListTimesheets, plmListDeliverables, plmAddComment, plmListComments, plmListMilestones, plmCreateMilestone, plmDeleteMilestone } from '@/lib/api'
 import { AdvisoryLayout } from '@/components/advisory/AdvisoryLayout'
+import { AnimatedText } from '@ngi/ui/components/animated'
 
 type Task = { id:number; title:string; description?:string; priority:'low'|'med'|'high'; status:'todo'|'in_progress'|'review'|'done'|'blocked'; submission_type:'individual'|'group'; due_date?:string; planned_hours?:number; assignees:number[] }
 type Milestone = { id:number; title:string; start_date?:string; end_date?:string; ord?:number }
@@ -137,7 +138,12 @@ export default function LeadManagerPage() {
     <>
       
       <div className="flex items-center gap-3">
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">Project Center</h1>
+        <AnimatedText 
+          text="Project Center" 
+          as="h1" 
+          className="text-3xl font-bold tracking-tight text-foreground"
+          delay={0.1}
+        />
       </div>
       
       <div className="flex items-center gap-3">

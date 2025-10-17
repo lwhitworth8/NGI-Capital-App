@@ -8,7 +8,6 @@ const TABS = [
   { id: 'students', label: 'Students', href: '/ngi-advisory/students' },
   { id: 'onboarding', label: 'Onboarding', href: '/ngi-advisory/onboarding' },
   { id: 'project-center', label: 'Project Center', href: '/ngi-advisory/lead-manager' },
-  { id: 'learning-center', label: 'Learning Center', href: '/learning' },
 ];
 
 interface AdvisoryLayoutProps {

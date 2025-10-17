@@ -51,7 +51,9 @@ export default function ConsolidatedReportingView() {
           
           if (response.ok) {
             const data = await response.json();
-            return { entity, data };
+            if (data) {
+              return { entity, data };
+            }
           }
           return null;
         })

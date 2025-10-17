@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@clerk/nextjs';
+import { motion } from 'framer-motion';
 
 interface StudentTalent {
   user_id: string;
@@ -15,6 +16,25 @@ interface StudentTalent {
   modules_completed: string[];
   last_activity: string;
   submissions_count: number;
+}
+
+function KpiCard({ title, value, icon }: { title: string; value: string | number, icon: React.ReactNode }) {
+  return (
+    <motion.div
+      whileHover={{ scale: 1.05, boxShadow: '0px 10px 20px rgba(0, 0, 0, 0.1)' }}
+      className="bg-white rounded-lg border border-gray-200 p-6 cursor-pointer"
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex flex-col">
+          <span className="text-sm text-gray-600">{title}</span>
+          <span className="text-3xl font-bold text-gray-900">{value}</span>
+        </div>
+        <div className="w-12 h-12 flex items-center justify-center bg-blue-100 rounded-full">
+          {icon}
+        </div>
+      </div>
+    </motion.div>
+  );
 }
 
 export default function TalentTrackingPage() {
@@ -64,16 +84,39 @@ export default function TalentTrackingPage() {
     return { label: 'Developing', color: 'bg-gray-100 text-gray-800' };
   };
 
+  const activeStudents = useMemo(() => students.length, [students]);
+  const completedProfiles = useMemo(() => students.filter(s => s.completion_percentage === 100).length, [students]);
+  const ucSchools = useMemo(() => students.filter(s => s.email.endsWith('.edu') && (s.email.includes('berkeley') || s.email.includes('ucla'))).length, [students]);
+
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          Talent Tracking - NGI Capital Advisory
+          Student Database
         </h1>
         <p className="text-gray-600">
           Identify top performers and track student progress across the learning platform
         </p>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+        <KpiCard
+          title="Active Students"
+          value={activeStudents}
+          icon={<svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>}
+        />
+        <KpiCard
+          title="Completed Profiles"
+          value={completedProfiles}
+          icon={<svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+        />
+        <KpiCard
+          title="UC Schools"
+          value={ucSchools}
+          icon={<svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.22 10.27a2.41 2.41 0 013.43 0L12 14.59l4.35-4.32a2.41 2.41 0 113.43 3.43L12 21.41l-7.78-7.71a2.41 2.41 0 010-3.43z" /></svg>}
+        />
       </div>
 
       {/* Controls */}
@@ -120,26 +163,6 @@ export default function TalentTrackingPage() {
             </svg>
             Refresh
           </button>
-        </div>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="text-3xl font-bold text-purple-600">{students.filter(s => s.talent_signal >= 80).length}</div>
-          <div className="text-sm text-gray-600 mt-1">Elite Performers</div>
-        </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="text-3xl font-bold text-blue-600">{students.filter(s => s.completion_percentage >= 50).length}</div>
-          <div className="text-sm text-gray-600 mt-1">50%+ Complete</div>
-        </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="text-3xl font-bold text-green-600">{students.filter(s => s.artifact_quality_score >= 70).length}</div>
-          <div className="text-sm text-gray-600 mt-1">High Quality Work</div>
-        </div>
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <div className="text-3xl font-bold text-orange-600">{students.filter(s => s.current_streak >= 7).length}</div>
-          <div className="text-sm text-gray-600 mt-1">7+ Day Streak</div>
         </div>
       </div>
 

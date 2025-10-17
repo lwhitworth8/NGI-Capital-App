@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(sqlite3:*)",
+      "Bash(curl -s \"http://localhost:8002/api/accounting/banking/accounts?entity_id=1\")",
+      "Bash(mkdir:*)",
+      "Bash(curl:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -32,4 +32,4 @@ USER appuser
 EXPOSE 8001
 
 # Start the application
-CMD ["python", "-m", "uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["python", "-m", "uvicorn", "services.api.main:app", "--host", "0.0.0.0", "--port", "8001"]

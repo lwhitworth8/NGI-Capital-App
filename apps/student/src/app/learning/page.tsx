@@ -1,11 +1,12 @@
 "use client"
 
- import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuth } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
 import { LEARNING_MODULES, LEARNING_GROUPS, GroupedLearningModule } from '@/types/learning'
 import { learningAPI } from '@/lib/api/learning'
 import { LessonContent } from '@/components/learning/LessonContent'
+import { ModuleHeader } from '@ngi/ui/components/layout'
 import { 
   Building, 
   Calculator, 
@@ -23,8 +24,7 @@ import {
   ArrowRight,
   ChevronDown,
   ChevronUp,
-  Play,
-  Star
+  Play
 } from 'lucide-react'
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 import { motion } from 'framer-motion'
@@ -59,7 +59,6 @@ export default function LearningPage() {
   const [activeView, setActiveView] = useState<'homepage' | 'submodules' | 'learning'>('homepage')
   const [selectedGroup, setSelectedGroup] = useState<GroupedLearningModule | null>(null)
   const [selectedModule, setSelectedModule] = useState<any>(null)
-  const [showDemo, setShowDemo] = useState(false)
 
   useEffect(() => {
     // Optional lightweight telemetry: page view only; no PII
@@ -83,10 +82,7 @@ export default function LearningPage() {
 
   const loadProgress = async () => {
     try {
-      const token = await getToken()
-      if (!token) return
-
-      const data = await learningAPI.getProgress(token)
+      const data = await learningAPI.getProgress()
       setProgress(data)
     } catch (err) {
       console.error('Failed to load progress:', err)
@@ -119,23 +115,6 @@ export default function LearningPage() {
     setSelectedModule(null)
   }
 
-  const handleStartJourney = () => {
-    // Find the first available module group
-    const firstAvailableGroup = LEARNING_GROUPS.find(group => 
-      group.submodules.some(sub => {
-        const module = LEARNING_MODULES.find(m => m.id === sub.id)
-        return module && module.status === 'available'
-      })
-    )
-    
-    if (firstAvailableGroup) {
-      handleGroupClick(firstAvailableGroup)
-    }
-  }
-
-  const handleViewDemo = () => {
-    setShowDemo(true)
-  }
 
   if (loading) {
     return (
@@ -146,49 +125,41 @@ export default function LearningPage() {
   }
 
   return (
-    <div className="h-full flex flex-col bg-background">
-      {/* Fixed Header */}
-      <div className="border-b border-border bg-card">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">NGI Learning Center</h1>
-              <p className="text-muted-foreground">
-                {activeView !== 'homepage' ? (
-                  <button
-                    onClick={handleBackToHomepage}
-                    className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
-                  >
-                    <ArrowRight className="h-4 w-4 rotate-180" />
-                    Back to Homepage
-                  </button>
-                ) : "Professional development and skill building"}
-              </p>
-            </div>
-            {progress && activeView === 'homepage' && (
-              <div className="flex items-center gap-6 text-sm">
-                <div className="flex items-center gap-2">
-                  <BookOpen className="h-4 w-4 text-primary" />
-                  <span className="text-muted-foreground">{progress.current_streak_days || 0} day streak</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-green-600" />
-                  <span className="text-muted-foreground">{progress.activities_completed?.length || 0} completed</span>
-                </div>
+    <div className="flex flex-col h-full bg-background">
+      {/* Fixed header - consistent with other modules */}
+      <ModuleHeader 
+        title="NGI Capital Learning Center"
+        rightContent={
+          activeView !== 'homepage' ? (
+            <button
+              onClick={handleBackToHomepage}
+              className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
+            >
+              <ArrowRight className="h-4 w-4 rotate-180" />
+              Back to Homepage
+            </button>
+          ) : progress ? (
+            <div className="flex items-center gap-6 text-sm">
+              <div className="flex items-center gap-2">
+                <BookOpen className="h-4 w-4 text-primary" />
+                <span className="text-muted-foreground">{progress.current_streak_days || 0} day streak</span>
               </div>
-            )}
-          </div>
-        </div>
-      </div>
-
+              <div className="flex items-center gap-2">
+                <CheckCircle className="h-4 w-4 text-green-600" />
+                <span className="text-muted-foreground">{progress.activities_completed?.length || 0} completed</span>
+              </div>
+            </div>
+          ) : null
+        }
+      />
+      
       {/* Scrollable content area */}
       <div className="flex-1 overflow-auto">
+        <div className="p-6">
         {activeView === 'homepage' && (
           <HomepageView 
             progress={progress}
             onGroupClick={handleGroupClick}
-            onStartJourney={handleStartJourney}
-            onViewDemo={handleViewDemo}
             isSignedIn={!!isSignedIn}
             router={router}
           />
@@ -208,12 +179,9 @@ export default function LearningPage() {
             onBack={handleBackToSubmodules}
           />
         )}
+        </div>
       </div>
 
-      {/* Demo Modal */}
-      {showDemo && (
-        <DemoModal onClose={() => setShowDemo(false)} />
-      )}
     </div>
   )
 }
@@ -222,55 +190,16 @@ export default function LearningPage() {
 function HomepageView({ 
   progress, 
   onGroupClick, 
-  onStartJourney,
-  onViewDemo,
   isSignedIn, 
   router 
 }: { 
   progress: any
   onGroupClick: (group: GroupedLearningModule) => void
-  onStartJourney: () => void
-  onViewDemo: () => void
   isSignedIn: boolean
   router: any
 }) {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Hero Section with Animated Gradient */}
-      <div className="relative mb-12">
-        <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 via-purple-600/20 to-cyan-600/20 rounded-3xl blur-3xl"></div>
-        <div className="relative bg-gradient-to-br from-card to-card/80 backdrop-blur-xl border border-border/50 rounded-3xl p-12 text-center group hover:shadow-2xl transition-all duration-500">
-          <div className="space-y-6">
-            {/* Hero Title with Gradient Text */}
-            <h1 className="text-4xl md:text-6xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 via-purple-600 to-cyan-600 group-hover:from-blue-500 group-hover:via-purple-500 group-hover:to-cyan-500 transition-all duration-500">
-              Master The Skills To Conquer The World
-            </h1>
-            
-            {/* Hero Description */}
-            <p className="text-xl text-muted-foreground max-w-3xl mx-auto group-hover:text-foreground/90 transition-colors duration-500 leading-relaxed">
-              Learn real-world skills through hands-on projects, expert AI feedback, and industry case studies. 
-              Build your portfolio and advance your career in investment banking.
-            </p>
-            
-            {/* CTA Buttons */}
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mt-8">
-              <button 
-                onClick={onStartJourney}
-                className="relative overflow-hidden group/btn px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-2xl hover:from-blue-500 hover:to-purple-500 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
-              >
-                <span className="relative z-10">Start Your Journey</span>
-                <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-purple-500 opacity-0 group-hover/btn:opacity-100 transition-opacity duration-300"></div>
-              </button>
-              <button 
-                onClick={onViewDemo}
-                className="px-8 py-4 border-2 border-border text-foreground font-semibold rounded-2xl hover:bg-muted/50 transition-all duration-300 hover:border-primary/50"
-              >
-                View Demo
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* Progress Stats - Full version for homepage */}
         {progress && (
@@ -343,9 +272,6 @@ function HomepageView({
                 title={group.mainModule === 'Business Foundations' ? 'Master the fundamentals of business thinking. Learn systems thinking, business model design, strategic planning, and operational excellence to build a solid foundation for any career path.' :
                        group.mainModule === 'Accounting and Finance' ? 'Dive deep into financial analysis and accounting principles. From reading financial statements to building valuation models, develop the analytical skills that top firms demand.' :
                        group.mainModule === 'Economics' ? 'Understand the forces that drive markets and economies. Learn microeconomic principles, macroeconomic analysis, and how economic theory applies to real-world business decisions.' :
-                       group.mainModule === 'Technology & Innovation' ? 'Master the technical skills driving modern business. Learn computer science fundamentals, software engineering practices, data science techniques, and artificial intelligence applications that are reshaping industries.' :
-                       group.mainModule === 'Leadership & Management' ? 'Develop the leadership skills that set you apart. Learn project management, team leadership, organizational behavior, and change management to advance your career and drive results.' :
-                       group.mainModule === 'Communication & Presentation' ? 'Build the communication skills that open doors. Master business communication, presentation skills, public speaking, and professional writing to effectively convey ideas and influence stakeholders.' :
                        'Explore this learning module to develop essential skills for your career.'}
               >
                     {/* Animated Background Gradient */}
@@ -795,119 +721,3 @@ function LearningWorkflowView({
   )
 }
 
-// Demo Modal Component
-function DemoModal({ onClose }: { onClose: () => void }) {
-  const [currentStep, setCurrentStep] = useState(0)
-  
-  const demoSteps = [
-    {
-      title: "Welcome to NGI Learning Center",
-      content: "Discover how our comprehensive learning platform helps you master investment banking skills through interactive modules, AI coaching, and real-world projects.",
-      icon: <BookOpen className="h-12 w-12 text-primary" />
-    },
-    {
-      title: "Interactive Learning Modules",
-      content: "Explore our 5 core modules covering Business Foundations, Accounting, Finance, and more. Each module includes hands-on exercises and real company data.",
-      icon: <Building className="h-12 w-12 text-blue-600" />
-    },
-    {
-      title: "AI-Powered Coaching",
-      content: "Get personalized feedback on your submissions with our advanced AI coaching system. Improve your work with expert-level guidance and suggestions.",
-      icon: <Lightbulb className="h-12 w-12 text-yellow-600" />
-    },
-    {
-      title: "Manim Animations",
-      content: "Learn complex concepts through beautiful, interactive animations. Visualize financial models, business processes, and strategic frameworks.",
-      icon: <Play className="h-12 w-12 text-purple-600" />
-    },
-    {
-      title: "Excel Validation",
-      content: "Submit your work for Goldman Sachs-standard validation. Get detailed feedback on formulas, formatting, and best practices.",
-      icon: <FileText className="h-12 w-12 text-green-600" />
-    },
-    {
-      title: "Progress Tracking",
-      content: "Track your learning journey with detailed analytics, streak counters, and completion certificates. Stay motivated and see your growth.",
-      icon: <TrendingUp className="h-12 w-12 text-emerald-600" />
-    }
-  ]
-
-  const nextStep = () => {
-    if (currentStep < demoSteps.length - 1) {
-      setCurrentStep(currentStep + 1)
-    } else {
-      onClose()
-    }
-  }
-
-  const prevStep = () => {
-    if (currentStep > 0) {
-      setCurrentStep(currentStep - 1)
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-card border border-border rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-border">
-          <h2 className="text-2xl font-bold text-foreground">Learning Center Demo</h2>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-muted rounded-lg transition-colors"
-          >
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Content */}
-        <div className="p-6">
-          <div className="text-center mb-8">
-            <div className="flex justify-center mb-4">
-              {demoSteps[currentStep].icon}
-            </div>
-            <h3 className="text-xl font-semibold text-foreground mb-4">
-              {demoSteps[currentStep].title}
-            </h3>
-            <p className="text-muted-foreground leading-relaxed">
-              {demoSteps[currentStep].content}
-            </p>
-          </div>
-
-          {/* Progress Indicator */}
-          <div className="flex justify-center mb-6">
-            <div className="flex space-x-2">
-              {demoSteps.map((_, index) => (
-                <div
-                  key={index}
-                  className={`w-2 h-2 rounded-full transition-colors ${
-                    index === currentStep ? 'bg-primary' : 'bg-muted'
-                  }`}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Navigation */}
-          <div className="flex justify-between">
-            <button
-              onClick={prevStep}
-              disabled={currentStep === 0}
-              className="px-4 py-2 text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              Previous
-            </button>
-            <button
-              onClick={nextStep}
-              className="px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-            >
-              {currentStep === demoSteps.length - 1 ? 'Get Started' : 'Next'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}

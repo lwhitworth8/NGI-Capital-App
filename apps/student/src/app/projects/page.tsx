@@ -25,17 +25,15 @@ export default async function ProjectsPage({ searchParams }: { searchParams?: { 
   const items: PublicProject[] = await spFetch<PublicProject[]>(url).catch(()=>[] as PublicProject[])
   return (
     <div className="flex flex-col h-full bg-background">
-      <div className="flex-1 overflow-auto">
-        <ProjectsClient
-          initialItems={items}
-          initialQ={String(q || '')}
-          initialTags={(String(tags || '').split(',').filter(Boolean))}
-          initialMode={String(mode || '')}
-          initialLocation={String(location || '')}
-          initialSort={(String(sort || 'newest') as any)}
-          pageSize={limit}
-        />
-      </div>
+      <ProjectsClient
+        initialItems={items}
+        initialQ={String(q || '')}
+        initialTags={(String(tags || '').split(',').filter(Boolean))}
+        initialMode={String(mode || '')}
+        initialLocation={String(location || '')}
+        initialSort={(String(sort || 'newest') as any)}
+        pageSize={limit}
+      />
     </div>
   )
 }

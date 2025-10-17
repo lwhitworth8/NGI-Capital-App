@@ -8,42 +8,63 @@ import { useUser, useClerk } from "@clerk/nextjs";
 import NGICapitalSidebar, { NGINavItem } from "@ngi/ui/components/layout/NGICapitalSidebar";
 import { postEvent } from "@/lib/telemetry";
 
-type Membership = { id: number; project_id: number; role?: string; hours_planned?: number; active: boolean };
-
 export default function StudentSidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user } = useUser();
   const { signOut } = useClerk();
-  const [hasActiveProject, setHasActiveProject] = useState(false);
+  const [avatarColor, setAvatarColor] = useState<string | undefined>(undefined);
+  const [avatarPhoto, setAvatarPhoto] = useState<string | undefined>(undefined);
 
-  // Student-specific: detect active project membership to show "My Projects"
+  // Load profile color/photo for avatar
   useEffect(() => {
     let ignore = false;
     const load = async () => {
       try {
         const email = user?.primaryEmailAddress?.emailAddress;
         if (!email) return;
-        const res = await fetch('/api/public/memberships/mine', {
-          headers: { 'X-Student-Email': email }
-        });
+        const res = await fetch('/api/public/profile', { headers: { 'X-Student-Email': email } });
         if (!res.ok) return;
-        const data = (await res.json()) as Membership[];
-        if (!ignore) setHasActiveProject(Array.isArray(data) && data.some(m => !!m.active));
+        const p = await res.json();
+        if (!ignore) {
+          setAvatarColor(p?.profile_color || '#0066FF');
+          if (p?.profile_photo_url) setAvatarPhoto(p.profile_photo_url as string);
+        }
       } catch {}
     };
     load();
     return () => { ignore = true };
   }, [user?.primaryEmailAddress?.emailAddress]);
 
+  // Listen for avatar updates from settings page
+  useEffect(() => {
+    const handleAvatarUpdate = () => {
+      // Reload profile data when avatar is updated
+      const email = user?.primaryEmailAddress?.emailAddress;
+      if (!email) return;
+      fetch('/api/public/profile', { headers: { 'X-Student-Email': email } })
+        .then(res => res.ok ? res.json() : null)
+        .then(p => {
+          if (p) {
+            setAvatarColor(p?.profile_color || '#0066FF');
+            if (p?.profile_photo_url) setAvatarPhoto(p.profile_photo_url as string);
+          }
+        })
+        .catch(() => {});
+    };
+
+    window.addEventListener('avatar-updated', handleAvatarUpdate);
+    return () => window.removeEventListener('avatar-updated', handleAvatarUpdate);
+  }, [user?.primaryEmailAddress?.emailAddress]);
+
   const items: NGINavItem[] = useMemo(() => {
     const base: NGINavItem[] = [
       { name: 'Projects', href: '/projects' },
+      { name: 'My Projects', href: '/my-projects' },
+      { name: 'Learning Center', href: '/learning' },
     ];
-    if (hasActiveProject) base.push({ name: 'My Projects', href: '/my-projects' });
-    base.push({ name: 'Learning Center', href: '/learning' });
     return base;
-  }, [hasActiveProject]);
+  }, []);
 
   // Compute display name and initials (first + last only)
   const rawFirst = user?.firstName || "";
@@ -83,9 +104,10 @@ export default function StudentSidebar() {
       onNavClick={(href: string) => {
         try { postEvent("nav_click", { route: href, position: "sidebar" }); } catch {}
       }}
-      user={{ initials, displayName }}
+      user={{ initials, displayName, color: avatarColor, photoUrl: avatarPhoto }}
       onSettings={() => router.push("/settings")}
       onSignOut={() => signOut({ redirectUrl: "/" })}
     />
   );
 }
+

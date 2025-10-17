@@ -32,7 +32,7 @@ services:
       - API_DOMAIN=${API_DOMAIN:-:80}
     volumes:
       - ./data:/app/data
-      - ./ops/production/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./infra/production/Caddyfile:/etc/caddy/Caddyfile:ro
     ports:
       - "80:80"
       - "443:443"

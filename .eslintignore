@@ -1,0 +1,6 @@
+services/**
+legacy/**
+db/**
+infra/**
+node_modules/**
+packages/ui/node_modules/**

@@ -67,7 +67,7 @@ export async function spFetch<T>(path: string, opts?: RequestInit): Promise<T> {
 export type PublicProject = {
   id: number; project_name: string; client_name: string; summary: string;
   hero_image_url?: string; gallery_urls?: string[]; showcase_pdf_url?: string; tags?: string[]; partner_badges?: string[]; backer_badges?: string[];
-  start_date?: string; end_date?: string; allow_applications?: number; coffeechat_calendly?: string;
+  start_date?: string; end_date?: string; allow_applications?: number;
   status?: 'draft'|'active'|'paused'|'delivered'|'closed'; mode?: 'remote'|'in_person'|'hybrid'; location_text?: string;
   applied_count?: number;
   team_size?: number | null;

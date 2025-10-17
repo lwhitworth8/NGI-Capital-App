@@ -6,22 +6,30 @@ services:
     container_name: ngi-backend
     working_dir: /app
     command: >
-      sh -c "uvicorn src.api.main:app --host 0.0.0.0 --port 8001 --reload --reload-exclude='tests/**' --reload-exclude='*.pyc' --reload-exclude='__pycache__/**'"
+      sh -c "uvicorn services.api.main:app --host 0.0.0.0 --port 8001 --reload --reload-exclude='tests/**' --reload-exclude='*.pyc' --reload-exclude='__pycache__/**'"
     # Publish API on host 8001 and route via nginx on 3001
     ports:
       - "8002:8001"
     volumes:
       - ./:/app
-      # Mount your real SQLite DB into the container so API uses it
-      - ./ngi_capital.db:/app/data/ngi_capital.db
+      # Mount data directory with SQLite DB (writable)
+      - ./data:/app/data
+      # Mount uploads directory for document storage
+      - ./uploads:/app/uploads
+      - ./.font-cache:/tmp/.font-cache
     environment:
+      - FONTCONFIG_PATH=/etc/fonts
+      - XDG_CACHE_HOME=/tmp/.font-cache
       - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
       # Stable secret for JWTs in dev
       - SECRET_KEY=${SECRET_KEY:-ngi-capital-secret-key-2025-secure-internal-app}
       # Explicit DB path for clarity (config also auto-detects /app/data)
       - DATABASE_PATH=/app/data/ngi_capital.db
       # Mercury API
       - MERCURY_API_KEY=${NGI_CAPITAL_LLC_MERCURY_API_KEY}
+      - NGI_CAPITAL_LLC_MERCURY_API_KEY=${NGI_CAPITAL_LLC_MERCURY_API_KEY}
+      - MERCURY_ACCOUNT_ID=${MERCURY_ACCOUNT_ID}
       # Clerk (fill these from your Clerk dashboard)
       - CLERK_AUDIENCE=backend
       - CLERK_ISSUER=${CLERK_ISSUER:-https://YOUR-CLERK-SUBDOMAIN.clerk.accounts.dev}
@@ -43,7 +51,7 @@ services:
       # Disable authentication for E2E tests
       - NEXT_PUBLIC_ADVISORY_DEV_OPEN=${NEXT_PUBLIC_ADVISORY_DEV_OPEN:-1}
       # Agent/Workflow integration
-      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_PROJECT=${OPENAI_PROJECT:-}
       - NGI_AGENT_WORKFLOW_ID=${NGI_AGENT_WORKFLOW_ID:-}
@@ -51,6 +59,8 @@ services:
       - OPENAI_WORKFLOWS_BASE_URL=${OPENAI_WORKFLOWS_BASE_URL:-https://api.openai.com/v1}
       - OPENAI_WORKFLOWS_API_KEY=${OPENAI_WORKFLOWS_API_KEY:-}
       - WORKFLOW_SCHEDULER_ID=${WORKFLOW_SCHEDULER_ID:-}
+      # Google Cloud Vision API for document extraction
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
       # Google Calendar integration
       - ENABLE_GCAL=${ENABLE_GCAL:-1}
       - GOOGLE_CREDENTIALS_JSON=${GOOGLE_CREDENTIALS_JSON:-credentials.json}
@@ -101,6 +111,7 @@ services:
       - "3001"
     volumes:
       - ./apps/desktop:/app
+      - ./tsconfig.base.json:/tsconfig.base.json
       - ./packages:/packages
       - /app/node_modules
       - /app/.next
@@ -123,7 +134,7 @@ services:
       - CLERK_SECRET_KEY=${CLERK_SECRET_KEY}
       # OpenAI GPT-5 Mini for AI insights
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
       # ADMIN list for routing
       - ADMIN_EMAILS=${ADMIN_EMAILS}
       # No in-app sign-in/up pages; we use hosted Clerk sign-in
@@ -153,6 +164,7 @@ services:
       - "3002"
     volumes:
       - ./apps/student:/app
+      - ./tsconfig.base.json:/tsconfig.base.json
       - ./packages:/packages
       - /app/node_modules
       - /app/.next
@@ -190,7 +202,7 @@ services:
     ports:
       - "3001:80"
     volumes:
-      - ./nginx/nginx.dev.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/nginx.dev.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - frontend
       - backend

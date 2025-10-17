@@ -5,8 +5,8 @@ Run this to update the database if entities already exist
 
 from datetime import date
 from decimal import Decimal
-from src.api.database import get_db
-from src.api.models_accounting import AccountingEntity
+from services.api.database import get_db
+from services.api.models_accounting import AccountingEntity
 
 
 def update_entity_relationships():

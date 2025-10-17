@@ -28,7 +28,7 @@ export type NGICapitalSidebarProps = {
   isActiveHref?: (path: string, href: string) => boolean;
   onNavClick?: (href: string) => void;
   LinkComponent?: React.ComponentType<LinkLikeProps>;
-  user?: { initials: string; displayName: string } | null;
+  user?: { initials: string; displayName: string; color?: string; photoUrl?: string } | null;
   onSettings?: () => void;
   onSignOut?: () => void;
   // Optional sizing overrides (pixels). Defaults mirror admin.
@@ -58,8 +58,12 @@ export default function NGICapitalSidebar({
 
   const _width = typeof widthPx === 'number' ? widthPx : 240;
   const _baseFont = typeof baseFontPx === 'number' ? baseFontPx : 16;
-  const _brandFont = typeof brandFontPx === 'number' ? brandFontPx : 24;
-  const _linkFont = typeof linkFontPx === 'number' ? linkFontPx : 16;
+  // Larger brand for stronger hierarchy in 64px header
+  const _brandFont = typeof brandFontPx === 'number' ? brandFontPx : 32;
+  // Slight bump for nav legibility
+  const _linkFont = typeof linkFontPx === 'number' ? linkFontPx : 18;
+  // Profile menu text slightly smaller than main nav
+  const _menuFont = Math.max(12, _linkFont - 2);
 
   const isActive = (href: string) => {
     if (isActiveHref) return isActiveHref(activePath, href);
@@ -103,7 +107,12 @@ export default function NGICapitalSidebar({
     >
       {/* Brand */}
       <div className="h-16 flex items-center px-[24px] border-b border-border" style={{ paddingLeft: 24, paddingRight: 24 }}>
-        <h2 className="text-[24px] font-bold text-foreground tracking-tight select-none" style={{ fontSize: _brandFont }}>{brand}</h2>
+        <h2
+          className="font-bold text-foreground tracking-tight leading-none select-none"
+          style={{ fontSize: _brandFont }}
+        >
+          {brand}
+        </h2>
       </div>
 
       {/* Navigation */}
@@ -123,14 +132,23 @@ export default function NGICapitalSidebar({
                   }
                   onNavClick?.(item.href);
                 }}
+                aria-current={active ? "page" : undefined}
                 className={`
-                  w-full flex items-center px-[12px] py-[8px] text-[16px] font-medium tracking-[-0.006em] rounded-lg transition-colors
-                  ${active ? "bg-blue-600 text-white shadow-sm" : "text-foreground hover:bg-muted"}
+                  group relative w-full flex items-center px-[12px] py-[8px] text-[16px] font-medium tracking-[-0.006em] rounded-lg
+                  text-foreground transition-all duration-200 ease-out
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30
                 `}
                 style={{ paddingLeft: 12, paddingRight: 12, paddingTop: 8, paddingBottom: 8, fontSize: _linkFont, letterSpacing: '-0.006em' }}
               >
                 <div className="flex items-center gap-2">
-                  <span className="truncate">{item.name}</span>
+                  <span
+                    className={`relative inline-block whitespace-nowrap
+                      after:content-[''] after:absolute after:left-0 after:-right-1 after:-bottom-1 after:h-[3px]
+                      after:bg-primary after:origin-left after:scale-x-0 after:transition-transform after:duration-200 after:ease-out
+                      ${active ? 'after:scale-x-100' : 'group-hover:after:scale-x-100'}`}
+                  >
+                    <span className="truncate">{item.name}</span>
+                  </span>
                   {typeof item.badgeCount === "number" && item.badgeCount > 0 && (
                     <span className="ml-2 px-2 py-0.5 text-xs bg-red-500 text-white rounded-full">
                       {item.badgeCount}
@@ -145,15 +163,22 @@ export default function NGICapitalSidebar({
                       key={child.name}
                       href={child.href}
                       onClick={() => onNavClick?.(child.href)}
+                      aria-current={isActive(child.href) ? "page" : undefined}
                       className={`
-                        block px-[12px] py-[8px] text-[16px] rounded-lg transition-colors
-                        ${isActive(child.href)
-                          ? "bg-muted text-foreground font-medium"
-                          : "text-foreground hover:bg-muted"}
+                        group relative block px-[12px] py-[8px] text-[16px] rounded-lg text-foreground
+                        transition-all duration-200 ease-out
+                        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30
                       `}
                       style={{ paddingLeft: 12, paddingRight: 12, paddingTop: 8, paddingBottom: 8, fontSize: _linkFont }}
                     >
-                      {child.name}
+                      <span
+                        className={`relative inline-block whitespace-nowrap
+                          after:content-[''] after:absolute after:left-0 after:-right-1 after:-bottom-1 after:h-[3px]
+                          after:bg-primary after:origin-left after:scale-x-0 after:transition-transform after:duration-200 after:ease-out
+                          ${isActive(child.href) ? 'after:scale-x-100' : 'group-hover:after:scale-x-100'}`}
+                      >
+                        <span className="truncate">{child.name}</span>
+                      </span>
                     </A>
                   ))}
                 </div>
@@ -171,9 +196,14 @@ export default function NGICapitalSidebar({
           aria-haspopup="menu"
           aria-expanded={showProfileMenu}
         >
-          <div className="h-9 w-9 rounded-full bg-blue-600 flex items-center justify-center text-white font-semibold">
-            {(user?.initials || "U").toString().slice(0, 2).toUpperCase()}
-          </div>
+          {user?.photoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={user.photoUrl} alt="Profile" className="h-9 w-9 rounded-full object-cover" />
+          ) : (
+            <div className="h-9 w-9 rounded-full flex items-center justify-center text-white font-semibold" style={{ background: user?.color || '#0066FF' }}>
+              {(user?.initials || "U").toString().slice(0, 2).toUpperCase()}
+            </div>
+          )}
           <div className="flex-1 min-w-0">
             <p className="text-base font-medium truncate">
               {user?.displayName || "User"}
@@ -189,20 +219,30 @@ export default function NGICapitalSidebar({
                   setShowProfileMenu(false);
                   onSettings?.();
                 }}
-                className="w-full px-4 py-2 text-sm text-foreground hover:bg-muted text-left flex items-center gap-2"
+                className="group w-full px-4 py-2 rounded-lg text-foreground text-left flex items-center gap-2 transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                style={{ fontSize: _menuFont }}
                 role="menuitem"
               >
-                Settings
+                <span
+                  className="relative inline-block whitespace-nowrap after:content-[''] after:absolute after:left-0 after:-right-1 after:-bottom-1 after:h-[3px] after:bg-primary after:origin-left after:scale-x-0 group-hover:after:scale-x-100 after:transition-transform after:duration-200 after:ease-out"
+                >
+                  Settings
+                </span>
               </button>
               <button
                 onClick={() => {
                   setShowProfileMenu(false);
                   onSignOut?.();
                 }}
-                className="w-full px-4 py-2 text-sm text-foreground hover:bg-muted text-left flex items-center gap-2"
+                className="group w-full px-4 py-2 rounded-lg text-foreground text-left flex items-center gap-2 transition-all duration-200 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                style={{ fontSize: _menuFont }}
                 role="menuitem"
               >
-                Sign Out
+                <span
+                  className="relative inline-block whitespace-nowrap after:content-[''] after:absolute after:left-0 after:-right-1 after:-bottom-1 after:h-[3px] after:bg-primary after:origin-left after:scale-x-0 group-hover:after:scale-x-100 after:transition-transform after:duration-200 after:ease-out"
+                >
+                  Sign Out
+                </span>
               </button>
             </div>
           </div>

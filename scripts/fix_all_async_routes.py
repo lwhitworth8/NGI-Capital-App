@@ -30,7 +30,7 @@ for filename in files_to_fix:
         content = f.read()
     
     # Fix imports
-    content = content.replace('from src.api.database_async import get_async_db', 'from src.api.database import get_db')
+    content = content.replace('from services.api.database_async import get_async_db', 'from services.api.database import get_db')
     content = content.replace('from ..database_async import get_async_db', 'from ..database import get_db')
     
     # Fix all get_async_db references
@@ -81,7 +81,7 @@ for filename in files_to_fix:
         content = f.read()
     
     # Fix imports
-    content = content.replace('from src.api.database_async import get_async_db', 'from src.api.database import get_db')
+    content = content.replace('from services.api.database_async import get_async_db', 'from services.api.database import get_db')
     content = content.replace('from ..database_async import get_async_db', 'from ..database import get_db')
     
     # Fix all get_async_db references

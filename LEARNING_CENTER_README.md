@@ -88,7 +88,7 @@ alembic upgrade head
 python scripts/seed_learning_content.py
 
 # Start the backend server
-uvicorn src.api.main:app --reload
+uvicorn services.api.main:app --reload
 ```
 
 ### Frontend Setup
@@ -249,7 +249,7 @@ COACHING_SESSION_TIMEOUT=7200
 export LOG_LEVEL=DEBUG
 
 # Run with debug flags
-python -m uvicorn src.api.main:app --reload --log-level debug
+python -m uvicorn services.api.main:app --reload --log-level debug
 ```
 
 ## Contributing

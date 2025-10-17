@@ -61,7 +61,7 @@ def fix_database_alignment():
     print("\n[2/6] Verifying entities...")
     cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='entities'")
     if cursor.fetchone()[0] == 0:
-        print("   ⚠️  Entities table doesn't exist. Run init_database.py first!")
+        print("   ⚠️  Entities table doesn't exist. Run scripts/init_accounting_db.py first!")
         return
     
     cursor.execute("SELECT id, legal_name, entity_type FROM entities WHERE is_active = 1")
@@ -273,7 +273,7 @@ def fix_database_alignment():
     print("\n[2/6] Verifying entities...")
     cursor.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='entities'")
     if cursor.fetchone()[0] == 0:
-        print("   ⚠️  Entities table doesn't exist. Run init_database.py first!")
+        print("   ⚠️  Entities table doesn't exist. Run scripts/init_accounting_db.py first!")
         return
     
     cursor.execute("SELECT id, legal_name, entity_type FROM entities WHERE is_active = 1")
@@ -423,6 +423,7 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
         sys.exit(1)
+
 
 
 

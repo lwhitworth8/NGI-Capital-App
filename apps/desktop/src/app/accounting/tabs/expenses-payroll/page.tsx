@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import { AnimatedText } from '@ngi/ui';
 import {
   Receipt,
   Clock,
@@ -482,9 +483,28 @@ export default function ExpensesPayrollPage() {
 
   return (
     <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <AnimatedText 
+            text="Expenses & Payroll" 
+            as="h2" 
+            className="text-2xl font-bold tracking-tight"
+            delay={0.1}
+          />
+          <AnimatedText 
+            text="Manage employee expenses, timesheets, and payroll processing" 
+            as="p" 
+            className="text-muted-foreground"
+            delay={0.3}
+            stagger={0.02}
+          />
+        </div>
+      </div>
+
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Card>
+        <Card className="hover:scale-105 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Pending Expenses</CardTitle>
             <Receipt className="h-4 w-4 text-muted-foreground" />
@@ -497,7 +517,7 @@ export default function ExpensesPayrollPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hover:scale-105 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Pending Timesheets</CardTitle>
             <Clock className="h-4 w-4 text-muted-foreground" />
@@ -508,7 +528,7 @@ export default function ExpensesPayrollPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hover:scale-105 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">YTD Payroll</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
@@ -519,7 +539,7 @@ export default function ExpensesPayrollPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hover:scale-105 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Compliance</CardTitle>
             <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
@@ -533,17 +553,27 @@ export default function ExpensesPayrollPage() {
 
       {/* Main Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="expense-reports">Expense Reports</TabsTrigger>
-          <TabsTrigger value="timesheets">Timesheets</TabsTrigger>
-          <TabsTrigger value="payroll">Payroll</TabsTrigger>
-          <TabsTrigger value="reports">Reports</TabsTrigger>
-        </TabsList>
+        <div className="mb-6 flex justify-center">
+          <TabsList className="h-11 bg-muted/50">
+            <TabsTrigger value="expense-reports" className="data-[state=active]:bg-background px-6">
+              Expense Reports
+            </TabsTrigger>
+            <TabsTrigger value="timesheets" className="data-[state=active]:bg-background px-6">
+              Timesheets
+            </TabsTrigger>
+            <TabsTrigger value="payroll" className="data-[state=active]:bg-background px-6">
+              Payroll
+            </TabsTrigger>
+            <TabsTrigger value="reports" className="data-[state=active]:bg-background px-6">
+              Reports
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         {/* ============================================================================ */}
         {/* EXPENSE REPORTS TAB */}
         {/* ============================================================================ */}
-        <TabsContent value="expense-reports" className="space-y-4">
+        <TabsContent value="expense-reports" className="space-y-6 mt-6">
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -615,7 +645,7 @@ export default function ExpensesPayrollPage() {
         {/* ============================================================================ */}
         {/* TIMESHEETS TAB */}
         {/* ============================================================================ */}
-        <TabsContent value="timesheets" className="space-y-4">
+        <TabsContent value="timesheets" className="space-y-6 mt-6">
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -689,7 +719,7 @@ export default function ExpensesPayrollPage() {
         {/* ============================================================================ */}
         {/* PAYROLL TAB */}
         {/* ============================================================================ */}
-        <TabsContent value="payroll" className="space-y-4">
+        <TabsContent value="payroll" className="space-y-6 mt-6">
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -743,7 +773,7 @@ export default function ExpensesPayrollPage() {
         {/* ============================================================================ */}
         {/* REPORTS TAB */}
         {/* ============================================================================ */}
-        <TabsContent value="reports" className="space-y-4">
+        <TabsContent value="reports" className="space-y-6 mt-6">
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader>

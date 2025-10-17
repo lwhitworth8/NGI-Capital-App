@@ -6,8 +6,8 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath('.'))
 
-from src.api.database import get_db
-from src.api.models_accounting import AccountingEntity, ChartOfAccounts
+from services.api.database import get_db
+from services.api.models_accounting import AccountingEntity, ChartOfAccounts
 from datetime import datetime
 
 # US GAAP Chart of Accounts template

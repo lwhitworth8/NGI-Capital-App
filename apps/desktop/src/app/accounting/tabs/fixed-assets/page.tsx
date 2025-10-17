@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { AnimatedText } from '@ngi/ui';
 import { Input } from '@/components/ui/input';
 import {
   Building2,
@@ -74,24 +75,13 @@ interface DepreciationScheduleItem {
   status: string;
 }
 
-interface AuditPackage {
-  id: number;
-  package_type: string;
-  period_year: number;
-  file_name: string;
-  file_size_bytes: number;
-  total_assets_count: number;
-  total_net_book_value: number;
-  generated_at: string;
-  generated_by_email: string;
-  download_url: string;
-}
+// Audit package UI has been moved to the top-level Audit Package tab
 
 export default function FixedAssetsTab() {
   const { selectedEntityId } = useEntityContext();
   const [assets, setAssets] = useState<FixedAsset[]>([]);
   const [depSchedule, setDepSchedule] = useState<DepreciationScheduleItem[]>([]);
-  const [auditPackages, setAuditPackages] = useState<AuditPackage[]>([]);
+  // auditPackages moved to top-level Audit Package tab
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('register');
   const [searchAsset, setSearchAsset] = useState('');
@@ -109,7 +99,7 @@ export default function FixedAssetsTab() {
     if (selectedEntityId) {
       fetchAssets();
       fetchDepreciationSchedule();
-      fetchAuditPackages();
+      // fetchAuditPackages moved to top-level Audit Package tab
     }
   }, [selectedEntityId]);
 
@@ -143,18 +133,7 @@ export default function FixedAssetsTab() {
     }
   };
 
-  const fetchAuditPackages = async () => {
-    if (!selectedEntityId) return;
-    try {
-      const response = await fetch(`/api/accounting/fixed-assets/audit-package/list?entity_id=${selectedEntityId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setAuditPackages(data.packages || []);
-      }
-    } catch (error) {
-      console.error('Failed to fetch audit packages:', error);
-    }
-  };
+  // fetchAuditPackages moved to top-level Audit Package tab
 
   const handleGenerateDepreciation = async () => {
     if (!selectedEntityId) return;
@@ -189,37 +168,7 @@ export default function FixedAssetsTab() {
     }
   };
 
-  const handleGenerateAuditPackage = async () => {
-    if (!selectedEntityId) return;
-    
-    const year = new Date().getFullYear();
-    
-    const confirmed = confirm(`Generate Big 4 audit package for ${year}? This will create a comprehensive Excel workbook with all required schedules.`);
-    if (!confirmed) return;
-    
-    try {
-      const response = await fetch('/api/accounting/fixed-assets/audit-package/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          entity_id: selectedEntityId,
-          year: year
-        })
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        alert('Audit package generated successfully!');
-        fetchAuditPackages();
-      } else {
-        const error = await response.json();
-        alert(`Error: ${error.detail}`);
-      }
-    } catch (error) {
-      console.error('Failed to generate audit package:', error);
-      alert('Failed to generate audit package. Please try again.');
-    }
-  };
+  // handleGenerateAuditPackage moved to top-level Audit Package tab
 
   // Filter functions
   const filteredAssets = assets.filter(asset => {
@@ -242,14 +191,25 @@ export default function FixedAssetsTab() {
     >
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight">Fixed Assets</h2>
-          <p className="text-muted-foreground">Auto-detected assets, depreciation automation, and Big 4 audit packages</p>
+          <AnimatedText 
+            text="Fixed Assets" 
+            as="h2" 
+            className="text-2xl font-bold tracking-tight"
+            delay={0.1}
+          />
+          <AnimatedText 
+            text="Auto-detected assets, depreciation automation, and Big 4 audit packages" 
+            as="p" 
+            className="text-muted-foreground"
+            delay={0.3}
+            stagger={0.02}
+          />
         </div>
       </div>
 
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
+        <Card className="hover:scale-105 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Original Cost</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
@@ -262,7 +222,7 @@ export default function FixedAssetsTab() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hover:scale-105 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Accumulated Depreciation</CardTitle>
             <TrendingDown className="h-4 w-4 text-muted-foreground" />
@@ -275,7 +235,7 @@ export default function FixedAssetsTab() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="hover:scale-105 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Net Book Value</CardTitle>
             <Building2 className="h-4 w-4 text-muted-foreground" />
@@ -290,56 +250,61 @@ export default function FixedAssetsTab() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="register">Asset Register</TabsTrigger>
-          <TabsTrigger value="depreciation">Depreciation Schedule</TabsTrigger>
-          <TabsTrigger value="audit">Audit Package</TabsTrigger>
-        </TabsList>
+        <div className="mb-6 flex justify-center">
+          <TabsList className="h-11 bg-muted/50">
+            <TabsTrigger value="register" className="data-[state=active]:bg-background px-6">
+              Asset Register
+            </TabsTrigger>
+            <TabsTrigger value="depreciation" className="data-[state=active]:bg-background px-6">
+              Depreciation Schedule
+            </TabsTrigger>
+            {/* Audit Package moved to top-level tab */}
+          </TabsList>
+        </div>
 
         {/* ASSET REGISTER TAB */}
-        <TabsContent value="register" className="space-y-4">
-          <div className="flex justify-between items-center gap-4">
-            <div className="flex-1 relative max-w-md">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search assets..."
-                className="pl-10"
-                value={searchAsset}
-                onChange={(e) => setSearchAsset(e.target.value)}
-              />
-            </div>
-            <div className="flex gap-2">
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="All Categories" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
-                  {categories.map(cat => (
-                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[150px]">
-                  <SelectValue placeholder="All Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="In Service">In Service</SelectItem>
-                  <SelectItem value="Fully Depreciated">Fully Depreciated</SelectItem>
-                  <SelectItem value="Disposed">Disposed</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
+        <TabsContent value="register" className="space-y-6 mt-6">
           <Card>
-            <CardHeader>
-              <CardTitle>Fixed Asset Register</CardTitle>
-              <CardDescription>
-                All assets are auto-detected from expense documents when they exceed $2,500 and have useful life &gt; 1 year
-              </CardDescription>
+            <CardHeader className="pb-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <CardTitle>Asset Register</CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">All assets are auto-detected from expense documents</p>
+                </div>
+                <div className="flex items-center gap-3 mt-1">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search assets..."
+                      className="pl-10 w-64"
+                      value={searchAsset}
+                      onChange={(e) => setSearchAsset(e.target.value)}
+                    />
+                  </div>
+                  <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="All Categories" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Categories</SelectItem>
+                      {categories.map(cat => (
+                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="w-[150px]">
+                      <SelectValue placeholder="All Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="In Service">In Service</SelectItem>
+                      <SelectItem value="Fully Depreciated">Fully Depreciated</SelectItem>
+                      <SelectItem value="Disposed">Disposed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               {loading ? (
@@ -411,19 +376,22 @@ export default function FixedAssetsTab() {
         </TabsContent>
 
         {/* DEPRECIATION SCHEDULE TAB */}
-        <TabsContent value="depreciation" className="space-y-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <h3 className="text-lg font-semibold">Monthly Depreciation Schedule</h3>
-              <p className="text-sm text-muted-foreground">View depreciation progress for all assets</p>
-            </div>
-            <Button onClick={handleGenerateDepreciation}>
-              <Calendar className="h-4 w-4 mr-2" />
-              Generate Monthly Depreciation
-            </Button>
-          </div>
-
+        <TabsContent value="depreciation" className="space-y-6 mt-6">
           <Card>
+            <CardHeader className="pb-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <CardTitle>Monthly Depreciation Schedule</CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">View depreciation progress for all assets</p>
+                </div>
+                <div className="flex items-center gap-3 mt-1">
+                  <Button onClick={handleGenerateDepreciation}>
+                    <Calendar className="h-4 w-4 mr-2" />
+                    Generate Monthly Depreciation
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
             <CardContent className="pt-6">
               {depSchedule.length === 0 ? (
                 <div className="text-center p-12 text-muted-foreground">
@@ -478,7 +446,7 @@ export default function FixedAssetsTab() {
         </TabsContent>
 
         {/* AUDIT PACKAGE TAB */}
-        <TabsContent value="audit" className="space-y-4">
+        <TabsContent value="audit" className="space-y-4">{/* moved to top-level Audit Package tab */}{false && (
           <Card>
             <CardHeader>
               <CardTitle>Big 4 Audit Package Generator</CardTitle>
@@ -551,6 +519,7 @@ export default function FixedAssetsTab() {
               )}
             </CardContent>
           </Card>
+        )}
         </TabsContent>
       </Tabs>
     </motion.div>

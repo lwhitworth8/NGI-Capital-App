@@ -15,6 +15,7 @@ import { ProjectEditorModal } from '@/components/advisory/ProjectEditorModal'
 import { AdvisoryLayout } from '@/components/advisory/AdvisoryLayout'
 // Use the same shadcn/radix Select used in student app
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@ngi/ui'
+import { AnimatedText } from '@ngi/ui/components/animated'
 
 // Known client registry (name -> logo URL) - using Clearbit Logo API
 const KNOWN_CLIENTS: Record<string, string> = {
@@ -556,12 +557,19 @@ export default function AdvisoryProjectsPage() {
           >
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">
-              Projects
-            </h1>
-            <p className="text-muted-foreground mt-2">
-              Create, manage, and view advisory projects and assignments
-            </p>
+            <AnimatedText 
+              text="Projects" 
+              as="h1" 
+              className="text-3xl font-bold tracking-tight text-foreground"
+              delay={0.1}
+            />
+            <AnimatedText 
+              text="Create, manage, and view advisory projects and assignments" 
+              as="p" 
+              className="text-muted-foreground mt-2"
+              delay={0.3}
+              stagger={0.02}
+            />
           </div>
         </div>
 
@@ -681,8 +689,7 @@ export default function AdvisoryProjectsPage() {
             'client_name', 'project_name', 'summary', 'description', 'status', 'mode',
             'location_text', 'start_date', 'end_date', 'duration_weeks', 'commitment_hours_per_week',
             'project_code', 'project_lead', 'contact_email', 'hero_image_url', 'apply_cta_text',
-            'apply_url', 'eligibility_notes', 'notes_internal', 'coffeechat_calendly', 'team_size',
-            'showcase_pdf_url', 'applications_close_date', 'is_public', 'allow_applications',
+                                  'apply_url', 'eligibility_notes', 'notes_internal', 'team_size',            'showcase_pdf_url', 'applications_close_date', 'is_public', 'allow_applications',
             // Compensation fields
             'default_hourly_rate', 'pay_currency', 'compensation_notes',
             'partner_badges', 'backer_badges', 'tags', 'gallery_urls', 'partner_logos', 'backer_logos',

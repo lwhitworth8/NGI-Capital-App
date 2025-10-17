@@ -18,7 +18,7 @@ type Profile = {
 
 type Question = { idx: number; type?: 'text'|'mcq'; prompt: string; choices?: string[] }
 
-export default function ApplyWidget({ projectId, allowApply, coffeechat, questions = [] }: { projectId: number; allowApply: boolean; coffeechat?: string; questions?: Question[] }) {
+export default function ApplyWidget({ projectId, allowApply, questions = [] }: { projectId: number; allowApply: boolean; questions?: Question[] }) {
   const { user } = useUser()
   const router = useRouter()
   const [loading, setLoading] = useState(false)
@@ -181,9 +181,6 @@ export default function ApplyWidget({ projectId, allowApply, coffeechat, questio
             : null}
         </div>
       )}
-      {coffeechat ? (
-        <a href={coffeechat} target="_blank" className="block text-center text-sm underline text-blue-600">Book a coffee chat</a>
-      ) : null}
-    </div>
+          </div>
   )
 }

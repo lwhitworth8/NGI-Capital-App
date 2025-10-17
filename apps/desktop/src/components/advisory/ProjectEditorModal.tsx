@@ -352,13 +352,18 @@ export function ProjectEditorModal({
       const savePayload = {
         ...form,
         client_name: clientNames,
-        status: publish ? 'active' : form.status || 'draft',
+        status: publish ? 'active' : (form.status || 'draft'),
         project_leads: selectedLeads,
         required_majors: selectedMajors,
         partner_logos: selectedClients,
         backer_logos: selectedBackers,
         application_questions: applicationQuestions,
         team_composition: teamComposition
+      }
+      
+      // If user manually changed status in dropdown, respect that choice
+      if (form.status && form.status !== 'draft' && form.status !== 'active') {
+        savePayload.status = form.status
       }
       
       console.log('=== MODAL SAVE DEBUG ===')

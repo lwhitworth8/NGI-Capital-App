@@ -35,7 +35,7 @@ if str(_root) not in sys.path:
 # Set dev flags before importing app
 os.environ.setdefault("OPEN_NON_ACCOUNTING", "1")
 
-from src.api.main import app  # type: ignore  # noqa: E402
+from services.api.main import app  # type: ignore  # noqa: E402
 
 
 def _iso_in(minutes: int) -> str:
