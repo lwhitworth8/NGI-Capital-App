@@ -26,8 +26,11 @@ jobs:
       - name: Test Desktop
         run: npm run -w apps/desktop test -- --ci --passWithNoTests
       - name: Type check Student
-        run: npm run -w apps/student build --workspaces=false --dry-run || echo "tsc check during build"
-      - name: Lint Student\n        run: npm run -w apps/student lint --if-present\n      - name: Test Student\n        run: npm run -w apps/student test -- --ci --passWithNoTests
+        run: npm run -w apps/student type-check
+      - name: Lint Student
+        run: npm run -w apps/student lint --if-present
+      - name: Test Student
+        run: npm run -w apps/student test -- --ci --passWithNoTests
 
   backend:
     runs-on: ubuntu-latest
